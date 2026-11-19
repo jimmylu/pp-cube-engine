@@ -87,14 +87,6 @@ impl<'de> Visitor<'de> for MetaValue {
         Ok(Value::Null)
     }
 
-    fn visit_none<E>(self) -> Result<Value, E> {
-        Ok(Value::Null)
-    }
-
-    fn visit_some<D: Deserializer<'de>>(self, deserializer: D) -> Result<Value, D::Error> {
-        deserializer.deserialize_any(self)
-    }
-
     fn visit_seq<A: SeqAccess<'de>>(self, mut items: A) -> Result<Value, A::Error> {
         let mut array = Vec::new();
         while let Some(item) = items.next_element_seed(MetaValue)? {

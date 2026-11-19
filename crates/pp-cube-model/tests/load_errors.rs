@@ -83,42 +83,24 @@ fn measure_without_sql_is_rejected_unless_its_type_is_count() {
 }
 
 #[test]
-fn meta_integer_beyond_64_bits_is_rejected_from_yaml() {
-    let text = yaml_with_meta("18446744073709551617");
+fn meta_integer_outside_64_bits_is_rejected_from_both_formats() {
+    let too_large = "18446744073709551617";
+    let too_small = "-9223372036854775809";
+    let loaded = [
+        load_yaml(&yaml_with_meta(too_large)),
+        load_yaml(&yaml_with_meta(too_small)),
+        load_json(&json_with_meta(too_large)),
+        load_json(&json_with_meta(too_small)),
+    ];
 
-    let error = load_yaml(&text).expect_err("the integer cannot be kept exactly");
-
-    assert!(
-        error.message.contains("cannot be kept exactly"),
-        "{}",
-        error.message
-    );
-}
-
-#[test]
-fn meta_integer_beyond_64_bits_is_rejected_from_json() {
-    let text = json_with_meta("18446744073709551617");
-
-    let error = load_json(&text).expect_err("the integer cannot be kept exactly");
-
-    assert!(
-        error.message.contains("cannot be kept exactly"),
-        "{}",
-        error.message
-    );
-}
-
-#[test]
-fn meta_integer_below_64_bits_is_rejected_from_json() {
-    let text = json_with_meta("-9223372036854775809");
-
-    let error = load_json(&text).expect_err("the integer cannot be kept exactly");
-
-    assert!(
-        error.message.contains("cannot be kept exactly"),
-        "{}",
-        error.message
-    );
+    for result in loaded {
+        let error = result.expect_err("the integer cannot be kept exactly");
+        assert!(
+            error.message.contains("cannot be kept exactly"),
+            "{}",
+            error.message
+        );
+    }
 }
 
 #[test]
