@@ -19,6 +19,9 @@ export INSTA_UPDATE=no
 
 MODE="${1:-}"
 BASE_REF="${BASE_REF:-origin/main}"
+# The OpenSpec CLI version the specs and project skills were written with.
+# .github/workflows/t0.yml installs the same version.
+OPENSPEC_VERSION="2.1.0"
 VENDOR="vendor/cube"
 UPSTREAM_WS="$VENDOR/rust/cube"
 
@@ -165,7 +168,9 @@ check_openspec() {
   step "openspec validate"
   if [[ ! -d openspec ]]; then skip "openspec not set up yet"; return; fi
   need openspec
-  openspec validate --all --strict || fail "openspec" "fix the spec errors above"
+  local have; have=$(openspec --version)
+  [[ "$have" == "$OPENSPEC_VERSION" ]] || fail "openspec" "openspec $have is installed; this repository uses $OPENSPEC_VERSION"
+  openspec validate --all --strict --no-interactive || fail "openspec" "fix the spec errors above"
   ok openspec
 }
 

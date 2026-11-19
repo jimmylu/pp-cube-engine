@@ -39,7 +39,7 @@ Stopping with a clear report is a successful outcome.
 
 ## Session protocol
 
-- **Start:** read the active change's `tasks.md` and `notes.md`.
+- **Start:** run `openspec list`, then read the active change's `tasks.md` and `notes.md`.
 - **End:** update `tasks.md`; write what was done, what is open and what was learned into `notes.md`. Everything needed to continue lives in the repository, so any agent can pick the change up at a commit.
 
 ## Roles
