@@ -21,7 +21,7 @@ First use in a fresh clone: `scripts/vendor-sync.sh` (a plain `git submodule upd
 2. **`vendor/` is read-only.** Needed upstream behaviour is handled in `crates/pp-cube-adapter` or reported.
 3. **Golden snapshots change only when the change's spec delta says the output changes.** Review with `cargo insta review`; pending snapshots are never committed.
 4. **Every scenario you implement gets a test naming its id**: `// scenario: B0-AGG-003`.
-5. **Harness changes travel alone.** A pull request touching a harness path (`.github/`, `scripts/`, `AGENTS.md`, `CLAUDE.md`, `.agents/`, `.claude/`, `.codex/`, lint and toolchain configuration) touches nothing else.
+5. **Harness changes travel alone.** A pull request touching a harness path (`.github/`, `scripts/`, `AGENTS.md`, `CLAUDE.md`, `.agents/`, `.claude/`, `.codex/`, `.omp/`, `docs/agents/`, lint and toolchain configuration) touches nothing else.
 6. **Stay inside the current baseline level.** Anything beyond it becomes an issue labelled `after-baseline`.
 7. **The owner merges.** Open the pull request and stop; `owner-approval` is the owner's click.
 

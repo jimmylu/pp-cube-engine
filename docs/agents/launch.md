@@ -17,7 +17,9 @@ Neither token can approve `owner-approval`, change repository rules, or push fil
 | Agent | Guard | State |
 | --- | --- | --- |
 | Claude Code | `.claude/settings.json` runs `scripts/agent-guard.sh` before shell commands and file edits | Set up |
-| Codex CLI | Start with `--sandbox workspace-write` to implement, `--sandbox read-only` to review | By launch flag; a project configuration file is not set up |
-| omp | `scripts/agent-guard.sh` is not wired in yet; omp's hook interface has not been examined | Not set up |
+| Codex CLI | Start with `--sandbox workspace-write` to implement, `--sandbox read-only` to review | By launch flag; no project configuration file |
+| omp | `.omp/hooks/pre/guard.ts`, discovered by its location, passes shell commands, writes and edits to `scripts/agent-guard.sh`; a call is refused when the guard cannot run | Set up |
+
+The guard matches text, so it also refuses a command that merely quotes a blocked one, for example inside a prompt or a here-document. Put such text in a file.
 
 The local guard prevents accidents. What actually protects `main` is the ruleset and the `owner-approval` gate, which hold for every agent.
