@@ -208,6 +208,9 @@ case "$MODE" in
     check_tests changed
     ;;
   ci)
+    step "delivery controller tests"
+    python3 -B -m unittest discover -s scripts/tests || fail "delivery-tests" "fix controller regressions"
+    ok delivery-tests
     check_vendor
     check_upstream_alignment
     check_lockfile

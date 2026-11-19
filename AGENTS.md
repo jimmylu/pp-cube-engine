@@ -8,10 +8,13 @@ This repository is public. Commits, pull requests, issues and notes carry no int
 
 ```sh
 scripts/check.sh fast   # before every commit
-scripts/check.sh ci     # before opening a pull request; CI runs exactly this as `t0`
+scripts/check.sh ci     # before requesting final review; CI runs exactly this as `t0`
 ```
 
-The last line it prints is the summary line. Paste it into the pull request as evidence. A check you did not run is reported as not run.
+Use `scripts/dev checkpoint --message "..."` to check, commit, push and maintain a Draft PR.
+Use `scripts/dev deliver` to run CI, cross-vendor review and bounded repair, then request owner review.
+Report commit SHA, push status, PR URL and blockers after every publication.
+The last check line is evidence; store evidence against its SHA in PR comments or CI artifacts. A check you did not run is reported as not run.
 
 First use in a fresh clone: `scripts/vendor-sync.sh` (a plain `git submodule update` downloads all of Cube).
 
@@ -23,7 +26,8 @@ First use in a fresh clone: `scripts/vendor-sync.sh` (a plain `git submodule upd
 4. **Every scenario you implement gets a test naming its id**: `// scenario: B0-AGG-003`.
 5. **Harness changes travel alone.** A pull request touching a harness path (`.github/`, `scripts/`, `AGENTS.md`, `CLAUDE.md`, `.agents/`, `.claude/`, `.codex/`, `.omp/`, `docs/agents/`, lint and toolchain configuration) touches nothing else.
 6. **Stay inside the current baseline level.** Anything beyond it becomes an issue labelled `after-baseline`.
-7. **The owner merges.** Open the pull request and stop; `owner-approval` is the owner's click.
+7. **The owner merges.** Automate delivery through Ready; owner reviews the final head and merges.
+8. **Size is guidance.** Around 400 lines prompts a scope review, not a forced split. Keep one independently testable behavior together.
 
 ## Stop conditions
 
@@ -32,7 +36,7 @@ Stop, write the state into the change's `notes.md`, and report when:
 - the same check fails twice after two different fixes;
 - the work needs a file outside the change's stated scope, or a harness path;
 - upstream behaviour contradicts the spec;
-- the pull request passes about 400 changed lines (snapshots and generated files excluded), or the change passes about one working day;
+- the change passes about one working day without a reviewable result;
 - a question only the owner can answer comes up: open an issue labelled `decision`.
 
 Stopping with a clear report is a successful outcome.
@@ -50,6 +54,7 @@ One agent at a time owns a change's branch. The reviewing model comes from a dif
 
 | Document | Read it when |
 | --- | --- |
+| `docs/agents/delivery.md` | committing, publishing, reviewing or resuming delivery |
 | `docs/agents/workflow.md` | starting, proposing, implementing, reviewing or archiving a change |
 | `docs/agents/verification.md` | a check fails, a tool is missing, or you need a tier beyond `ci` |
 | `docs/agents/skills.md` | choosing a skill for a task |
