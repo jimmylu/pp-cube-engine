@@ -30,7 +30,7 @@ No code for a change is written before its proposal has merged. After archiving,
 
 ## Scenarios
 
-Each scenario title starts with a stable id, `<LEVEL>-<AREA>-<NUMBER>`: `#### Scenario: B0-AGG-003 Sum over one cube`. An id is never reused or renumbered. Once a spec is in `openspec/specs/`, every scenario in it needs a test naming its id, or `scripts/check.sh ci` fails; a spec delta inside a change folder is not checked this way until it is archived.
+Each scenario title starts with a stable id, `<LEVEL>-<AREA>-<NUMBER>`: `#### Scenario: B0-AGG-003 Sum over one cube`. An id is never reused or renumbered. Once a spec is in `openspec/specs/`, every scenario in it needs a test naming its id, or `scripts/check.sh ci` fails; a spec delta inside a change folder is not checked this way until it is archived. A test may name a scenario of an active change's delta before the archive, so each implementation pull request carries the ids it covers; an id found in no spec and no active delta fails the check.
 
 ## Pull requests
 
