@@ -109,6 +109,10 @@ Decided while implementing:
   requirement, "Exact metadata numbers", with scenario `B0-MODEL-005`. Without
   it the main spec would still promise that `meta` is always preserved.
 
+Review of the first delivery (Codex, openai/gpt-6.1-sol), posted on the pull
+request: one finding, an unmatched closing brace was accepted. Fixed with
+regression cases; the scanner now rejects a `}` that no `{` opens.
+
 Open: delivery through `scripts/dev deliver`; the review of the first pull
 request's fixes is covered by the review of this one only where the diff touches
 them. The seed keeps "Cube fields" and "Immutable model bundles".

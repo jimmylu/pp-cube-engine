@@ -30,7 +30,7 @@ pub enum Target<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReferenceError {
-    /// The brace at byte `at` of the expression does not open one of the three forms.
+    /// The brace at byte `at` of the expression is not part of one of the three forms.
     Malformed {
         at: usize,
     },
@@ -64,10 +64,12 @@ impl std::error::Error for ReferenceError {}
 pub fn parse_references(expression: &str) -> Result<Vec<Reference<'_>>, ReferenceError> {
     let mut found = Vec::new();
     let mut scanned = 0;
-    while let Some(open) = expression[scanned..].find('{') {
-        let at = scanned + open;
+    while let Some(brace) = expression[scanned..].find(['{', '}']) {
+        let at = scanned + brace;
         let malformed = ReferenceError::Malformed { at };
-        let Some(length) = expression[at + 1..].find('}') else {
+        // A closing brace found here has no opening brace before it.
+        let closing = expression[at + 1..].find('}');
+        let (true, Some(length)) = (expression[at..].starts_with('{'), closing) else {
             return Err(malformed);
         };
         let body = &expression[at + 1..at + 1 + length];

@@ -115,8 +115,12 @@ fn each_reference_form_is_recognised_in_order() {
 }
 
 #[test]
-fn braces_outside_the_three_forms_are_rejected_where_they_open() {
+fn braces_outside_the_three_forms_are_rejected_at_their_offset() {
     let malformed = [
+        ("}", 0),
+        ("a } b", 2),
+        ("{amount}}", 8),
+        ("{CUBE}.amount}", 13),
         ("x + {", 4),
         ("{}", 0),
         ("{CUBE}", 0),
