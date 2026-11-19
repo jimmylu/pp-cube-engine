@@ -24,7 +24,7 @@ UPSTREAM_WS="$VENDOR/rust/cube"
 
 # Paths that make up the harness. Keep in step with the risk:harness rule in
 # .github/workflows/gate.yml.
-HARNESS_RE='^(\.github/|scripts/|\.agents/|\.claude/|\.codex/|(.*/)?AGENTS\.md$|CLAUDE\.md$|deny\.toml$|clippy\.toml$|rustfmt\.toml$|\.rustfmt\.toml$|typos\.toml$|_typos\.toml$|taplo\.toml$|\.taplo\.toml$|rust-toolchain\.toml$)'
+HARNESS_RE='^(\.github/|scripts/|\.agents/|\.claude/|\.codex/|\.omp/|docs/agents/|(.*/)?AGENTS\.md$|CLAUDE\.md$|deny\.toml$|clippy\.toml$|rustfmt\.toml$|\.rustfmt\.toml$|typos\.toml$|_typos\.toml$|taplo\.toml$|\.taplo\.toml$|rust-toolchain\.toml$)'
 
 PASSED=()
 SKIPPED=()

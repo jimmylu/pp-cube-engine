@@ -64,7 +64,7 @@ jobs:
              || grep -q '\[patch' root-cargo.patch; then
             want+=("risk:upstream")
           fi
-          has '^(\.github/|scripts/|\.agents/|\.claude/|\.codex/|(.*/)?AGENTS\.md$|CLAUDE\.md$|deny\.toml$|clippy\.toml$|rustfmt\.toml$|\.rustfmt\.toml$|typos\.toml$|_typos\.toml$|taplo\.toml$|\.taplo\.toml$|rust-toolchain\.toml$)' \
+          has '^(\.github/|scripts/|\.agents/|\.claude/|\.codex/|\.omp/|docs/agents/|(.*/)?AGENTS\.md$|CLAUDE\.md$|deny\.toml$|clippy\.toml$|rustfmt\.toml$|\.rustfmt\.toml$|typos\.toml$|_typos\.toml$|taplo\.toml$|\.taplo\.toml$|rust-toolchain\.toml$)' \
             && want+=("risk:harness")
           has '(^|/)templates/' && want+=("risk:dialect")
 
