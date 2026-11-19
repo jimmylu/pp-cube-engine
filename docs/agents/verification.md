@@ -26,7 +26,7 @@ The script stops at the first failing step and names it: `check ci: FAILED at "<
 | `lockfile` | A dependency changed without `Cargo.lock`; a `Cargo.lock` change is labelled `risk:upstream` |
 | `tests` with pending snapshots | A golden output changed; see hard rule 3 in `AGENTS.md` |
 | `deny` | A new dependency brings a licence, source or advisory that `deny.toml` does not allow; changing `deny.toml` is a harness change |
-| `traceability` | A scenario without a test, or a test naming an id that is not in `openspec/specs/` |
+| `traceability` | A scenario in `openspec/specs/` without a test, or a test naming an id that is in neither `openspec/specs/` nor the spec delta of an active change |
 | `harness-only` | Harness files and other files in the same change; split it |
 
 When the same step fails twice after two different fixes, that is a stop condition.
