@@ -1,0 +1,6 @@
+# The same channel as vendor/cube/rust/cube/rust-toolchain.toml, so the vendored
+# planner builds the way upstream builds it. scripts/check.sh compares them.
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

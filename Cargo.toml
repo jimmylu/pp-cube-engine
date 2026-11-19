@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+exclude = ["vendor"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/jimmylu/pp-cube-engine"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+# Upstream pins its own fork of chrono-tz (vendor/cube/rust/cube/Cargo.toml).
+# This section must stay identical to upstream's; scripts/check.sh compares them.
+[patch.crates-io]
+chrono-tz = { git = "https://github.com/cube-js/chrono-tz", rev = "eec5a8cadb1b40e139195581be5f0b16afa61145" }

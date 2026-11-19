@@ -1,0 +1,4 @@
+exclude = ["vendor/**", "target/**"]
+
+[formatting]
+column_width = 120
