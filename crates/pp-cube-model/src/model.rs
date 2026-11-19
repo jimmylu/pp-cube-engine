@@ -30,9 +30,13 @@ pub struct Cube {
     #[serde(default, deserialize_with = "crate::meta::deserialize")]
     pub meta: Option<Value>,
     #[serde(default)]
+    pub joins: Vec<Join>,
+    #[serde(default)]
     pub dimensions: Vec<Dimension>,
     #[serde(default)]
     pub measures: Vec<Measure>,
+    #[serde(default)]
+    pub segments: Vec<Segment>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -117,5 +121,30 @@ pub enum MeasureType {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MeasureFilter {
+    pub sql: String,
+}
+
+/// A join to the cube called `name`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Join {
+    pub name: String,
+    pub relationship: Relationship,
+    pub sql: String,
+}
+
+/// The baseline allows only these two relationships.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Relationship {
+    ManyToOne,
+    OneToOne,
+}
+
+/// A predefined filter condition, referenced by name in a query.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Segment {
+    pub name: String,
     pub sql: String,
 }
