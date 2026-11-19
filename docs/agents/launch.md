@@ -10,7 +10,7 @@ For the owner. An agent session gets a token limited to this repository, never t
 (set -a; . ~/.config/pp-cube-engine/reviewer.env; set +a; codex --sandbox read-only)
 ```
 
-Neither token can approve `owner-approval`, change repository rules, or push files under `.github/workflows/`.
+Neither token can approve `owner-approval` or change repository rules. Workflow publication additionally requires workflow write permission; see [delivery.md](delivery.md) for provisioning and blocker handling.
 
 ## Local guard per agent
 
@@ -28,4 +28,4 @@ The local guard prevents accidents. What actually protects `main` is the ruleset
 
 Read [delivery.md](delivery.md), configure the model commands, then use `scripts/dev`.
 The user authorizes commit, branch push and Draft PR creation with the implementation task.
-Stop only for a decision, exhausted repair budget, missing external permission, or final owner review.
+Follow all stop conditions in AGENTS.md. Delivery also stops for exhausted repair budget or missing external permission; successful delivery ends at final owner review.
