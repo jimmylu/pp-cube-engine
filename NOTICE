@@ -1,0 +1,9 @@
+pp-cube-engine
+Copyright 2026 The pp-cube-engine authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product builds on, and will include code adapted from, Cube
+(https://github.com/cube-js/cube), Copyright Cube Dev, Inc., licensed under
+the Apache License, Version 2.0. Files adapted from Cube keep their original
+licence notices.

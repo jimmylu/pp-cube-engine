@@ -1,0 +1,170 @@
+# The merge gate. See the engineering environment plan, section 5.4.
+#
+# Safety properties this file must keep:
+#   - It runs on pull_request_target, so the workflow definition always comes
+#     from the base branch. A pull request cannot rewrite its own gate.
+#   - It never checks out or executes pull request code. No job has an
+#     actions/checkout step, and no step uses third-party actions.
+#   - Values controlled by the pull request author (branch name, file names)
+#     reach the shell only through environment variables, never through
+#     ${{ }} interpolation inside a script.
+#   - `owner-approval` uses `if: always()` and checks the result of `triage`
+#     itself. A job that is skipped because a needed job failed can count as a
+#     passing required check; a job that runs and fails cannot.
+name: gate
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  triage:
+    name: triage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      checks: read
+      issues: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+    steps:
+      - name: List changed files
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$REPO/pulls/$PR/files" \
+            --jq '.[] | [.filename, (.previous_filename // "")] | @tsv' > files.tsv
+          # Both the new and the old path of a rename count as touched.
+          tr '\t' '\n' < files.tsv | sed '/^$/d' | sort -u > paths.txt
+          gh api --paginate "repos/$REPO/pulls/$PR/files" \
+            --jq '.[] | select(.filename == "Cargo.toml") | .patch // ""' > root-cargo.patch
+          echo "Changed paths: $(wc -l < paths.txt)"
+
+      - name: Apply risk labels
+        run: |
+          set -euo pipefail
+          want=()
+          has() { grep -Eq "$1" paths.txt; }
+
+          has '^openspec/specs/' && want+=("risk:spec")
+          has '(\.snap$|(^|/)snapshots/)' && want+=("risk:golden")
+          if has '^(vendor/cube(/|$)|\.gitmodules$|Cargo\.lock$)' \
+             || grep -q '\[patch' root-cargo.patch; then
+            want+=("risk:upstream")
+          fi
+          has '^(\.github/|scripts/|\.agents/|\.claude/|\.codex/|(.*/)?AGENTS\.md$|CLAUDE\.md$|deny\.toml$|clippy\.toml$|rustfmt\.toml$|\.rustfmt\.toml$|typos\.toml$|_typos\.toml$|taplo\.toml$|\.taplo\.toml$|rust-toolchain\.toml$)' \
+            && want+=("risk:harness")
+          has '(^|/)templates/' && want+=("risk:dialect")
+
+          current=$(gh api "repos/$REPO/issues/$PR/labels" --jq '.[].name')
+
+          for label in "risk:spec" "risk:golden" "risk:upstream" "risk:harness" "risk:dialect"; do
+            wanted=no
+            for w in "${want[@]:-}"; do [[ "$w" == "$label" ]] && wanted=yes; done
+            present=no
+            grep -Fxq "$label" <<<"$current" && present=yes
+            if [[ $wanted == yes && $present == no ]]; then
+              gh api -X POST "repos/$REPO/issues/$PR/labels" -f "labels[]=$label" >/dev/null
+            elif [[ $wanted == no && $present == yes ]]; then
+              gh api -X DELETE "repos/$REPO/issues/$PR/labels/${label/:/%3A}" >/dev/null
+            fi
+          done
+
+          printf '%s\n' "${want[@]:-}" | sed '/^$/d' > labels.txt
+          echo "Risk labels: $(paste -sd' ' labels.txt)"
+
+      - name: Write summary
+        run: |
+          set -euo pipefail
+          # Branch names and paths are untrusted text: keep a safe character
+          # set before they go into the Markdown summary.
+          clean() { tr -cd 'A-Za-z0-9._/@:+-' | cut -c1-120; }
+          {
+            echo "## Gate summary for #$PR"
+            echo
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| Head | \`$(printf '%s' "$HEAD_REPO" | clean)\` @ \`$(printf '%s' "$HEAD_REF" | clean)\` |"
+            echo "| Commit | \`$HEAD_SHA\` |"
+            if [[ "$HEAD_REPO" != "$REPO" ]]; then
+              echo "| Origin | **Fork** |"
+            fi
+            if grep -Fxq "risk:harness" labels.txt; then
+              echo "| Harness files changed | **Yes** |"
+            else
+              echo "| Harness files changed | No |"
+            fi
+            echo "| Risk labels | $(paste -sd' ' labels.txt | sed 's/^$/none/') |"
+            echo
+            echo "### Files touched by area"
+            echo
+            echo "| Area | Files |"
+            echo "| --- | --- |"
+            awk -F/ '{ area = (NF > 1) ? $1 "/" : "(root)"; n[area]++ }
+                     END { for (a in n) printf "%s\t%d\n", a, n[a] }' paths.txt \
+              | sort | while IFS=$'\t' read -r area count; do
+                  echo "| \`$(printf '%s' "$area" | clean)\` | $count |"
+                done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Wait for t0
+        run: |
+          set -euo pipefail
+          # t0 is also a required check in the ruleset. Waiting here only keeps
+          # the approval request from arriving before t0 has passed.
+          if ! gh api "repos/$HEAD_REPO/contents/.github/workflows/t0.yml?ref=$HEAD_SHA" >/dev/null 2>&1; then
+            echo "::warning::No t0 workflow at this commit; not waiting for it. The ruleset still requires the t0 check."
+            exit 0
+          fi
+          deadline=$((SECONDS + 2700))
+          while :; do
+            state=$(gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?check_name=t0&filter=latest" \
+              --jq '[.check_runs[] | select(.app.slug == "github-actions")]
+                    | sort_by(.started_at) | last
+                    | if . == null then "missing"
+                      elif .status != "completed" then "pending"
+                      else .conclusion end')
+            case "$state" in
+              success) echo "t0 passed."; exit 0 ;;
+              missing|pending) ;;
+              *) echo "::error::t0 finished with: $state"; exit 1 ;;
+            esac
+            if (( SECONDS > deadline )); then
+              echo "::error::Timed out waiting for t0 (last state: $state)."
+              exit 1
+            fi
+            sleep 20
+          done
+
+  owner-approval:
+    name: owner-approval
+    needs: triage
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # The environment has the repository owner as its required reviewer, so
+    # this job does not start until the owner approves it on GitHub.
+    environment: owner-approval
+    permissions: {}
+    env:
+      TRIAGE_RESULT: ${{ needs.triage.result }}
+    steps:
+      - name: Confirm triage passed
+        run: |
+          if [[ "$TRIAGE_RESULT" != "success" ]]; then
+            echo "::error::triage result was '$TRIAGE_RESULT'; refusing to pass the gate."
+            exit 1
+          fi
+          echo "Approved by the environment reviewer."
