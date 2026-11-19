@@ -39,6 +39,9 @@ jobs:
         with:
           tool: cargo-deny@0.20.2,typos-cli@1.52.2,taplo-cli@0.10.0
 
+      - name: Install OpenSpec
+        run: npm install --global --ignore-scripts @fission-ai/openspec@2.1.0
+
       - name: Check
         env:
           BASE_REF: origin/main
