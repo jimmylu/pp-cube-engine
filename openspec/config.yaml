@@ -1,0 +1,26 @@
+schema: spec-driven
+context: |
+  pp-cube-engine is a Rust compile kernel: Cube model + query + context
+  in, SQL + ordered parameters out. It never executes SQL.
+  B0 is the current baseline; B1 and extensions are deferred.
+  The upstream planner is pinned to 486f0d26 and vendor/ is read-only.
+  Read docs/design/engine-design.md for the public design and
+  docs/agents/workflow.md for gates and the implemented-spec lifecycle.
+  All artifacts are English and public; use neutral examples only.
+  Bootstrap decision #5: seed-baseline-specs contains proposed behavior.
+  Archive capabilities only with their implementation and meaningful tests.
+rules:
+  proposal:
+    - State scope and explicit non-goals; justify changes spanning capabilities.
+    - Name affected paths, baseline level, and observable output changes.
+  specs:
+    - Every requirement needs a WHEN/THEN scenario with a stable B0-AREA-NNN id.
+    - Never reuse or renumber ids; distinguish proposed behavior from evidence.
+    - Follow pinned Cube behavior; report contradictions instead of hiding them.
+  design:
+    - Explain decisions, alternatives, validation and unresolved risks.
+    - Keep harness changes separate; keep each PR near or below 400 changed lines.
+  tasks:
+    - Size each task to at most two hours and include its verification method.
+    - Tests name implemented scenario ids; no placeholder tests to satisfy tracing.
+    - Record session results and remaining work in notes.md.
