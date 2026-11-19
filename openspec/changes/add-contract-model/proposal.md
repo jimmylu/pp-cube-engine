@@ -18,7 +18,7 @@ None; no main specs exist yet.
 
 ## Impact
 - `crates/pp-cube-model/**`: new code and tests.
-- `Cargo.lock`: `serde`, `serde_json` and a YAML parser become dependencies of `pp-cube-model`. The gate labels any lockfile change `risk:upstream`; the upstream pin does not move.
+- `Cargo.lock`: `serde`, `serde_json` and the YAML parser `serde_norway` become dependencies of `pp-cube-model`; two packages are new to the lockfile. The gate labels any lockfile change `risk:upstream`; the upstream pin does not move.
 - `openspec/changes/seed-baseline-specs/specs/contract-model/spec.md`: the two moved requirements are deleted, as the seed design prescribes.
 - On archive, `openspec/specs/contract-model/spec.md` becomes the first main spec and the traceability step starts enforcing its two scenarios.
 

@@ -13,14 +13,20 @@ Done:
   "Cube fields" and "Immutable model bundles".
 
 State:
-- The branch is stacked on the seed proposal commit, so the pull request can
-  only be opened after the seed proposal has merged, and then needs a rebase.
-- The project config was not on this branch when the artifacts were written;
-  its rules were applied by hand.
+- Rebased onto main after the seed proposal and the project config merged; the
+  artifacts were checked against the config rules.
+- The YAML parser was chosen by a throwaway probe on main, not committed:
+  `cargo deny --locked check` with each candidate, and a test loading one model
+  from YAML and JSON. Results are in design.md.
 
 Open:
-- Gate 1 for this proposal, and a review by a vendor other than Anthropic.
-- Whether `cargo deny` accepts `serde_yaml` 0.9 is unknown until task 1.1.
+- Gate 1 for this proposal, including the parser choice, and a review by a
+  vendor other than Anthropic.
 
-Learned: the upstream fixture loader is `serde` structs over `serde_yaml`, a
-dev-dependency of the planner only, so it adds to this workspace's lockfile.
+Learned:
+- The upstream fixture loader is `serde` structs over `serde_yaml`, a
+  dev-dependency of the planner only, so a YAML parser adds to this lockfile.
+- `serde_yaml` 0.9 fails `cargo deny` here (RUSTSEC-2024-0449), so the parser
+  upstream uses cannot be adopted without an advisory exception.
+- Make every commit before opening the pull request: a push after the gate
+  reaches the approval wait leaves the new gate run queued behind the old one.

@@ -15,14 +15,14 @@
 - **Strict loading.** Structs deny unknown fields; dimension type, measure type and relationship are closed enums. Loading returns the first error with its position. Alternative rejected for this change: lenient raw types with every field optional, which pushes `Option` into every consumer. Reporting all issues with paths is left to the model-validation change, which can run over the untyped document before typed loading.
 - **A cube keeps `sql` and `sql_table` as loaded.** Both are optional in the type. The exactly-one rule and its located issue belong to "Cube fields", which stays in the seed.
 - **References by a hand-written scanner.** It recognises `{CUBE}` followed by `.column`, `{member}` and `{cube.member}`; any other brace content is an error. No regex dependency. Resolution checks the cube and member against the loaded model; a physical column name is taken as written, because the model does not know table columns.
-- **YAML parser: `serde_yaml` 0.9**, the one the upstream fixtures use. Its author has deprecated it. If `cargo deny` rejects it, stop and open a `decision` issue naming a maintained fork; do not add an advisory exception.
+- **YAML parser: `serde_norway` 0.9**, a fork of `serde_yaml` 0.9, which the upstream fixtures use. Checked on main with `cargo deny --locked check`: `serde_yaml` 0.9 and `serde_yaml_ng` 0.10 fail on RUSTSEC-2024-0449 (`unsafe-libyaml` is unmaintained); `serde_norway` 0.9.42 and `serde-saphyr` 2.2.0 pass. In a throwaway test `serde_norway` loaded a sample model equal to its JSON form and reported object path and position for an unknown field and an unknown type; it adds two packages to the lockfile. Alternative rejected: `serde-saphyr`, written in safe Rust, adds twelve packages and by default read the plain scalar `yes` in `meta` as boolean true. Alternative rejected: an advisory exception in `deny.toml` for `serde_yaml`.
 - **Two implementation pull requests**, each under 400 lines: types and loading with `B0-MODEL-001`; references with `B0-MODEL-004` and the archive.
 - **Validation of this design:** unit tests in `pp-cube-model` naming the two scenario ids, and `scripts/check.sh ci`.
 
 ## Risks / Trade-offs
 - Strict loading reports one error, while `B0-VALID-001` wants all of them → the validation change may add an untyped pass in front of the loader; the typed API stays.
-- `serde_yaml` is deprecated → the decision above; the parser sits behind `load_yaml`, so replacing it touches one function.
-- YAML scalars in `meta` map onto JSON values; a YAML map with non-string keys has no JSON equivalent → it fails to load, and the test covers string, number, boolean, list and map values.
+- `serde_norway` still parses with libyaml translated to unsafe Rust (`unsafe-libyaml-norway`) → the parser sits behind `load_yaml`, so replacing it touches one function; if it gains an advisory, stop and open a `decision` issue instead of adding an exception.
+- YAML scalars in `meta` map onto JSON values; a sequence or map used as a key has no JSON equivalent and fails to load, while a scalar key such as `1` is read as a string key → the test covers string, number, boolean, null, list and map values.
 - `B0-MODEL-001` is a matrix scenario → its test exercises all four dimension types, all seven measure types and every optional field.
 
 ## Migration Plan
