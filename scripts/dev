@@ -160,6 +160,8 @@ def review():
     if raw.startswith('```json\n') and raw.endswith('```'):
         raw = raw[8:-3]
     report = json.loads(raw)
+    if not isinstance(report, dict):
+        raise ValueError('Reviewer did not return a JSON object')
     if not isinstance(report.get('findings'), list):
         raise ValueError('Reviewer did not return a findings array')
     for f in report['findings']:
@@ -208,8 +210,8 @@ def deliver(rounds):
                 result = latest_t0(checks['check_runs'])
                 if result == ['SUCCESS']:
                     break
-                if any(x in ('FAILURE', 'CANCELLED', 'TIMED_OUT', 'ERROR') for x in result):
-                    raise ValueError('Remote t0 failed; PR remains Draft')
+                if result and result != ['PENDING']:
+                    raise ValueError(f'Remote t0 failed ({result[0]}); PR remains Draft')
                 if time.monotonic() > deadline:
                     raise ValueError('Remote t0 timed out; resume deliver later')
                 time.sleep(20)

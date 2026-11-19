@@ -106,3 +106,24 @@ worktree (not evidence for a published head):
 check fast: PASSED — 4 steps, 0 skipped, 2s @ bc905a5+dirty
 check ci: PASSED — 15 steps, 0 skipped, 21s @ bc905a5+dirty
 ```
+
+Review repair follow-up on harness/dev-delivery (uncommitted):
+completed remote t0 results other than success now block immediately and report
+their conclusion; only missing or pending results keep polling. Non-object JSON
+reviewer replies now raise a controlled validation error before any report is
+saved or posted. Regression tests reproduced both failures before the fixes;
+all 21 offline controller tests pass afterward, including pending-to-success
+delivery. No existing tests were removed.
+
+Open: the approval-ordering finding requires restoring the t0 wait in gate.yml.
+The user explicitly prohibited altering gates in this repair, so the workflow
+is unchanged and that finding remains blocked. A human marking a PR Ready can
+still request approval before t0 passes; the required t0 merge check remains.
+Harness work has no OpenSpec change folder; this rollout record holds the
+session state. No commit, push, merge, external review or delivery was run.
+Verification for the uncommitted worktree, not a published head:
+
+```text
+check fast: PASSED — 4 steps, 0 skipped, 3s @ 410fd2e+dirty
+check ci: PASSED — 15 steps, 0 skipped, 21s @ 410fd2e+dirty
+```

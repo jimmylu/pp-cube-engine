@@ -96,6 +96,51 @@ class DeliveryTests(unittest.TestCase):
         latest = dict(old, id=2, status='in_progress', conclusion=None)
         self.assertEqual(dev.latest_t0([old, latest]), ['PENDING'])
 
+    def test_remote_non_success_conclusions_block_without_polling(self):
+        for conclusion in ('failure', 'cancelled', 'timed_out', 'error', 'skipped',
+                           'neutral', 'action_required', 'stale', 'startup_failure'):
+            with self.subTest(conclusion=conclusion):
+                checks = {'check_runs': [
+                    dict(id=1, name='t0', app={'slug': 'github-actions'},
+                         status='completed', conclusion=conclusion)]}
+                with patch.object(dev, 'publish'), \
+                     patch.object(dev, 'binding', return_value={'head': 'a'}), \
+                     patch.object(dev, 'check'), \
+                     patch.object(dev, 'review', return_value={'findings': []}), \
+                     patch.object(dev, 'run', return_value=json.dumps(checks)) as runner, \
+                     patch.object(dev.time, 'sleep', side_effect=AssertionError('unexpected polling')), \
+                     patch.object(dev, 'model') as model:
+                    with self.assertRaisesRegex(ValueError, 'Remote t0 failed'):
+                        dev.deliver(0)
+                    runner.assert_called_once()
+                    model.assert_not_called()
+                    self.assertFalse((dev.state / 'evidence.md').exists())
+
+    def test_remote_missing_and_pending_checks_wait_for_success(self):
+        pending = dict(id=1, name='t0', app={'slug': 'github-actions'},
+                       status='in_progress', conclusion=None)
+        success = dict(pending, status='completed', conclusion='success')
+        responses = iter(json.dumps({'check_runs': rows})
+                         for rows in ([], [pending], [success]))
+
+        def run_result(*args, **kwargs):
+            if args[:2] == ('gh', 'api'):
+                return next(responses)
+            return ''
+
+        with patch.object(dev, 'publish'), \
+             patch.object(dev, 'binding', return_value={'head': 'a', 'number': 1}), \
+             patch.object(dev, 'check'), \
+             patch.object(dev, 'review', return_value={'findings': [], 'reviewer': 'other/model'}), \
+             patch.object(dev, 'config', return_value={'implementer': 'example/model'}), \
+             patch.object(dev, 'pr', return_value={'isDraft': True, 'url': 'https://example.test/1'}), \
+             patch.object(dev, 'run', side_effect=run_result) as runner, \
+             patch.object(dev.time, 'sleep') as sleep:
+            dev.deliver(0)
+            self.assertEqual(sleep.call_count, 2)
+            runner.assert_any_call('gh', 'pr', 'ready', '1', '--repo', dev.repo)
+            self.assertIn('remote t0 passed', (dev.state / 'evidence.md').read_text())
+
     def test_atomic_state_roundtrip(self):
         p = dev.state / 'evidence.json'
         dev.save(p, {'head': 'a'})
@@ -147,6 +192,20 @@ class DeliveryTests(unittest.TestCase):
              patch.object(dev, 'git', return_value='diff'), patch.object(dev, 'model', return_value='{}'):
             with self.assertRaisesRegex(ValueError, 'findings'):
                 dev.review()
+
+    def test_non_object_model_reply_is_controlled_and_not_saved(self):
+        for report in ([], ['finding'], 'text', None, True, 42):
+            with self.subTest(report=report), \
+                 patch.object(dev, 'config', return_value={}), \
+                 patch.object(dev, 'binding', return_value={'base': 'a', 'head': 'b', 'branch': 'harness/x'}), \
+                 patch.object(dev, 'git', return_value='diff'), \
+                 patch.object(dev, 'model', return_value=json.dumps(report)), \
+                 patch.object(dev, 'run') as runner:
+                with self.assertRaisesRegex(ValueError, 'Reviewer'):
+                    dev.review()
+                runner.assert_not_called()
+                self.assertFalse((dev.state / 'review.json').exists())
+                self.assertFalse((dev.state / 'review.md').exists())
 
     def test_budget_exhaustion_leaves_pr_draft(self):
         with patch.object(dev, 'publish'), patch.object(dev, 'binding', return_value={'head': 'a'}), \
