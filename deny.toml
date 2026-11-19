@@ -1,0 +1,44 @@
+# Policy for dependencies. Changing this file is a harness change.
+
+[graph]
+all-features = true
+
+[advisories]
+# Advisories in the upstream planner's dependency tree cannot be fixed here
+# without moving the upstream pin. Each ignored id names why.
+ignore = [
+  { id = "RUSTSEC-2026-0543", reason = "chrono is an upstream planner dependency; no maintained replacement exists upstream yet" },
+]
+
+[licenses]
+confidence-threshold = 0.9
+allow = ["Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "CDLA-Permissive-2.0", "ISC", "MIT", "Unicode-3.0"]
+
+# Upstream's crates carry no licence field. Cube's LICENSE file makes Apache-2.0
+# the default for the repository, and these crates have no other licence file.
+[[licenses.clarify]]
+crate = "cubesqlplanner"
+expression = "Apache-2.0"
+license-files = []
+
+[[licenses.clarify]]
+crate = "cubenativeutils"
+expression = "Apache-2.0"
+license-files = []
+
+[[licenses.clarify]]
+crate = "nativebridge"
+expression = "Apache-2.0"
+license-files = []
+
+[bans]
+multiple-versions = "allow"
+# Upstream's crates depend on each other by path without a version, which this
+# rule would reject.
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+# The chrono-tz fork that upstream patches in.
+allow-git = ["https://github.com/cube-js/chrono-tz"]

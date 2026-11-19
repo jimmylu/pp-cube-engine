@@ -1,0 +1,11 @@
+[package]
+name = "pp-cube-model"
+description = "Contract types, model loading and baseline validation."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
