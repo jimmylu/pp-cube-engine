@@ -103,7 +103,11 @@ By Claude (Anthropic) through omp; GitHub writes used the implementer token.
 - Pull request #6, the contract document alone, is merged.
 - The harness branch could not be pushed with the implementer token (it changes a
   workflow file); the owner pushed it and it merged as #9.
-- This folder is committed alone on a branch from main and opened as proposal pull
-  request #7; the kernel document and config are pull request #8. Both were updated
-  from main after #9 and pass default CI. The folder exceeds 400 lines.
-Open: gate 1 for #7 and #8; then `add-contract-model`, drafted on a local branch.
+- This folder is committed alone on a branch from main; the kernel document and config
+  are a separate pull request. Both branches include #9 and pass default CI. The folder
+  exceeds 400 lines.
+- The first pull requests, #7 and #8, were closed and resubmitted from the same branches:
+  their gate runs could no longer pass, and the implementer token cannot cancel runs.
+Open: gate 1 for both; then `add-contract-model`, drafted on a local branch.
+Learned: on both pull requests, a push made after the gate reached the approval wait
+left the new gate run queued behind the old one. Finish every commit before opening.
