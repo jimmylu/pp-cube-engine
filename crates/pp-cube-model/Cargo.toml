@@ -7,5 +7,14 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The JSON parser. serde_json rounds some floats on parsing unless its
+# float_roundtrip feature is on, and that feature would also change how the
+# upstream planner's serde_json is built. This fork is a separate package.
+serde_json_lenient = { version = "0.2", features = ["float_roundtrip"] }
+serde_norway = "0.9"
+
 [lints]
 workspace = true
