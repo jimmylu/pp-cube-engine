@@ -8,7 +8,7 @@ Each task is bounded to two hours. No code is written before this proposal has m
 - [x] 1.4 Add the test for `// scenario: B0-MODEL-001`: equivalent YAML and JSON fixtures with every dimension type, measure type and optional field load equal, with `meta` unchanged; verify with `cargo test -p pp-cube-model`.
 
 ## 1, continued. Load errors (second implementation pull request)
-- [ ] 1.3 Give the load error its position; verify that an unknown field and an unknown type value each fail to load at the reported position, that a measure other than `count` without `sql` fails to load, and that a `meta` number which cannot be kept exactly fails to load from both formats.
+- [x] 1.3 Give the load error its position; verify that an unknown field and an unknown type value each fail to load at the reported position, that a measure other than `count` without `sql` fails to load, and that a `meta` number which cannot be kept exactly fails to load from both formats.
 
 ## 2. References (third implementation pull request)
 - [ ] 2.1 Add the join, relationship and segment types; implement the reference scanner for the three forms; verify each form and each malformed brace case in unit tests.

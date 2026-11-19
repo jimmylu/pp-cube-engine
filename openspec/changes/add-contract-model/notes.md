@@ -93,3 +93,13 @@ By Claude (Anthropic) through omp.
   Until that merges both defects remain. The rule is in design.md.
 - #13 was decided as option A; the harness change is pull request #14. Open
   this pull request only after #14 has merged and the branch is rebased.
+
+## 2026-11-20: second implementation pull request
+By Claude (Anthropic) through omp, test first.
+- Task 1.3: `LoadError` carries `position`; a measure other than `count`
+  without `sql` fails to load.
+- Review findings 2 and 3: `meta` goes through its own deserializer
+  (`src/meta.rs`), which rejects a number that cannot be kept exactly. The five
+  regression tests failed before it: JSON had loaded the long integers as
+  rounded floats and YAML had loaded `.nan` as null.
+Open: review of this pull request by a vendor other than Anthropic.

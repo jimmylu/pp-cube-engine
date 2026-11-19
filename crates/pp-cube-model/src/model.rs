@@ -2,7 +2,8 @@
 //!
 //! Plain data. A field or value outside the baseline does not deserialize.
 
-use serde::{Deserialize, Serialize};
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
 /// The cubes of one model document.
@@ -26,6 +27,7 @@ pub struct Cube {
     pub description: Option<String>,
     pub public: Option<bool>,
     /// Kept as written; the kernel does not interpret it.
+    #[serde(default, deserialize_with = "crate::meta::deserialize")]
     pub meta: Option<Value>,
     #[serde(default)]
     pub dimensions: Vec<Dimension>,
@@ -45,6 +47,7 @@ pub struct Dimension {
     pub title: Option<String>,
     pub description: Option<String>,
     pub public: Option<bool>,
+    #[serde(default, deserialize_with = "crate::meta::deserialize")]
     pub meta: Option<Value>,
 }
 
@@ -57,8 +60,11 @@ pub enum DimensionType {
     Time,
 }
 
+// `remote = "Self"` makes the derives emit inherent `serialize` and
+// `deserialize` functions instead of the trait impls, so the impls below can
+// wrap them and check the one rule that spans two fields.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(remote = "Self", deny_unknown_fields)]
 pub struct Measure {
     pub name: String,
     #[serde(rename = "type")]
@@ -71,8 +77,28 @@ pub struct Measure {
     pub title: Option<String>,
     pub description: Option<String>,
     pub public: Option<bool>,
+    #[serde(default, deserialize_with = "crate::meta::deserialize")]
     pub meta: Option<Value>,
     pub format: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for Measure {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let measure = Self::deserialize(deserializer)?;
+        if measure.sql.is_none() && measure.measure_type != MeasureType::Count {
+            return Err(D::Error::custom(format_args!(
+                "measure `{}` needs `sql`; only a count measure may omit it",
+                measure.name
+            )));
+        }
+        Ok(measure)
+    }
+}
+
+impl Serialize for Measure {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        Self::serialize(self, serializer)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
