@@ -209,7 +209,7 @@ case "$MODE" in
     ;;
   ci)
     step "delivery controller tests"
-    python3 -m unittest discover -s scripts/tests || fail "delivery-tests" "fix controller regressions"
+    python3 -B -m unittest discover -s scripts/tests || fail "delivery-tests" "fix controller regressions"
     ok delivery-tests
     check_vendor
     check_upstream_alignment

@@ -184,10 +184,12 @@ def deliver(rounds):
         bound = binding()
         try:
             check('ci')
+        except subprocess.CalledProcessError as e:
+            failure = f'Local CI failed: {e}. Inspect output and rerun checks.'
+        else:
+            # Service/auth failures must not trigger a code repair or consume model budget.
             report = review()
             failure = json.dumps(report['findings']) if report['findings'] else ''
-        except subprocess.CalledProcessError as e:
-            failure = f'Check or runner failed: {e}. Inspect visible output and rerun checks.'
         if not failure:
             deadline = time.monotonic() + 2700
             while True:
