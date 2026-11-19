@@ -23,6 +23,7 @@
 - Strict loading reports one error, while `B0-VALID-001` wants all of them → the validation change may add an untyped pass in front of the loader; the typed API stays.
 - `serde_norway` still parses with libyaml translated to unsafe Rust (`unsafe-libyaml-norway`) → the parser sits behind `load_yaml`, so replacing it touches one function; if it gains an advisory, stop and open a `decision` issue instead of adding an exception.
 - YAML scalars in `meta` map onto JSON values; a sequence or map used as a key has no JSON equivalent and fails to load, while a scalar key such as `1` is read as a string key → the test covers string, number, boolean, null, list and map values.
+- A `meta` number is kept only when it is exact: an integer within the 64-bit range, or a finite float below 2^63 in magnitude. Anything else (`.nan`, `.inf`, a longer integer, which a JSON parser would silently round) fails to load in both formats and is written as a string instead. This narrows "preserve `meta`" for values that no JSON value can hold; found in review.
 - `B0-MODEL-001` is a matrix scenario → its test exercises all four dimension types, all seven measure types and every optional field.
 
 ## Migration Plan

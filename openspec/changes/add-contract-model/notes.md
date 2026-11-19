@@ -65,3 +65,31 @@ the id on the test now. The owner decides how to resolve this in issue #13.
 
 The branch is pushed without a pull request. Do not open one, and do not remove
 the scenario comments, until #13 is decided.
+
+## 2026-11-20: local review of the first implementation
+Reviewed by Codex (OpenAI GPT-6), two independent axes; implementer: Claude (Anthropic).
+Scope: local 657481d...8dbdf2e, tasks 1.1, 1.2 and 1.4; remote PR #14 was not fetched.
+Standards: no additional untooled violations or meaningful code smells found.
+Spec P2, load.rs:30: metadata 1.2699041298821259 changes in JSON loading and breaks YAML equivalence and round trips.
+Spec P2, load.rs:23: YAML metadata 18446744073709551617 fails; JSON accepts it with precision loss.
+Spec P2, model.rs:48: YAML metadata .nan, .inf and -.inf silently become null; reject unrepresentable values.
+Three temporary regression probes confirmed these failures; no product files were changed.
+Command: `scripts/check.sh ci` on 8dbdf2e.
+All seven loading tests pass; preceding CI steps, including cargo deny and strict validation, pass.
+Summary: `check ci: FAILED at "traceability"`; B0-MODEL-001 is unknown to the main-spec-only check.
+Action: fix metadata-number handling and add regressions; resolve the separate harness blocker through #13.
+Open: all three findings, #13 and later-PR tasks; task 3.2 is not complete. No push or remote comment.
+Learned: the exactly representable 0.5 fixture cannot detect numeric metadata conversion loss.
+
+## 2026-11-20: review findings
+By Claude (Anthropic) through omp.
+- Finding 1, fractions differ between JSON and YAML: fixed in this pull request.
+  `serde_json` now has `float_roundtrip`, and the fixtures use
+  1.2699041298821259, so the equivalence and round-trip tests fail without it.
+  The feature applies to every crate in the workspace build, the planner
+  included; it only makes float parsing exact.
+- Findings 2 and 3, integers beyond 64 bits and `.nan`/`.inf`: fixed together
+  with task 1.3 in the second pull request, to keep this one under 400 lines.
+  Until that merges both defects remain. The rule is in design.md.
+- #13 was decided as option A; the harness change is pull request #14. Open
+  this pull request only after #14 has merged and the branch is rebased.
