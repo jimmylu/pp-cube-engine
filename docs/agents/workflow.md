@@ -36,7 +36,7 @@ Each scenario title starts with a stable id, `<LEVEL>-<AREA>-<NUMBER>`: `#### Sc
 
 - The merge gate is two required checks: `t0` (`scripts/check.sh ci`) and `owner-approval` (the owner approves it on GitHub). Only Ready PRs request final owner approval; push fixes while Draft. Evidence and review bind to the exact head SHA.
 - Fill in the evidence section of the pull request template. The summary line comes from `scripts/check.sh ci`, run on the commit you pushed. The controller posts evidence outside Git, so recording a result does not change its commit.
-- Files under `.github/workflows/` are pushed by the owner; agent tokens are refused. Prepare the change and hand it over.
+- Publishing `.github/workflows/` requires a workflow-capable identity. Use the configured identity; report a credential blocker if unavailable. Final owner approval remains required.
 - Squash merge only; history on `main` is linear.
 
 ## Handing a change to another agent

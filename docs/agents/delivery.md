@@ -75,55 +75,25 @@ as not run if unavailable. Simulated tests do not prove external service integra
 - GitHub gate definitions are trusted base-branch code and never execute PR code:
   https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request_target
 
-## Initial rollout record
+## Rollout state
 
-Implemented by Codex (OpenAI GPT-6) on harness/dev-delivery. The traceability lifecycle
-fix already arrived through #14 and was retained. Eleven offline regressions and local
-fast/ci passed. A real Anthropic review was attempted through omp but could not start:
-no Anthropic API credential is available. End-to-end model repair and GitHub Ready
-transition remain unverified. Keep the rollout PR Draft until another vendor reviews it.
-The existing environment approval is retained, enabled only for Ready PRs; repository
-rules and publication credentials were not altered. Workflow publication may still need
-the owner's existing workflow-capable identity. Product code was not changed.
+The owner authorized all three delivery phases, including removal of the gate's t0
+polling. The controller requires successful local CI, cross-vendor review and remote
+t0 before marking Ready. If a human marks Ready directly, owner approval may be
+requested before t0 finishes; the independently required t0 check still blocks merge.
+This ordering is intentional. The existing owner-approval environment is retained;
+repository protection, credentials and environment configuration were not changed.
+Because pull_request_target uses trusted base code, #16 uses the previous gate until
+this workflow change is merged.
 
-Subsequent real review succeeded through omp's configured DeepSeek route and posted a
-SHA-bound report to #16. Fixed latest-t0 selection, explicit pending-snapshot rejection,
-and documentation discovery. The unpushed-branch report was disproved by the existing
-empty-output guard and a new regression. A full model-driven repair cycle is still
-unverified; repairs in this rollout were made by the implementing agent.
+Implemented with Codex / OpenAI GPT-6; reviewed through omp / DeepSeek V4 Pro.
+Real checkpoint publication, review comments and two bounded model-driven repair
+rounds ran on #16. Repairs were automatically checked, committed and pushed as
+410fd2e and c71907b. All 21 offline controller regressions passed. Local CI and remote
+t0 passed at c71907b; its final review found only contradictory rollout notes, now
+replaced by this record. Final SHA-bound review and Ready evidence belong in the PR,
+not in a new commit that would invalidate that evidence.
 
-Review repair session on harness/dev-delivery (left uncommitted at the user's request):
-the reported missing Ready trigger was already present on `pull_request_target`; a
-regression now covers it without changing the gate. Both model roles now drop all four
-GitHub publication token variables, including enterprise tokens. Resumed delivery can
-checkpoint edits left by an interrupted repair before continuing CI/review. Three new
-offline regressions cover these findings; existing tests remain. External delivery and
-publication were not run in this session. No owner decision is open.
-Verification: all 18 controller tests passed. Check summaries for this uncommitted
-worktree (not evidence for a published head):
-
-```text
-check fast: PASSED — 4 steps, 0 skipped, 2s @ bc905a5+dirty
-check ci: PASSED — 15 steps, 0 skipped, 21s @ bc905a5+dirty
-```
-
-Review repair follow-up on harness/dev-delivery (uncommitted):
-completed remote t0 results other than success now block immediately and report
-their conclusion; only missing or pending results keep polling. Non-object JSON
-reviewer replies now raise a controlled validation error before any report is
-saved or posted. Regression tests reproduced both failures before the fixes;
-all 21 offline controller tests pass afterward, including pending-to-success
-delivery. No existing tests were removed.
-
-Open: the approval-ordering finding requires restoring the t0 wait in gate.yml.
-The user explicitly prohibited altering gates in this repair, so the workflow
-is unchanged and that finding remains blocked. A human marking a PR Ready can
-still request approval before t0 passes; the required t0 merge check remains.
-Harness work has no OpenSpec change folder; this rollout record holds the
-session state. No commit, push, merge, external review or delivery was run.
-Verification for the uncommitted worktree, not a published head:
-
-```text
-check fast: PASSED — 4 steps, 0 skipped, 3s @ 410fd2e+dirty
-check ci: PASSED — 15 steps, 0 skipped, 21s @ 410fd2e+dirty
-```
+No product files or vendor source changed. Harness work has no OpenSpec task folder;
+this document and PR #16 hold its handoff state. No owner-only decision is open. The
+owner performs final approval and merge.
