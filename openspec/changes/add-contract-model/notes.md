@@ -73,8 +73,10 @@ Owner decisions, in conversation on 2026-11-20:
 - A `meta` number is kept only as an integer within the 64-bit range or a finite
   float below 2^63 in magnitude; anything else fails to load and is written as a
   string.
-- Nothing may change how the upstream planner's dependencies are built.
-- All three fixes go into this pull request, at about 480 lines.
+- Nothing may change how the upstream planner's dependencies are built; the
+  JSON parser is `serde_json_lenient`.
+- All three fixes go into this pull request. It is about 700 lines; the first
+  estimate of 480 was wrong, and the owner confirmed the real size.
 
 Fixes:
 - Finding 1: stock `serde_json` rounds some floats on parsing, 1.5e-30 as well
