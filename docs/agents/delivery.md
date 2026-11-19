@@ -45,7 +45,9 @@ administrative migration, not a prerequisite to automated development.
 
 A lock under the worktree's Git directory prevents simultaneous controllers. A crash can
 leave it behind: inspect its PID before removing it. Resume the same command afterward;
-PR discovery prevents duplicate creation. Report SHA, push status, PR URL and blockers
+`deliver` checkpoints pending edits with `fix: resume pending delivery changes` after
+the usual scope validation and fast check. PR discovery prevents duplicate creation.
+Report SHA, push status, PR URL and blockers
 after every publication. CI/review evidence lives outside tracked files; do not amend a
 commit just to record the successful check of that same commit.
 
@@ -89,3 +91,18 @@ SHA-bound report to #16. Fixed latest-t0 selection, explicit pending-snapshot re
 and documentation discovery. The unpushed-branch report was disproved by the existing
 empty-output guard and a new regression. A full model-driven repair cycle is still
 unverified; repairs in this rollout were made by the implementing agent.
+
+Review repair session on harness/dev-delivery (left uncommitted at the user's request):
+the reported missing Ready trigger was already present on `pull_request_target`; a
+regression now covers it without changing the gate. Both model roles now drop all four
+GitHub publication token variables, including enterprise tokens. Resumed delivery can
+checkpoint edits left by an interrupted repair before continuing CI/review. Three new
+offline regressions cover these findings; existing tests remain. External delivery and
+publication were not run in this session. No owner decision is open.
+Verification: all 18 controller tests passed. Check summaries for this uncommitted
+worktree (not evidence for a published head):
+
+```text
+check fast: PASSED — 4 steps, 0 skipped, 2s @ bc905a5+dirty
+check ci: PASSED — 15 steps, 0 skipped, 21s @ bc905a5+dirty
+```

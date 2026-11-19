@@ -2,7 +2,9 @@
 import importlib.machinery
 import importlib.util
 import json
+import os
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -21,6 +23,48 @@ class DeliveryTests(unittest.TestCase):
         dev.state = dev.root
         dev.repo = 'example/kernel'
         (dev.root / 'AGENTS.md').write_text('Review only.')
+
+    def test_ready_transition_triggers_gate(self):
+        workflow = (Path(__file__).parents[2] / '.github/workflows/gate.yml').read_text()
+        self.assertRegex(workflow, r'pull_request_target:\s+types:\s*\[[^\]]*\bready_for_review\b')
+
+    def test_models_do_not_inherit_github_publication_tokens(self):
+        tokens = ('GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN')
+        command = [sys.executable, '-c',
+                   'import json, os; print(json.dumps(dict(os.environ)))']
+        cfg = {role + '_command': command for role in ('implementer', 'reviewer')}
+        environment = dict.fromkeys(tokens, 'dummy-publication-token')
+        environment['MODEL_PROFILE'] = 'dummy-model-profile'
+        for role in ('implementer', 'reviewer'):
+            with self.subTest(role=role), patch.dict(os.environ, environment, clear=True), \
+                 patch.object(dev, 'config', return_value=cfg):
+                child_env = json.loads(dev.model(role, 'test prompt'))
+                self.assertTrue(set(tokens).isdisjoint(child_env))
+                self.assertEqual(child_env['MODEL_PROFILE'], 'dummy-model-profile')
+                self.assertTrue(all(os.environ[name] == environment[name] for name in tokens))
+
+    def test_deliver_resumes_with_uncommitted_repair(self):
+        current = {'url': 'https://example.test/1', 'isDraft': True}
+
+        def git_result(*args):
+            if args == ('status', '--porcelain'):
+                return ' M scripts/dev'
+            if args == ('rev-parse', '--short', 'HEAD'):
+                return 'abc'
+            return ''
+
+        with patch.object(dev, 'config', return_value={}), \
+             patch.object(dev, 'identity', return_value=('harness/x', 'abc')), \
+             patch.object(dev, 'validate_scope'), patch.object(dev, 'pr', return_value=current), \
+             patch.object(dev, 'git', side_effect=git_result) as git, \
+             patch.object(dev, 'check') as check, \
+             patch.object(dev, 'binding', return_value={'head': 'abc'}), \
+             patch.object(dev, 'review', return_value={'findings': ['remaining bug']}):
+            # Stop after the first review, without invoking a model or GitHub.
+            with self.assertRaisesRegex(ValueError, 'budget exhausted'):
+                dev.deliver(0)
+            git.assert_any_call('commit', '-m', 'fix: resume pending delivery changes')
+            self.assertEqual([call.args for call in check.call_args_list], [('fast',), ('ci',)])
 
     def test_scope_rejects_product_edit_on_harness_branch(self):
         with patch.object(dev, 'git', side_effect=['crates/model.rs', '']):

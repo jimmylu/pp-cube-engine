@@ -115,7 +115,8 @@ def model(role, prompt):
     cfg = config()
     argv = cfg[role + '_command']
     # Credentials used for publishing are never passed to a model process.
-    env = {k: v for k, v in os.environ.items() if k not in ('GH_TOKEN', 'GITHUB_TOKEN')}
+    env = {k: v for k, v in os.environ.items() if k not in (
+        'GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN')}
     return subprocess.run(argv, input=prompt, text=True, stdout=subprocess.PIPE,
                           env=env, check=True).stdout
 
@@ -189,7 +190,7 @@ def latest_t0(checks):
 
 
 def deliver(rounds):
-    publish()
+    publish('fix: resume pending delivery changes')
     for attempt in range(rounds + 1):
         bound = binding()
         try:
