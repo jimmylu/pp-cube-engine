@@ -21,12 +21,12 @@ Harness work is the exception: it has no change folder and lives on `harness/<to
 | Stage | Skill | What happens | Gate |
 | --- | --- | --- | --- |
 | Explore | `openspec-explore` | Optional: think a problem through before proposing | — |
-| Propose | `openspec-propose` | A pull request on `change/<change-id>` containing only the change folder. A model from the other vendor reads it before the owner does | Gate 1: the owner approves `owner-approval` |
+| Propose | `openspec-propose` | A pull request on `change/<change-id>` containing only the change folder. A model from the other vendor reads it before the owner does | Agent verifies scope; ask owner only for a decision |
 | Apply | `openspec-apply-change` | Implementation pull requests on `change/<change-id>`. Each names the change id and the scenario ids it covers | — |
 | Review | `openspec-verify-change`, then the reviewer | A model from a different vendor than the implementer's reviews and posts a report as a comment. Fixes go back to the implementer | Gate 2: `t0` green, the owner approves `owner-approval` |
 | Archive | `openspec-archive-change` | In the last implementation pull request: the spec delta is merged into `openspec/specs/` and the folder moves to `openspec/changes/archive/` | — |
 
-No code for a change is written before its proposal has merged. After archiving, the specs on `main` describe what is built.
+A user-authorized ordinary change carries proposal, implementation and final archive in one Draft PR. Separate proposal approval is needed only for unresolved owner decisions. After archiving, main specs describe implemented behavior.
 
 ## Scenarios
 
@@ -34,11 +34,22 @@ Each scenario title starts with a stable id, `<LEVEL>-<AREA>-<NUMBER>`: `#### Sc
 
 ## Pull requests
 
-- The merge gate is two required checks: `t0` (`scripts/check.sh ci`) and `owner-approval` (the owner approves it on GitHub). Every push needs a new approval.
-- Fill in the evidence section of the pull request template. The summary line comes from `scripts/check.sh ci`, run on the commit you pushed.
+- The merge gate is two required checks: `t0` (`scripts/check.sh ci`) and `owner-approval` (the owner approves it on GitHub). Only Ready PRs request final owner approval; push fixes while Draft. Evidence and review bind to the exact head SHA.
+- Fill in the evidence section of the pull request template. The summary line comes from `scripts/check.sh ci`, run on the commit you pushed. The controller posts evidence outside Git, so recording a result does not change its commit.
 - Files under `.github/workflows/` are pushed by the owner; agent tokens are refused. Prepare the change and hand it over.
 - Squash merge only; history on `main` is linear.
 
 ## Handing a change to another agent
 
 Hand over at a commit, with `tasks.md` and `notes.md` current. The next agent starts from those two files, not from a transcript.
+
+## Automatic publication
+
+Read delivery.md before starting a delivery session. A complete verified slice is committed
+and pushed with `scripts/dev checkpoint --message "..."`; this creates or updates one Draft PR.
+`scripts/dev deliver` runs CI, another vendor's review and at most two repair rounds, then
+marks it Ready. The owner approves and merges. Report SHA, push status and PR URL each time.
+Around 400 lines is a scope review prompt, never a reason to leave known correctness bugs behind.
+Create an issue for an independent defect, cross-change dependency, after-baseline work or
+an owner-only decision. Fix routine test/review findings in the current PR without new issues.
+Reviewers never edit the implementation worktree; the controller records their report on the PR.

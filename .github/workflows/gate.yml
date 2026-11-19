@@ -119,39 +119,10 @@ jobs:
                 done
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Wait for t0
-        run: |
-          set -euo pipefail
-          # t0 is also a required check in the ruleset. Waiting here only keeps
-          # the approval request from arriving before t0 has passed.
-          if ! gh api "repos/$HEAD_REPO/contents/.github/workflows/t0.yml?ref=$HEAD_SHA" >/dev/null 2>&1; then
-            echo "::warning::No t0 workflow at this commit; not waiting for it. The ruleset still requires the t0 check."
-            exit 0
-          fi
-          deadline=$((SECONDS + 2700))
-          while :; do
-            state=$(gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?check_name=t0&filter=latest" \
-              --jq '[.check_runs[] | select(.app.slug == "github-actions")]
-                    | sort_by(.started_at) | last
-                    | if . == null then "missing"
-                      elif .status != "completed" then "pending"
-                      else .conclusion end')
-            case "$state" in
-              success) echo "t0 passed."; exit 0 ;;
-              missing|pending) ;;
-              *) echo "::error::t0 finished with: $state"; exit 1 ;;
-            esac
-            if (( SECONDS > deadline )); then
-              echo "::error::Timed out waiting for t0 (last state: $state)."
-              exit 1
-            fi
-            sleep 20
-          done
-
   owner-approval:
     name: owner-approval
     needs: triage
-    if: always()
+    if: always() && !github.event.pull_request.draft
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     # The environment has the repository owner as its required reviewer, so

@@ -23,3 +23,9 @@ Neither token can approve `owner-approval`, change repository rules, or push fil
 The guard matches text, so it also refuses a command that merely quotes a blocked one, for example inside a prompt or a here-document. Put such text in a file.
 
 The local guard prevents accidents. What actually protects `main` is the ruleset and the `owner-approval` gate, which hold for every agent.
+
+## Delivery sessions
+
+Read [delivery.md](delivery.md), configure the model commands, then use `scripts/dev`.
+The user authorizes commit, branch push and Draft PR creation with the implementation task.
+Stop only for a decision, exhausted repair budget, missing external permission, or final owner review.

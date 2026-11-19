@@ -1,0 +1,97 @@
+"""Offline failure-path tests: no credentials, network or model calls."""
+import importlib.machinery
+import importlib.util
+import json
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+loader = importlib.machinery.SourceFileLoader('delivery', str(Path(__file__).parents[1] / 'dev'))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+dev = importlib.util.module_from_spec(spec)
+loader.exec_module(dev)
+
+
+class DeliveryTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        dev.root = Path(self.tmp.name)
+        dev.state = dev.root
+        dev.repo = 'example/kernel'
+        (dev.root / 'AGENTS.md').write_text('Review only.')
+
+    def test_scope_rejects_product_edit_on_harness_branch(self):
+        with patch.object(dev, 'git', side_effect=['crates/model.rs', '']):
+            with self.assertRaisesRegex(ValueError, 'travel alone'):
+                dev.validate_scope('harness/x')
+
+    def test_scope_rejects_vendor_edits(self):
+        with patch.object(dev, 'git', side_effect=['vendor/cube/file', '']):
+            with self.assertRaisesRegex(ValueError, 'read-only'):
+                dev.validate_scope('change/x')
+
+    def test_atomic_state_roundtrip(self):
+        p = dev.state / 'evidence.json'
+        dev.save(p, {'head': 'a'})
+        dev.save(p, {'head': 'b'})
+        self.assertEqual(json.loads(p.read_text()), {'head': 'b'})
+        self.assertFalse(p.with_suffix('.tmp').exists())
+
+    def test_missing_configuration_is_actionable(self):
+        with self.assertRaisesRegex(ValueError, 'configure'):
+            dev.config()
+
+    def test_rejects_unapproved_branch(self):
+        with patch.object(dev, 'git', return_value='main'):
+            with self.assertRaisesRegex(ValueError, 'change/'):
+                dev.identity()
+
+    def test_dirty_review_rejected(self):
+        with patch.object(dev, 'git', return_value=' M file'):
+            with self.assertRaisesRegex(ValueError, 'clean'):
+                dev.binding()
+
+    def test_pr_mismatch_rejected(self):
+        with patch.object(dev, 'clean'), patch.object(dev, 'identity', return_value=('harness/x', 'abc')), \
+             patch.object(dev, 'pr', return_value={'headRefOid': 'def'}):
+            with self.assertRaisesRegex(ValueError, 'head must match'):
+                dev.binding()
+
+    def test_resume_reuses_existing_pr(self):
+        current = {'url': 'https://example.test/1'}
+        with patch.object(dev, 'config', return_value={}), patch.object(dev, 'identity', return_value=('harness/x', 'abc')), \
+             patch.object(dev, 'git', return_value=''), patch.object(dev, 'pr', return_value=current), \
+             patch.object(dev, 'run') as runner:
+            self.assertEqual(dev.publish(), current)
+            runner.assert_not_called()
+
+    def test_stale_review_is_not_saved(self):
+        a = {'head': 'a', 'base': 'b', 'branch': 'harness/x'}
+        b = dict(a, head='c')
+        with patch.object(dev, 'config', return_value={'reviewer': 'other/model'}), \
+             patch.object(dev, 'binding', side_effect=[a, b]), patch.object(dev, 'git', return_value='diff'), \
+             patch.object(dev, 'model', return_value='{"findings":[]}'):
+            with self.assertRaisesRegex(ValueError, 'stale'):
+                dev.review()
+            self.assertFalse((dev.state / 'review.json').exists())
+
+    def test_malformed_model_reply_is_not_pass(self):
+        with patch.object(dev, 'config', return_value={}), \
+             patch.object(dev, 'binding', return_value={'base': 'a', 'head': 'b', 'branch': 'harness/x'}), \
+             patch.object(dev, 'git', return_value='diff'), patch.object(dev, 'model', return_value='{}'):
+            with self.assertRaisesRegex(ValueError, 'findings'):
+                dev.review()
+
+    def test_budget_exhaustion_leaves_pr_draft(self):
+        with patch.object(dev, 'publish'), patch.object(dev, 'binding', return_value={'head': 'a'}), \
+             patch.object(dev, 'check'), patch.object(dev, 'review', return_value={'findings': ['bug']}), \
+             patch.object(dev, 'model') as model:
+            with self.assertRaisesRegex(ValueError, 'budget exhausted'):
+                dev.deliver(0)
+            model.assert_not_called()
+
+
+if __name__ == '__main__':
+    unittest.main()
