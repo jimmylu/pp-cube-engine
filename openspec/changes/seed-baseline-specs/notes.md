@@ -101,9 +101,9 @@ Learned: service-boundary security needs its own scenario; error classes must ag
 By Claude (Anthropic) through omp; GitHub writes used the implementer token.
 - Issue #5 closed with a comment recording the decision.
 - Pull request #6, the contract document alone, is merged.
-- `harness/openspec` is rebased onto main and passes default CI locally. The implementer
-  token cannot push it (it changes a workflow file); the owner pushes it.
-- This folder is committed alone on a branch from main and opened as the proposal pull
-  request; the kernel document and config are opened as their own pull request. Both need
-  the harness merged before CI can run the OpenSpec step. The folder exceeds 400 lines.
-Open: harness push and merge by the owner; update both branches; gate 1.
+- The harness branch could not be pushed with the implementer token (it changes a
+  workflow file); the owner pushed it and it merged as #9.
+- This folder is committed alone on a branch from main and opened as proposal pull
+  request #7; the kernel document and config are pull request #8. Both were updated
+  from main after #9 and pass default CI. The folder exceeds 400 lines.
+Open: gate 1 for #7 and #8; then `add-contract-model`, drafted on a local branch.
