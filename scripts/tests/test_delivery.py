@@ -138,6 +138,8 @@ class DeliveryTests(unittest.TestCase):
              patch.object(dev.time, 'sleep') as sleep:
             dev.deliver(0)
             self.assertEqual(sleep.call_count, 2)
+            runner.assert_any_call('gh', 'api',
+                                   f'repos/{dev.repo}/commits/a/check-runs?check_name=t0&filter=latest')
             runner.assert_any_call('gh', 'pr', 'ready', '1', '--repo', dev.repo)
             self.assertIn('remote t0 passed', (dev.state / 'evidence.md').read_text())
 

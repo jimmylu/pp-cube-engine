@@ -206,7 +206,7 @@ def deliver(rounds):
         if not failure:
             deadline = time.monotonic() + 2700
             while True:
-                checks = json.loads(run('gh', 'api', f'repos/{repo}/commits/{bound["head"]}/check-runs'))
+                checks = json.loads(run('gh', 'api', f'repos/{repo}/commits/{bound["head"]}/check-runs?check_name=t0&filter=latest'))
                 result = latest_t0(checks['check_runs'])
                 if result == ['SUCCESS']:
                     break
