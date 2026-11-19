@@ -54,6 +54,7 @@ One agent at a time owns a change's branch. The reviewing model comes from a dif
 
 | Document | Read it when |
 | --- | --- |
+| `docs/agents/delivery.md` | committing, publishing, reviewing or resuming delivery |
 | `docs/agents/workflow.md` | starting, proposing, implementing, reviewing or archiving a change |
 | `docs/agents/verification.md` | a check fails, a tool is missing, or you need a tier beyond `ci` |
 | `docs/agents/skills.md` | choosing a skill for a task |

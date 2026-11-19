@@ -13,7 +13,7 @@ T1 and T2 are not built yet; the script says so and exits with status 2. Results
 
 ## Tools
 
-The Rust toolchain is pinned by `rust-toolchain.toml` and installs itself through `rustup`. `ci` mode also needs `cargo-deny`, `typos`, `taplo` and, Python 3 for controller regression tests and, once `openspec/` exists, the `openspec` CLI at the version named in `scripts/check.sh`. `actionlint` and `gitleaks` run when installed and are reported as skipped when not. Versions used in CI are in `.github/workflows/t0.yml`.
+The Rust toolchain is pinned by `rust-toolchain.toml` and installs itself through `rustup`. `ci` mode also needs `cargo-deny`, `typos`, `taplo`, Python 3 for controller regression tests and, once `openspec/` exists, the `openspec` CLI at the version named in `scripts/check.sh`. `actionlint` and `gitleaks` run when installed and are reported as skipped when not. Versions used in CI are in `.github/workflows/t0.yml`.
 
 ## Reading a failure
 

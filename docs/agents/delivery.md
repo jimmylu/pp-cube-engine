@@ -83,3 +83,9 @@ transition remain unverified. Keep the rollout PR Draft until another vendor rev
 The existing environment approval is retained, enabled only for Ready PRs; repository
 rules and publication credentials were not altered. Workflow publication may still need
 the owner's existing workflow-capable identity. Product code was not changed.
+
+Subsequent real review succeeded through omp's configured DeepSeek route and posted a
+SHA-bound report to #16. Fixed latest-t0 selection, explicit pending-snapshot rejection,
+and documentation discovery. The unpushed-branch report was disproved by the existing
+empty-output guard and a new regression. A full model-driven repair cycle is still
+unverified; repairs in this rollout were made by the implementing agent.

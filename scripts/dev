@@ -69,6 +69,9 @@ def validate_scope(branch):
     paths = set(git('diff', '--name-only', 'HEAD').splitlines())
     paths.update(git('ls-files', '--others', '--exclude-standard').splitlines())
     harness = re.compile(r'^(\.github/|scripts/|\.agents/|\.claude/|\.codex/|\.omp/|docs/agents/|AGENTS\.md$|CLAUDE\.md$|deny\.toml$|clippy\.toml$|rustfmt\.toml$|typos\.toml$|taplo\.toml$|rust-toolchain\.toml$)')
+    if any(p.endswith(('.snap.new', '.pending-snap')) for p in paths) or any(
+            (root / 'crates').rglob('*.snap.new')) or any((root / 'crates').rglob('*.pending-snap')):
+        raise ValueError('Pending snapshots must be reviewed before checkpoint')
     if any(p.startswith('vendor/') for p in paths):
         raise ValueError('vendor is read-only')
     if branch.startswith('harness/') and any(not harness.match(p) for p in paths):
@@ -178,6 +181,13 @@ def review():
     return report
 
 
+def latest_t0(checks):
+    runs = [c for c in checks if c['name'] == 't0' and c['app']['slug'] == 'github-actions']
+    latest = max(runs, key=lambda c: c['id']) if runs else None
+    return [latest['conclusion'].upper() if latest['status'] == 'completed'
+            and latest['conclusion'] else 'PENDING'] if latest else []
+
+
 def deliver(rounds):
     publish()
     for attempt in range(rounds + 1):
@@ -194,8 +204,7 @@ def deliver(rounds):
             deadline = time.monotonic() + 2700
             while True:
                 checks = json.loads(run('gh', 'api', f'repos/{repo}/commits/{bound["head"]}/check-runs'))
-                result = [c['conclusion'].upper() if c['status'] == 'completed' and c['conclusion'] else 'PENDING'
-                          for c in checks['check_runs'] if c['name'] == 't0' and c['app']['slug'] == 'github-actions']
+                result = latest_t0(checks['check_runs'])
                 if result == ['SUCCESS']:
                     break
                 if any(x in ('FAILURE', 'CANCELLED', 'TIMED_OUT', 'ERROR') for x in result):

@@ -32,6 +32,26 @@ class DeliveryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'read-only'):
                 dev.validate_scope('change/x')
 
+    def test_status_handles_unpushed_branch(self):
+        with patch.object(dev, 'identity', return_value=('harness/x', 'abc')), \
+             patch.object(dev, 'git', return_value=''):
+            self.assertIsNone(dev.remote_sha())
+
+    def test_pending_snapshot_blocks_checkpoint(self):
+        with patch.object(dev, 'git', side_effect=['crates/a.snap.new', '']):
+            with self.assertRaisesRegex(ValueError, 'Pending snapshots'):
+                dev.validate_scope('change/x')
+
+    def test_latest_ci_success_supersedes_failed_attempt(self):
+        old = dict(id=1, name='t0', app={'slug': 'github-actions'}, status='completed', conclusion='failure')
+        latest = dict(old, id=2, conclusion='success')
+        self.assertEqual(dev.latest_t0([latest, old]), ['SUCCESS'])
+
+    def test_latest_pending_attempt_does_not_reuse_old_success(self):
+        old = dict(id=1, name='t0', app={'slug': 'github-actions'}, status='completed', conclusion='success')
+        latest = dict(old, id=2, status='in_progress', conclusion=None)
+        self.assertEqual(dev.latest_t0([old, latest]), ['PENDING'])
+
     def test_atomic_state_roundtrip(self):
         p = dev.state / 'evidence.json'
         dev.save(p, {'head': 'a'})
