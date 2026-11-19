@@ -69,10 +69,11 @@ fn optional_dimension_fields_and_meta_are_loaded_as_written() {
         title: Some("Order number".into()),
         description: Some("Order identifier".into()),
         public: Some(false),
-        // The fraction has no short binary form, so a parser that rounds differs.
+        // Neither float is one a parser that rounds reads exactly.
         meta: Some(json!({
-            "owner": "team-a", "tier": 2, "ratio": 1.2699041298821259, "certified": true,
-            "retired_on": null, "tags": ["finance", "daily"], "contact": {"channel": "analytics"}
+            "owner": "team-a", "tier": 2, "ratio": 1.2699041298821259, "tolerance": 1.5e-30,
+            "certified": true, "retired_on": null, "tags": ["finance", "daily"],
+            "contact": {"channel": "analytics"}
         })),
     };
 

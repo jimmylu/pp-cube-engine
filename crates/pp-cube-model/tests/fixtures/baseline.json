@@ -7,8 +7,9 @@
       "dimensions": [
         {"name": "order_no", "sql": "{CUBE}.order_no", "type": "number", "primary_key": true,
          "title": "Order number", "description": "Order identifier", "public": false,
-         "meta": {"owner": "team-a", "tier": 2, "ratio": 1.2699041298821259, "certified": true, "retired_on": null,
-                  "tags": ["finance", "daily"], "contact": {"channel": "analytics"}}},
+         "meta": {"owner": "team-a", "tier": 2, "ratio": 1.2699041298821259, "tolerance": 1.5e-30,
+                  "certified": true, "retired_on": null, "tags": ["finance", "daily"],
+                  "contact": {"channel": "analytics"}}},
         {"name": "channel_cd", "sql": "{CUBE}.channel_cd", "type": "string"},
         {"name": "is_valid", "sql": "{CUBE}.is_valid = 1", "type": "boolean"},
         {"name": "sold_at", "sql": "{CUBE}.sold_at", "type": "time"}

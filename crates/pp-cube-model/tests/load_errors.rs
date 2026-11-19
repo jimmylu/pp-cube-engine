@@ -57,6 +57,19 @@ fn unknown_json_field_is_rejected_on_its_line() {
 }
 
 #[test]
+fn json_that_is_not_strict_json_is_rejected() {
+    for text in [
+        "{\"cubes\": [],}",
+        "{\"cubes\": [] /* none */}",
+        "{\"cubes\": []} x",
+    ] {
+        let loaded = load_json(text);
+
+        assert!(loaded.is_err(), "{text} loaded as {loaded:?}");
+    }
+}
+
+#[test]
 fn measure_without_sql_is_rejected_unless_its_type_is_count() {
     let text = concat!(
         "cubes:\n  - name: sales\n    data_source: warehouse\n    measures:\n",

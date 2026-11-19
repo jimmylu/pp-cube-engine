@@ -33,38 +33,23 @@ Learned:
 
 ## 2026-11-20: first implementation pull request
 
-Implemented by Claude (Anthropic) through omp, test first.
+Implemented by Claude (Anthropic) through omp, test first. Tasks 1.1 to 1.4.
 
-Done (tasks 1.1, 1.2, 1.4):
+Done:
 - `pp-cube-model`: contract types for model, cube, dimension and measure;
   `load_yaml` and `load_json`; fixtures and tests for `B0-MODEL-001`.
-- `cargo deny` passes with `serde_norway`; two packages are new in `Cargo.lock`.
+- `LoadError` carries a position; a measure other than `count` without `sql`
+  fails to load.
+- `cargo deny` passes; three packages are new in `Cargo.lock`.
 
-Changed from the plan, see tasks.md and design.md:
-- Three implementation pull requests instead of two, to stay under 400 lines.
-- The join, relationship and segment types moved to the references pull request.
-
-Open:
-- Task 1.3 was written and passed locally, then left out for size. Its shape:
-  `LoadError` gains `position: Option<Position { line, column }>`, from
-  `serde_norway`'s `location()` and `serde_json`'s `line()`/`column()`; the
-  measure rule is checked in a hand-written `Deserialize` for `Measure` that
-  wraps the derive through `#[serde(remote = "Self")]`.
-- Review by a vendor other than Anthropic.
+Changed from the plan:
+- The join, relationship and segment types move to the references pull request,
+  so each type arrives with the test that uses it.
+- The first commit failed the traceability step, which then read ids only from
+  `openspec/specs/`. The owner chose option A in #13; the harness change is #14.
 
 Learned: `rustfmt` at its default width spreads struct literals in tests over
 many lines; budget test code generously when sizing a pull request.
-
-## 2026-11-20: stopped at the traceability step
-
-`scripts/check.sh ci` fails on this commit with `Tests naming an unknown
-scenario: B0-MODEL-001`; every step before traceability passes. The step reads
-ids only from `openspec/specs/`, and this change's delta is archived in its last
-pull request, so a test cannot name its scenario before then. Rule 4 asks for
-the id on the test now. The owner decides how to resolve this in issue #13.
-
-The branch is pushed without a pull request. Do not open one, and do not remove
-the scenario comments, until #13 is decided.
 
 ## 2026-11-20: local review of the first implementation
 Reviewed by Codex (OpenAI GPT-6), two independent axes; implementer: Claude (Anthropic).
@@ -81,25 +66,27 @@ Action: fix metadata-number handling and add regressions; resolve the separate h
 Open: all three findings, #13 and later-PR tasks; task 3.2 is not complete. No push or remote comment.
 Learned: the exactly representable 0.5 fixture cannot detect numeric metadata conversion loss.
 
-## 2026-11-20: review findings
-By Claude (Anthropic) through omp.
-- Finding 1, fractions differ between JSON and YAML: fixed in this pull request.
-  `serde_json` now has `float_roundtrip`, and the fixtures use
-  1.2699041298821259, so the equivalence and round-trip tests fail without it.
-  The feature applies to every crate in the workspace build, the planner
-  included; it only makes float parsing exact.
-- Findings 2 and 3, integers beyond 64 bits and `.nan`/`.inf`: fixed together
-  with task 1.3 in the second pull request, to keep this one under 400 lines.
-  Until that merges both defects remain. The rule is in design.md.
-- #13 was decided as option A; the harness change is pull request #14. Open
-  this pull request only after #14 has merged and the branch is rebased.
+## 2026-11-20: review findings resolved
+By Claude (Anthropic) through omp. Each finding was first reproduced as a failing test.
 
-## 2026-11-20: second implementation pull request
-By Claude (Anthropic) through omp, test first.
-- Task 1.3: `LoadError` carries `position`; a measure other than `count`
-  without `sql` fails to load.
-- Review findings 2 and 3: `meta` goes through its own deserializer
-  (`src/meta.rs`), which rejects a number that cannot be kept exactly. The five
-  regression tests failed before it: JSON had loaded the long integers as
-  rounded floats and YAML had loaded `.nan` as null.
-Open: review of this pull request by a vendor other than Anthropic.
+Owner decisions, in conversation on 2026-11-20:
+- A `meta` number is kept only as an integer within the 64-bit range or a finite
+  float below 2^63 in magnitude; anything else fails to load and is written as a
+  string.
+- Nothing may change how the upstream planner's dependencies are built.
+- All three fixes go into this pull request, at about 480 lines.
+
+Fixes:
+- Finding 1: stock `serde_json` rounds some floats on parsing, 1.5e-30 as well
+  as the reviewer's fraction. Its `float_roundtrip` feature fixes that but would
+  also apply to the planner's `serde_json`. JSON is now parsed by
+  `serde_json_lenient`, a separate package with the same feature, with its two
+  extensions switched off. Both floats are in the fixtures.
+- Findings 2 and 3: `meta` has its own deserializer (`src/meta.rs`) applying the
+  rule above in both formats.
+
+Open: review of these fixes by a vendor other than Anthropic (task 3.2); group 2.
+
+Learned: to see whether a dependency change touches the planner's build, compare
+each package's resolved features from `cargo metadata` before and after. Adding
+`serde_json_lenient` changed none; `struson` switched on a `serde_core` feature.

@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use serde::Deserialize;
+
 use crate::model::Model;
 
 /// A place in a document; lines and columns start at 1.
@@ -40,11 +42,18 @@ pub fn load_yaml(text: &str) -> Result<Model, LoadError> {
 
 /// Loads a model written in JSON.
 pub fn load_json(text: &str) -> Result<Model, LoadError> {
-    serde_json::from_str(text).map_err(|error| LoadError {
-        position: Some(Position {
-            line: error.line(),
-            column: error.column(),
-        }),
-        message: error.to_string(),
-    })
+    // The parser is a serde_json fork chosen for exact floats; its two
+    // extensions to JSON are on by default and are switched off here.
+    let mut parser = serde_json_lenient::Deserializer::from_str(text);
+    parser.set_ignore_trailing_commas(false);
+    parser.set_allow_comments(false);
+    Model::deserialize(&mut parser)
+        .and_then(|model| parser.end().map(|()| model))
+        .map_err(|error| LoadError {
+            position: Some(Position {
+                line: error.line(),
+                column: error.column(),
+            }),
+            message: error.to_string(),
+        })
 }
