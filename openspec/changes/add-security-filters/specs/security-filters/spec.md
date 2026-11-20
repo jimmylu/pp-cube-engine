@@ -16,3 +16,8 @@ The facade SHALL NOT drop or weaken a security filter. A security filter that is
 #### Scenario: B0-SEC-003 Unusable security filter
 - **WHEN** context supplies, in turn, a malformed filter, a filter on an unknown member and a filter on a cube with no join path to the query
 - **THEN** each compilation fails without SQL
+### Requirement: Nonempty security groups
+An empty context security filter list SHALL mean no additional restriction. Every AND or OR group inside a supplied security filter SHALL contain at least one child; an empty group at any depth SHALL fail compilation without SQL.
+#### Scenario: B0-SEC-004 Empty security groups
+- **WHEN** context supplies an empty AND group, an empty OR group, or either nested beside a valid condition
+- **THEN** each compilation fails with a query error naming the empty-group rule, while an empty context security filter list preserves the original SQL and parameters

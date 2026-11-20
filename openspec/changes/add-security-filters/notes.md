@@ -1,0 +1,30 @@
+# Session notes
+
+## 2026-11-20: next-PR planning
+
+Prepared by Codex / OpenAI GPT-6. User requested planning and design only.
+
+Done:
+- Confirmed PR #21 merged and refreshed origin/main; started `change/add-security-filters` from that merged baseline.
+- Compared security filters, model validation and complete result metadata as next slices. Recommended the missing facade security-filter path because existing B0 filters and joins provide its dependencies.
+- Created proposal, design, four scenario requirements and bounded implementation tasks.
+- Transferred the complete security-filter seed delta without renumbering its original three ids; added B0-SEC-004 for empty groups.
+- Inspected current facade, typed filters, adapter validation and joins, existing tests and pinned planner filter ingestion. No product behavior was changed.
+
+Open:
+- Review the proposed scope, then request apply to begin implementation.
+- All implementation tasks remain unchecked. No archive or main-spec change is authorized by this planning session.
+- Publish the planning slice as Draft; continue implementation in the same PR after an apply request. Cross-vendor review is pending.
+
+Learned:
+- The existing context has no security-filter field; typed `Filter` values can reuse all current query checks after facade composition.
+- Deserialization accepts empty groups, so security-filter validation must explicitly reject them at every depth.
+- Security-only cube references must enter the same join checks as user references.
+- Issues #22 and #23 remain after-baseline and outside this change. T1/T2 execution has not been run.
+
+Verification:
+- `openspec validate --all --strict`: five items passed, none failed; all four planning artifacts exist.
+- `scripts/check.sh fast`: PASSED, four steps, none skipped.
+- CI first failed because the sandbox prevented the advisory database lock. Authorized execution outside the sandbox passed: `check ci: PASSED — 15 steps, 0 skipped, 32s @ d5bd5ff+dirty`.
+- These checks cover the planning working tree, not an exact published commit. Re-run CI on the committed head and store that evidence on the PR.
+- No Rust source, snapshots, main specs, vendor, dependency or harness paths changed. Security scenarios remain proposed and unimplemented.
