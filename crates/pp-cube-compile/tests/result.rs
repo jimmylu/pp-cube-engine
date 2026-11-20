@@ -4,8 +4,8 @@ use std::sync::Arc;
 // scenario: B0-RESULT-001
 #[test]
 fn result_corresponds_to_actual_output() {
-    let model = Arc::new(load_yaml(include_str!("fixtures/sales.yaml")).unwrap());
-    let query=load_query(r#"{"measures":["sales.amount"],"dimensions":["sales.channel_cd"],"filters":[{"member":"sales.channel_cd","operator":"equals","values":["A","B"]}]}"#).unwrap();
+    let model = Arc::new(load_yaml(include_str!("fixtures/retail.yaml")).unwrap());
+    let query=load_query(r#"{"measures":["sales.amount"],"dimensions":["regions.region_name"],"filters":[{"member":"regions.region_name","operator":"equals","values":["A","B"]}]}"#).unwrap();
     let ctx = CompileContext {
         dialect: DialectId::Presto,
         timezone: "UTC".into(),
@@ -19,10 +19,34 @@ fn result_corresponds_to_actual_output() {
             .iter()
             .map(|c| c.member.as_str())
             .collect::<Vec<_>>(),
-        ["sales.channel_cd", "sales.amount"]
+        ["regions.region_name", "sales.amount"]
     );
-    assert_eq!(result.used_cubes[0].name, "sales");
-    assert_eq!(result.parameters.len(), 2);
+    assert_eq!(
+        result
+            .used_cubes
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>(),
+        ["regions", "sales", "stores"]
+    );
+    assert_eq!(
+        result.parameters,
+        [
+            pp_cube_compile::Parameter::Text("A".into()),
+            pp_cube_compile::Parameter::Text("B".into())
+        ]
+    );
+    assert_eq!(
+        result
+            .columns
+            .iter()
+            .map(|c| (c.alias.as_str(), c.semantic_type))
+            .collect::<Vec<_>>(),
+        [
+            ("regions__region_name", pp_cube_model::DimensionType::String),
+            ("sales__amount", pp_cube_model::DimensionType::Number)
+        ]
+    );
 }
 
 fn context() -> CompileContext {

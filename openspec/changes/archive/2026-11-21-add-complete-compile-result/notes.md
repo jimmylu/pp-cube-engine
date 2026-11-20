@@ -72,3 +72,8 @@ delivery work, recorded on the PR without changing the reviewed commit. Owner
 approval/merge follows. T1/T2 not run.
 
 Current implementation tasks: 7/7 complete. Archive is complete; final delivery review is pending.
+
+Cross-vendor review of a83420b identified two B0-RESULT-001 test gaps. The
+public correspondence case now groups sales by region and asserts ordered
+parameter values plus exact alias/member/semantic-type correspondence. No
+production code change was needed; final delivery is rerun after this test fix.
