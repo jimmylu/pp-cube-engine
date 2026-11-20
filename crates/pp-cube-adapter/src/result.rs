@@ -96,6 +96,22 @@ pub(crate) fn metadata(
             cube.sql.clone().ok_or_else(fault)?
         };
         let source = Parser::parse_sql(&GenericDialect {}, &source).map_err(|_| fault())?;
+        // The public facade validates first; the adapter can also be called directly.
+        // Do not classify CTE/derived aliases from an out-of-baseline cube as tables.
+        let [Statement::Query(source_query)] = source.as_slice() else {
+            return Err(fault());
+        };
+        let SetExpr::Select(source_select) = source_query.body.as_ref() else {
+            return Err(fault());
+        };
+        if source_query.with.is_some()
+            || source_select
+                .from
+                .iter()
+                .any(|t| !matches!(&t.relation, TableFactor::Table { .. }))
+        {
+            return Err(fault());
+        }
         let mut physical = Tables::default();
         let _ = source.visit(&mut physical);
         if tables.0.iter().any(|(name, alias)| {

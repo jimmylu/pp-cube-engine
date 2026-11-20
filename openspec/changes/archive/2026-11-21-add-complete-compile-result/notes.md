@@ -77,3 +77,9 @@ Cross-vendor review of a83420b identified two B0-RESULT-001 test gaps. The
 public correspondence case now groups sales by region and asserts ordered
 parameter values plus exact alias/member/semantic-type correspondence. No
 production code change was needed; final delivery is rerun after this test fix.
+
+Second cross-vendor review requested an explicit repeated-selection count and
+defensive CTE source handling. The pinned planner preserves two selected measure
+occurrences, now asserted exactly. Metadata rejects CTE/derived cube sources even
+for direct adapter callers; public compile already rejects them through model
+validation. Added public/direct-adapter regression coverage and rerun delivery.

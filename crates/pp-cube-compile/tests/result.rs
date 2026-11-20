@@ -184,7 +184,25 @@ fn hidden_filters_repetitions_and_aliases_do_not_create_columns() {
     .unwrap()
     .filters;
     let result = compile(&model, &query, &ctx).unwrap();
+    // The pinned planner preserves both selected occurrences; hidden filters add none.
+    assert_eq!(result.columns.len(), 2);
     assert!(result.columns.iter().all(|c| c.member == "sales.amount"));
     assert!(result.used_cubes.iter().any(|c| c.name == "stores"));
     assert!(result.columns.iter().all(|c| c.alias == "sales__amount"));
+}
+// scenario: B0-RESULT-001
+#[test]
+fn out_of_baseline_cte_is_not_reported_as_a_physical_table() {
+    let mut model = load_yaml(include_str!("fixtures/sales.yaml")).unwrap();
+    model.cubes[0].sql_table = None;
+    model.cubes[0].sql = Some("WITH x AS (SELECT * FROM dw.sales_dtl) SELECT * FROM x".into());
+    let query = load_query(r#"{"measures":["sales.amount"]}"#).unwrap();
+    let model = Arc::new(model);
+    assert!(matches!(
+        compile(&model, &query, &context()),
+        Err(pp_cube_compile::CompileError::Model(_))
+    ));
+    // Direct adapter callers get an error too, never lineage containing alias x.
+    let dialect = pp_cube_dialect::dialect(DialectId::Presto).unwrap();
+    assert!(pp_cube_adapter::plan(&model, &query, dialect, "UTC").is_err());
 }
