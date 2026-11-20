@@ -223,6 +223,35 @@ cubes:
     );
 }
 
+// scenario: B0-JOIN-004
+#[test]
+fn cube_the_planner_joins_on_its_own_account_counts_as_joined() {
+    // A count has no expression; the planner counts the primary key, and
+    // this one reads `sales`.
+    let message = failure_with(
+        r#"
+cubes:
+  - name: sales
+    sql_table: dw.sales_dtl
+    data_source: warehouse
+    joins: [{ name: receipts, relationship: one_to_one, sql: "{CUBE}.receipt_no = {receipts.receipt_no}" }]
+    dimensions: [{ name: receipt_no, sql: "{CUBE}.receipt_no", type: string }]
+  - name: receipts
+    sql_table: dw.receipt
+    data_source: warehouse
+    dimensions: [{ name: receipt_no, sql: "{sales.receipt_no}", type: string, primary_key: true }]
+    measures: [{ name: row_count, type: count }]
+"#,
+        r#"{"measures": ["receipts.row_count"]}"#,
+    );
+
+    assert_eq!(
+        message,
+        "The measures of `receipts` are reached through a join from `sales`; measures are \
+         taken from the cube the joins start from"
+    );
+}
+
 #[test]
 fn join_to_a_cube_the_model_lacks_names_both_cubes() {
     let message = failure_with(

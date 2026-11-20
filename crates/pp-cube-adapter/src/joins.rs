@@ -39,6 +39,9 @@ pub(crate) struct Joins {
     model: Arc<Model>,
     /// The joins each cube declares, by the cube's position in the model.
     edges: Vec<Vec<Edge>>,
+    /// The cube of the query's measures, if it has any. Every tree that
+    /// holds this cube starts from it.
+    measure_cube: Option<usize>,
 }
 
 /// What a query reads, found by following member expressions.
@@ -73,8 +76,12 @@ fn filter_members<'q>(filters: &'q [Filter], members: &mut Vec<&'q str>) {
 }
 
 impl Joins {
-    /// Fails for a join to a cube the model does not declare.
-    pub(crate) fn new(model: Arc<Model>) -> Result<Self, CubeError> {
+    /// The join graph of `model` for compiling `query`. Fails for a join to
+    /// a cube the model does not declare, and for a query whose cubes the
+    /// baseline does not join; see `check`.
+    ///
+    /// Call it after the members `query` names are known to be in the model.
+    pub(crate) fn new(model: Arc<Model>, query: &Query) -> Result<Self, CubeError> {
         let position = |name: &str| model.cubes.iter().position(|cube| cube.name == name);
         let edges = model
             .cubes
@@ -95,7 +102,13 @@ impl Joins {
                     .collect()
             })
             .collect::<Result<_, CubeError>>()?;
-        Ok(Self { model, edges })
+        let mut joins = Self {
+            model,
+            edges,
+            measure_cube: None,
+        };
+        joins.measure_cube = joins.check(query)?;
+        Ok(joins)
     }
 
     fn cube(&self, index: usize) -> &Cube {
@@ -154,14 +167,15 @@ impl Joins {
     }
 
     /// Fails unless the cubes `query` reads form one tree of joins whose root
-    /// owns every measure. A measure anywhere else needs the planner's
-    /// multi-stage SQL, which is beyond the baseline.
+    /// owns every measure, and returns the cube of the measures. A measure
+    /// anywhere else needs the planner's multi-stage SQL, which is beyond the
+    /// baseline.
     ///
     /// What a query reads is the members it names and the members their
-    /// expressions refer to, in any cube: the planner joins all of those.
-    ///
-    /// Call it after the named members are known to be in the model.
-    pub(crate) fn check(&self, query: &Query) -> Result<(), CubeError> {
+    /// expressions refer to, in any cube. The planner can join further cubes
+    /// on its own account, for the primary key a count counts for one; `build`
+    /// holds those to the same rule.
+    fn check(&self, query: &Query) -> Result<Option<usize>, CubeError> {
         let mut named: Vec<&str> = Vec::new();
         named.extend(query.measures.iter().map(String::as_str));
         named.extend(query.dimensions.iter().map(String::as_str));
@@ -208,7 +222,7 @@ impl Joins {
             return Err(self.unconnected(&read.cubes));
         };
         match read.measures.iter().find(|(cube, _)| *cube != tree.root) {
-            None => Ok(()),
+            None => Ok(owners.first().copied()),
             Some((cube, measure)) => Err(CubeError::user(format!(
                 "Measure `{owner}.{measure}` belongs to `{owner}`, which this query reaches \
                  through a join from `{}`; measures are taken from the cube the joins start from",
@@ -351,6 +365,17 @@ impl Joins {
         let Some(tree) = self.tree(cubes)? else {
             return Ok(None);
         };
+        // These are the cubes the planner joins, whatever made it join them.
+        if let Some(owner) = self.measure_cube.filter(|owner| cubes.contains(owner)) {
+            if tree.root != owner {
+                return Err(CubeError::user(format!(
+                    "The measures of `{}` are reached through a join from `{}`; measures are \
+                     taken from the cube the joins start from",
+                    self.cube(owner).name,
+                    self.cube(tree.root).name
+                )));
+            }
+        }
 
         // Cube's rule: a `many_to_one` join multiplies the rows of the cube it
         // leads to, and so of every cube joined beyond that one.

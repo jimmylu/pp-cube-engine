@@ -61,4 +61,18 @@ compiled from a joined cube. Fixed: the check follows member expressions
 through the model's references; a test covers a dimension and a formula that
 read another cube.
 
+## 2026-11-20: review, round 2
+
+Codex found one P2 in the same check: a count without an expression counts
+the primary key, and a primary key that reads another cube joined that cube
+unseen. Reproduced with a failing test first. Fixed where the planner's cubes
+are known: the join graph refuses a tree that holds the measures' cube and
+does not start from it. The check before planning stays for its messages.
+
+Learned: do not mirror the planner's reasons for joining a cube; judge the
+cubes it asks the graph for.
+
+This is the second fix for the same review finding area. A third finding
+there is a stop condition.
+
 Open: delivery. The SQL has not been executed (T1, T2).

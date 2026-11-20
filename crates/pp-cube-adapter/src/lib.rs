@@ -84,8 +84,7 @@ pub fn plan(
         .map_err(|_| PlanError::User(format!("Timezone `{timezone}` is not known")))?;
     let evaluator = Rc::new(Evaluator::new(model.clone()));
     evaluator.check(query)?;
-    let joins = Rc::new(Joins::new(model.clone())?);
-    joins.check(query)?;
+    let joins = Rc::new(Joins::new(model.clone(), query)?);
     let tools = Rc::new(Tools::new(evaluator.clone(), dialect, zone, joins.clone()));
     let security_context = Rc::new(Opaque);
     let options = Rc::new(Options::new(
