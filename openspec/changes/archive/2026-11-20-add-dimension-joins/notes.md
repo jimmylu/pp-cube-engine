@@ -78,8 +78,8 @@ there is a stop condition.
 ## 2026-11-20: review, round 3; stopped
 
 Stopped under AGENTS.md: the review failed again after two different fixes.
-The reviewed code is `48ba507`; the pull request is a Draft; local CI passes on
-it. Nothing below is fixed.
+The reviewed code is the commit before this note; the pull request is a Draft;
+local CI passes on that code. Nothing below is fixed.
 
 Codex found two P2 in `crates/pp-cube-adapter/src/joins.rs`. Neither has been
 reproduced here; both read as correct.
@@ -112,3 +112,23 @@ uses the tree.
 Open: the two findings, then delivery. The change is archived in this branch;
 `openspec/specs/compile-b0/spec.md` already holds the requirement, so the
 branch must not merge as it is. The SQL has not been executed (T1, T2).
+
+## 2026-11-20: research on upstream joins
+
+Asked by the owner as the basis for deciding the two open findings. The
+findings are in `research-joins.md`, beside this file; no code changed.
+
+- Finding 1 is reproduced on this branch and is the planner's behaviour:
+  upstream's reference join graph produces the same SQL. Cube joins the
+  cubes a join condition reads in its JavaScript layer, which this kernel
+  replaces. The Rust planner refuses the pattern for aliased joins only.
+- Upstream joins any cube to any cube. Several dimension cubes and chains
+  compile flat. A measure through `one_to_one`, and a `count` through
+  `many_to_one`, also compile flat upstream; this change refuses both.
+- Counting every path is this project's rule; upstream takes the shortest.
+
+Corrected: the stop record above named a commit by its hash, which the
+spelling check rejects, so the pushed commit of that record fails `t0`.
+The hash is replaced by words.
+
+Open: the owner's decision on the two findings; then the fixes and delivery.
