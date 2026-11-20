@@ -1,0 +1,21 @@
+cubes:
+  - name: sales
+    sql_table: dw.sales_dtl
+    data_source: warehouse
+    joins:
+      - name: dim_store
+        relationship: many_to_one
+        sql: "{CUBE}.store_cd = {dim_store.store_cd}"
+    dimensions:
+      - { name: order_no, sql: "{CUBE}.order_no", type: number, primary_key: true }
+    measures:
+      - { name: amount, type: sum, sql: "{CUBE}.amount" }
+      - { name: order_count, type: count_distinct, sql: "{order_no}" }
+      - { name: amount_per_order, type: number, sql: "{amount} / NULLIF({order_count}, 0)" }
+    segments:
+      - { name: valid, sql: "{CUBE}.is_valid = 1" }
+  - name: dim_store
+    sql_table: dw.dim_store
+    data_source: warehouse
+    dimensions:
+      - { name: store_cd, sql: "{CUBE}.store_cd", type: string, primary_key: true }

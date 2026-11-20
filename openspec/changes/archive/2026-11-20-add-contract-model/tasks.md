@@ -9,12 +9,10 @@ Each task is bounded to two hours. No code is written before this proposal has m
 - [x] 1.4 Add the test for `// scenario: B0-MODEL-001`: equivalent YAML and JSON fixtures with every dimension type, measure type and optional field load equal, with `meta` unchanged; verify with `cargo test -p pp-cube-model`.
 
 ## 2. References (second implementation pull request)
-- [ ] 2.1 Add the join, relationship and segment types; implement the reference scanner for the three forms; verify each form and each malformed brace case in unit tests.
-- [ ] 2.2 Implement resolution against a loaded model; verify that an unknown cube or member returns an error naming it.
-- [ ] 2.3 Add the test for `// scenario: B0-MODEL-004`: a join, a segment and expressions using each form resolve to their declared targets; verify with `cargo test -p pp-cube-model`.
+- [x] 2.1 Add the join, relationship and segment types; implement the reference scanner for the three forms; verify each form and each malformed brace case in unit tests.
+- [x] 2.2 Implement resolution against a loaded model; verify that an unknown cube or member returns an error naming it.
+- [x] 2.3 Add the test for `// scenario: B0-MODEL-004`: a join, a segment and expressions using each form resolve to their declared targets; verify with `cargo test -p pp-cube-model`.
 
 ## 3. Close
-First-PR review is recorded in notes.md; task 3.2 remains open for fixes and later implementation.
-- [ ] 3.1 Run `scripts/check.sh ci` on each pushed commit; put the summary line in the pull request, since the line names its commit.
-- [ ] 3.2 Obtain a review from a vendor other than the implementer's; record the report and resolve findings.
-- [ ] 3.3 Archive in the last implementation pull request; verify the traceability step reports 2 scenarios specified and 2 named by tests.
+CI and the review by another vendor run through `scripts/dev deliver`; their evidence is on the pull request, bound to its commit, not in this file.
+- [x] 3.3 Archive in the last implementation pull request; verify the traceability step reports 3 scenarios specified and 3 named by tests.

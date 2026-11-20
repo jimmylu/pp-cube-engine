@@ -82,6 +82,7 @@ fn measure_without_sql_is_rejected_unless_its_type_is_count() {
     assert!(error.message.contains("`amount`"), "{}", error.message);
 }
 
+// scenario: B0-MODEL-005
 #[test]
 fn meta_integer_outside_64_bits_is_rejected_from_both_formats() {
     let too_large = "18446744073709551617";
@@ -103,15 +104,17 @@ fn meta_integer_outside_64_bits_is_rejected_from_both_formats() {
     }
 }
 
+// scenario: B0-MODEL-005
 #[test]
-fn meta_number_that_is_not_finite_is_rejected() {
-    for value in [".nan", ".inf", "-.inf"] {
+fn meta_float_that_is_not_finite_or_too_large_is_rejected() {
+    for value in [".nan", ".inf", "-.inf", "1e19", "-1e19"] {
         let loaded = load_yaml(&yaml_with_meta(value));
 
         assert!(loaded.is_err(), "{value} loaded as {loaded:?}");
     }
 }
 
+// scenario: B0-MODEL-005
 #[test]
 fn widest_64_bit_integers_in_meta_are_kept_exactly() {
     let value = "[18446744073709551615, -9223372036854775808, 9007199254740993]";
