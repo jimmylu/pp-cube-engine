@@ -75,4 +75,40 @@ cubes it asks the graph for.
 This is the second fix for the same review finding area. A third finding
 there is a stop condition.
 
-Open: delivery. The SQL has not been executed (T1, T2).
+## 2026-11-20: review, round 3; stopped
+
+Stopped under AGENTS.md: the review failed again after two different fixes.
+The reviewed code is `48ba507`; the pull request is a Draft; local CI passes on
+it. Nothing below is fixed.
+
+Codex found two P2 in `crates/pp-cube-adapter/src/joins.rs`. Neither has been
+reproduced here; both read as correct.
+
+1. A join condition can read a third cube. If `sales` joins `stores` on a
+   member of `stores` whose expression reads `regions`, a query over `sales`
+   and `stores` gets a tree of those two, and the planner writes the `ON`
+   condition with an alias for `regions` that is not joined: invalid SQL, and
+   `regions` escapes the data source rule.
+2. `walk` enumerates every chain of joins when the target cannot be reached.
+   The limit of two found paths never applies then, because nothing is found.
+   A deep model with two joins per cube makes an ordinary "not connected"
+   query run for a very long time.
+
+Proposed, for the owner to choose before anyone continues:
+- For 1, either refuse a join condition that reads any cube but the two it
+  joins, which is a rule about models and the smaller change, or follow the
+  condition's references and require those cubes in the tree. The first is
+  recommended; it needs a sentence in the requirement and a scenario.
+- For 2, search only through cubes from which the target can be reached,
+  found by one pass over the joins backwards. Then every step leads to the
+  target and the limit of two applies. No decision needed.
+
+Learned: three rounds found three different gaps in one file. The graph's
+rules were built by cases; before another fix, write down what a tree
+guarantees (every alias the SQL names is joined, on one data source, by one
+path, with the measures at the root) and check each against how the planner
+uses the tree.
+
+Open: the two findings, then delivery. The change is archived in this branch;
+`openspec/specs/compile-b0/spec.md` already holds the requirement, so the
+branch must not merge as it is. The SQL has not been executed (T1, T2).
