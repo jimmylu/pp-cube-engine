@@ -1,0 +1,9 @@
+---
+source: crates/pp-cube-compile/tests/filters.rs
+expression: "compiled(r#\"\"filters\": [\n            {\"member\": \"sales.amount\", \"operator\": \"gt\", \"values\": [\"1000\"]},\n            {\"member\": \"sales.order_count\", \"operator\": \"notEquals\", \"values\": [\"0\"]},\n            {\"member\": \"sales.channel_cd\", \"operator\": \"equals\", \"values\": [\"C1\"]}\n        ]\"#)"
+---
+SELECT "sales".channel_cd "sales__channel_cd", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".channel_cd = ?) GROUP BY 1
+HAVING (sum("sales".amount) > CAST(? AS DOUBLE)) AND (COUNT(DISTINCT "sales".order_no) <> CAST(? AS DOUBLE) OR COUNT(DISTINCT "sales".order_no) IS NULL) ORDER BY  2  DESC
+-- parameters: [Text("C1"), Text("1000"), Text("0")]

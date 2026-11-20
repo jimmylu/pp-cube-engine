@@ -1,0 +1,8 @@
+---
+source: crates/pp-cube-compile/tests/filters.rs
+expression: "compiled(r#\"\"filters\": [\n            {\"member\": \"sales.channel_cd\", \"operator\": \"contains\", \"values\": [\"50%_off\"]},\n            {\"member\": \"sales.channel_cd\", \"operator\": \"notContains\", \"values\": [\"x\"]},\n            {\"member\": \"sales.channel_cd\", \"operator\": \"startsWith\", \"values\": [\"C\"]},\n            {\"member\": \"sales.channel_cd\", \"operator\": \"notStartsWith\", \"values\": [\"Z\"]},\n            {\"member\": \"sales.channel_cd\", \"operator\": \"endsWith\", \"values\": [\"1\"]},\n            {\"member\": \"sales.channel_cd\", \"operator\": \"notEndsWith\", \"values\": [\"9\"]}\n        ]\"#)"
+---
+SELECT "sales".channel_cd "sales__channel_cd", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ((LOWER("sales".channel_cd)  LIKE CONCAT('%', LOWER(?), '%') ESCAPE '\')) AND ((LOWER("sales".channel_cd) NOT  LIKE CONCAT('%', LOWER(?), '%') ESCAPE '\') OR "sales".channel_cd IS NULL) AND ((LOWER("sales".channel_cd)  LIKE CONCAT('', LOWER(?), '%') ESCAPE '\')) AND ((LOWER("sales".channel_cd) NOT  LIKE CONCAT('', LOWER(?), '%') ESCAPE '\') OR "sales".channel_cd IS NULL) AND ((LOWER("sales".channel_cd)  LIKE CONCAT('%', LOWER(?), '') ESCAPE '\')) AND ((LOWER("sales".channel_cd) NOT  LIKE CONCAT('%', LOWER(?), '') ESCAPE '\') OR "sales".channel_cd IS NULL) GROUP BY 1 ORDER BY  2  DESC
+-- parameters: [Text("50\\%\\_off"), Text("x"), Text("C"), Text("Z"), Text("1"), Text("9")]

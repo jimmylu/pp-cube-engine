@@ -43,3 +43,57 @@ templates:
   params/param:
     source: BaseQuery.ts
     text: "?"
+  expressions/wrap_segment_filter:
+    source: BaseQuery.ts
+    text: "{{ expr }}"
+  filters/equals:
+    source: BaseQuery.ts
+    text: "{{ column }} = {{ value }}{{ is_null_check }}"
+  filters/not_equals:
+    source: BaseQuery.ts
+    text: "{{ column }} <> {{ value }}{{ is_null_check }}"
+  filters/or_is_null_check:
+    source: BaseQuery.ts
+    text: " OR {{ column }} IS NULL"
+  filters/set_where:
+    source: BaseQuery.ts
+    text: "{{ column }} IS NOT NULL"
+  filters/not_set_where:
+    source: BaseQuery.ts
+    text: "{{ column }} IS NULL"
+  filters/in:
+    source: BaseQuery.ts
+    text: "{{ column }} IN ({{ values_concat }}){{ is_null_check }}"
+  filters/not_in:
+    source: BaseQuery.ts
+    text: "{{ column }} NOT IN ({{ values_concat }}){{ is_null_check }}"
+  filters/gt:
+    source: BaseQuery.ts
+    text: "{{ column }} > {{ param }}"
+  filters/gte:
+    source: BaseQuery.ts
+    text: "{{ column }} >= {{ param }}"
+  filters/lt:
+    source: BaseQuery.ts
+    text: "{{ column }} < {{ param }}"
+  filters/lte:
+    source: BaseQuery.ts
+    text: "{{ column }} <= {{ param }}"
+  filters/like_pattern:
+    source: PrestodbQuery.ts
+    text: "CONCAT({% if start_wild %}'%'{% else %}''{% endif %}, LOWER({{ value }}), {% if end_wild %}'%'{% else %}''{% endif %}) ESCAPE '\\'"
+  filters/like_escape_char:
+    source: PrestodbQuery.ts
+    text: "\\"
+  filters/always_true:
+    source: BaseQuery.ts
+    text: "1 = 1"
+  tesseract/ilike:
+    source: PrestodbQuery.ts
+    text: "LOWER({{ expr }}) {% if negated %}NOT {% endif %} LIKE {{ pattern }}"
+  tesseract/bool_param_cast:
+    source: PrestodbQuery.ts
+    text: "CAST({{ expr }} AS BOOLEAN)"
+  tesseract/number_param_cast:
+    source: PrestodbQuery.ts
+    text: "CAST({{ expr }} AS DOUBLE)"

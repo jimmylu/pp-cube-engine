@@ -1,0 +1,8 @@
+---
+source: crates/pp-cube-compile/tests/filters.rs
+expression: "compiled(r#\"\"filters\": [{\"member\": \"sales.channel_cd\", \"operator\": \"equals\", \"values\": [\"C1\"]}]\"#)"
+---
+SELECT "sales".channel_cd "sales__channel_cd", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".channel_cd = ?) GROUP BY 1 ORDER BY  2  DESC
+-- parameters: [Text("C1")]

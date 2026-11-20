@@ -22,14 +22,54 @@ use cubesqlplanner::cube_bridge::member_sql::MemberSql;
 use cubesqlplanner::cube_bridge::multi_stage_filter::MultiStageFilterReferences;
 use cubesqlplanner::cube_bridge::multi_stage_grain::MultiStageGrainReferences;
 use cubesqlplanner::cube_bridge::pre_aggregation_description::PreAggregationDescription;
-use cubesqlplanner::cube_bridge::segment_definition::SegmentDefinition;
+use cubesqlplanner::cube_bridge::segment_definition::{SegmentDefinition, SegmentDefinitionStatic};
 use cubesqlplanner::cube_bridge::struct_with_sql_member::StructWithSqlMember;
 use cubesqlplanner::cube_bridge::timeshift_definition::TimeShiftDefinition;
 use cubesqlplanner::cube_bridge::view_filter_definition::ViewFilterDefinition;
-use pp_cube_model::{Cube, DimensionType, MeasureType, Model, Query};
+use pp_cube_model::{Condition, Cube, DimensionType, Filter, MeasureType, Model, Operator, Query};
 
 use crate::expression::Expression;
+use crate::options::operator_name;
 use crate::unavailable;
+
+/// What a filter is applied to, as far as an operator cares.
+#[derive(Clone, Copy)]
+enum MemberKind {
+    Dimension(DimensionType),
+    Measure,
+}
+
+impl MemberKind {
+    fn described(self) -> &'static str {
+        match self {
+            Self::Dimension(DimensionType::String) => "a string dimension",
+            Self::Dimension(DimensionType::Number) => "a number dimension",
+            Self::Dimension(DimensionType::Boolean) => "a boolean dimension",
+            Self::Dimension(DimensionType::Time) => "a time dimension",
+            Self::Measure => "a measure",
+        }
+    }
+
+    /// Which operators each kind of member takes, as Cube documents them. A
+    /// time dimension takes no value comparison yet: the planner would compare
+    /// the column with a text parameter, and the date operators are not compiled.
+    fn takes(self, operator: Operator) -> bool {
+        use Operator::{
+            Contains, EndsWith, Equals, Gt, Gte, Lt, Lte, NotContains, NotEndsWith, NotEquals,
+            NotSet, NotStartsWith, Set, StartsWith,
+        };
+        match operator {
+            Set | NotSet => true,
+            Equals | NotEquals => !matches!(self, Self::Dimension(DimensionType::Time)),
+            Contains | NotContains | StartsWith | NotStartsWith | EndsWith | NotEndsWith => {
+                matches!(self, Self::Dimension(DimensionType::String))
+            }
+            Gt | Gte | Lt | Lte => {
+                matches!(self, Self::Dimension(DimensionType::Number) | Self::Measure)
+            }
+        }
+    }
+}
 
 fn expression(text: &str) -> Result<Rc<dyn MemberSql>, CubeError> {
     Ok(Expression::compile(text)?)
@@ -82,8 +122,10 @@ impl Evaluator {
             .collect()
     }
 
-    /// Fails for the first member of `query` that the model does not declare.
-    /// The planner would refuse it too, with a message that leaves out the cube.
+    /// Fails for the first thing in `query` that cannot be compiled against
+    /// the model: a member it does not declare, or a filter whose operator
+    /// does not fit its member. The planner refuses an unknown member too,
+    /// with a message that leaves out the cube; it does not check the fit.
     pub(crate) fn check(&self, query: &Query) -> Result<(), CubeError> {
         for measure in &query.measures {
             self.measure_index(measure)?;
@@ -91,7 +133,76 @@ impl Evaluator {
         for dimension in &query.dimensions {
             self.dimension_index(dimension)?;
         }
+        for segment in &query.segments {
+            self.segment_index(segment)?;
+        }
+        for filter in &query.filters {
+            self.check_filter(filter)?;
+        }
+        // The planner drops an order on anything else without a word.
+        for order in query.order.iter().flatten() {
+            let selected =
+                query.measures.contains(&order.member) || query.dimensions.contains(&order.member);
+            if !selected {
+                return Err(CubeError::user(format!(
+                    "Order member `{}` is not among the query's measures and dimensions",
+                    order.member
+                )));
+            }
+        }
         Ok(())
+    }
+
+    fn check_filter(&self, filter: &Filter) -> Result<(), CubeError> {
+        match filter {
+            Filter::And(filters) | Filter::Or(filters) => filters
+                .iter()
+                .try_for_each(|filter| self.check_filter(filter)),
+            Filter::Condition(condition) => self.check_condition(condition),
+        }
+    }
+
+    fn check_condition(&self, condition: &Condition) -> Result<(), CubeError> {
+        let Condition {
+            member,
+            operator,
+            values,
+        } = condition;
+        let kind = self.member_kind(member)?;
+        let name = operator_name(*operator);
+        if !kind.takes(*operator) {
+            return Err(CubeError::user(format!(
+                "Operator `{name}` does not fit `{member}`, {}",
+                kind.described()
+            )));
+        }
+        let takes_values = !matches!(operator, Operator::Set | Operator::NotSet);
+        match (takes_values, values.is_empty()) {
+            (true, true) => Err(CubeError::user(format!(
+                "Operator `{name}` on `{member}` needs at least one value"
+            ))),
+            (false, false) => Err(CubeError::user(format!(
+                "Operator `{name}` on `{member}` takes no values"
+            ))),
+            _ => Ok(()),
+        }
+    }
+
+    fn member_kind(&self, path: &str) -> Result<MemberKind, CubeError> {
+        let (cube, name) = self.split(path)?;
+        let cube = self.cube(cube);
+        let dimension = cube
+            .dimensions
+            .iter()
+            .find(|dimension| dimension.name == name);
+        let measure = cube.measures.iter().any(|measure| measure.name == name);
+        match (dimension, measure) {
+            (Some(dimension), _) => Ok(MemberKind::Dimension(dimension.dimension_type)),
+            (None, true) => Ok(MemberKind::Measure),
+            (None, false) => Err(CubeError::user(format!(
+                "`{path}` is not a dimension or a measure of the model"
+            ))),
+        }
     }
 
     fn cube_index(&self, name: &str) -> Result<usize, CubeError> {
@@ -135,6 +246,15 @@ impl Evaluator {
             .ok_or_else(|| CubeError::user(format!("Dimension `{path}` is not in the model")))
     }
 
+    fn segment_index(&self, path: &str) -> Result<(usize, usize), CubeError> {
+        let (cube, name) = self.split(path)?;
+        let segments = &self.cube(cube).segments;
+        let found = segments.iter().position(|segment| segment.name == name);
+        found
+            .map(|segment| (cube, segment))
+            .ok_or_else(|| CubeError::user(format!("Segment `{path}` is not in the model")))
+    }
+
     fn has_member(&self, path: &[String], named: impl Fn(&Cube, &str) -> bool) -> bool {
         let [cube, member] = path else {
             return false;
@@ -154,6 +274,7 @@ impl CubeEvaluator for Evaluator {
         match path_type.as_str() {
             "measure" | "measures" => self.measure_index(&path).map(drop)?,
             "dimension" | "dimensions" => self.dimension_index(&path).map(drop)?,
+            "segment" | "segments" => self.segment_index(&path).map(drop)?,
             other => return unavailable(&format!("members of kind `{other}`")),
         }
         Ok(path.split('.').map(str::to_owned).collect())
@@ -173,8 +294,16 @@ impl CubeEvaluator for Evaluator {
         )))
     }
 
-    fn segment_by_path(&self, _path: String) -> Result<Rc<dyn SegmentDefinition>, CubeError> {
-        unavailable("segments")
+    fn segment_by_path(&self, path: String) -> Result<Rc<dyn SegmentDefinition>, CubeError> {
+        let (cube, segment) = self.segment_index(&path)?;
+        let condition = Expression::compile(&self.cube(cube).segments[segment].sql)?;
+        Ok(Rc::new(SegmentDef {
+            condition,
+            statics: SegmentDefinitionStatic {
+                segment_type: None,
+                owned_by_cube: None,
+            },
+        }))
     }
 
     fn cube_from_path(&self, path: String) -> Result<Rc<dyn CubeDefinition>, CubeError> {
@@ -392,7 +521,7 @@ impl MeasureDefinition for MeasureDef {
         }
         let conditions = filters.iter().map(|filter| {
             let condition = Expression::compile(&filter.sql)?;
-            Ok(Rc::new(Condition(condition)) as Rc<dyn StructWithSqlMember>)
+            Ok(Rc::new(MeasureCondition(condition)) as Rc<dyn StructWithSqlMember>)
         });
         conditions.collect::<Result<Vec<_>, CubeError>>().map(Some)
     }
@@ -443,11 +572,30 @@ impl MeasureDefinition for MeasureDef {
 }
 
 /// One condition of a filtered measure.
-struct Condition(Rc<Expression>);
+struct MeasureCondition(Rc<Expression>);
 
-impl StructWithSqlMember for Condition {
+impl StructWithSqlMember for MeasureCondition {
     fn sql(&self) -> Result<Rc<dyn MemberSql>, CubeError> {
         Ok(self.0.clone())
+    }
+
+    fn as_any(self: Rc<Self>) -> Rc<dyn Any> {
+        self
+    }
+}
+
+struct SegmentDef {
+    condition: Rc<Expression>,
+    statics: SegmentDefinitionStatic,
+}
+
+impl SegmentDefinition for SegmentDef {
+    fn static_data(&self) -> &SegmentDefinitionStatic {
+        &self.statics
+    }
+
+    fn sql(&self) -> Result<Rc<dyn MemberSql>, CubeError> {
+        Ok(self.condition.clone())
     }
 
     fn as_any(self: Rc<Self>) -> Rc<dyn Any> {

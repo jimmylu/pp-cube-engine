@@ -1,0 +1,10 @@
+---
+source: crates/pp-cube-compile/tests/filters.rs
+expression: "compiled(r#\"\"segments\": [\"sales.toys\"],\n           \"order\": {\"sales.channel_cd\": \"asc\", \"sales.amount\": \"desc\"},\n           \"limit\": 50,\n           \"offset\": 100\"#)"
+---
+SELECT "sales".channel_cd "sales__channel_cd", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".category_cd = 'TOY') GROUP BY 1 ORDER BY  1  ASC,  2  DESC
+OFFSET 100
+LIMIT 50
+-- parameters: []

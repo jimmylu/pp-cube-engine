@@ -16,6 +16,7 @@ fn compile_presto(measures: &[&str], dimensions: &[&str]) -> Result<Compiled, Co
     let query = Query {
         measures: measures.iter().map(|path| (*path).to_owned()).collect(),
         dimensions: dimensions.iter().map(|path| (*path).to_owned()).collect(),
+        ..Query::default()
     };
     let context = CompileContext {
         dialect: DialectId::Presto,
