@@ -26,3 +26,15 @@ Verification:
 - Strict OpenSpec validation: six items passed, none failed; all four required planning artifacts exist.
 - Fast check passed: four steps, none skipped (planning working tree). No source code, snapshots, dependencies, vendor or harness files changed.
 - Exact-head CI evidence will be posted on the Draft PR after checkpoint. Planning checks do not prove the proposed validation behavior.
+
+## 2026-11-20: implementation
+
+User authorized implementation. Implemented by Codex / OpenAI GPT-6.
+- Added document and typed-model validation with sorted JSON Pointer diagnostics, structural field rules and semantic source/name/reference/join checks. Existing loaders and compile signatures are unchanged.
+- Eight public-interface tests name B0-VALID-001. Initial interface test failed on missing exports; a later failing test exposed references hidden by a malformed token, now recovered at brace boundaries using the shared reference parser.
+- YAML/JSON diagnostics agree; strict JSON and exact metadata-number behavior are tested. Existing fixture, loader and compile regressions passed through CI.
+- Working-tree CI passed 15 steps, none skipped. Exact-head evidence and cross-vendor review belong on PR #25 after checkpoint.
+- Scope review: implementation, diagnostics tests and planning exceed 400 lines, but form one independently testable structural-validation behavior; no snapshot, vendor, lockfile, harness or adapter changes are needed.
+- Completeness/correctness/coherence verification: B0-VALID-001 has assertions for its complete matrix; SQL constraints remain proposed in the seed. T1/T2 not run.
+- Repository policy in docs/agents/workflow.md explicitly requires archive before final review in the same Draft PR. Sync the implemented structural requirement and archive now; owner approval and merge follow later.
+- Open: checkpoint, exact-head CI, different-vendor review and Ready. Owner merges.

@@ -18,3 +18,6 @@ pub use query::{
 pub use reference::{
     locate_references, parse_references, Located, Reference, ReferenceError, Target,
 };
+
+mod validation;
+pub use validation::{validate_json, validate_model, validate_yaml, ValidationIssue};
