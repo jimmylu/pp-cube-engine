@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use pp_cube_adapter::{plan, PlanError};
 use pp_cube_dialect::dialect;
-use pp_cube_model::{Filter, Model, Query};
+use pp_cube_model::{validate_model, Filter, Model, Query, ValidationIssue};
 
 pub use pp_cube_adapter::Parameter;
 pub use pp_cube_dialect::DialectId;
@@ -33,6 +33,8 @@ pub struct Compiled {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompileError {
+    /// The bundle is invalid; issues match the public model validator report.
+    Model(Vec<ValidationIssue>),
     /// The caller can correct it; the message names the member or the rule.
     Query(String),
     /// The kernel or the planner failed. `detail` is for the operator's log;
@@ -43,6 +45,7 @@ pub enum CompileError {
 impl fmt::Display for CompileError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Model(_) => f.write_str("the model could not be validated"),
             Self::Query(message) => f.write_str(message),
             Self::Internal { .. } => f.write_str("the query could not be compiled"),
         }
@@ -51,12 +54,17 @@ impl fmt::Display for CompileError {
 
 impl std::error::Error for CompileError {}
 
-/// Compiles one query.
+/// Compiles one query after validating the complete model.
+/// Model errors take precedence over query and security-filter errors.
 pub fn compile(
     model: &Arc<Model>,
     query: &Query,
     context: &CompileContext,
 ) -> Result<Compiled, CompileError> {
+    let issues = validate_model(model);
+    if !issues.is_empty() {
+        return Err(CompileError::Model(issues));
+    }
     for filter in &context.security_filters {
         check_security_filter(filter)?;
     }
