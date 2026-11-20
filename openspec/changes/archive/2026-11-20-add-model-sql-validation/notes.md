@@ -60,10 +60,14 @@ CI initially rejected ar_archive_writer's Apache-2.0 WITH LLVM-exception licence
 introduced by sqlparser's optional recursive stack extension. Disabled that optional
 feature in the crate manifest instead of changing harness policy. The parser's
 own recursion counter remains enabled, with a public-interface excessive-nesting
-regression. Final dependency additions are sqlparser, sqlparser_derive and syn 1.x;
+regression. Final dependency additions are sqlparser, sqlparser_derive and syn 3.0.10;
 existing versions are unchanged.
 
 Final implementation checkpoint: 7d5b7122e81a4973fc525ca7c5d54f371675acfd, pushed to PR #26.
 Exact-head check ci: PASSED — 15 steps, 0 skipped, 36s @ 7d5b712.
 All eight tasks complete. Evidence posted outside Git. Final archive/review is
 the remaining delivery step; the owner merges. T1/T2 not run.
+
+Cross-vendor review of eee45b2 found one P3 documentation error: the new syn
+version was recorded incorrectly. Corrected it to the locked 3.0.10. No code
+findings were reported; final delivery is rerun after this correction.
