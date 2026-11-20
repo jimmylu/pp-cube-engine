@@ -22,5 +22,5 @@ Implementation authorized. Each implementation task is bounded to two hours.
 ## Workflow follow-up
 
 - Implementation authorized and completed in this Draft PR.
-- Archive the implemented requirement into the existing main spec before final review, per repository workflow. Other seed capabilities remain proposed.
+- Archive complete: the requirement is synced into the main spec and this folder is archived before final review. Other seed capabilities remain proposed.
 - Obtain different-vendor review and successful remote t0 before Ready. Owner approves the final head and merges.

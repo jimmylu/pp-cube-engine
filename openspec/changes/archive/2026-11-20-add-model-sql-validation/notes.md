@@ -1,73 +1,53 @@
 # Session notes
 
-## 2026-11-20: planning after structured validation
+## Current state: 2026-11-20
 
-Prepared by Codex / OpenAI GPT-6. User requested next-PR planning and design.
+Implementation and all eight tasks are complete. The Baseline SQL and joins
+requirement, including B0-VALID-002 through B0-VALID-004, is synced into
+openspec/specs/model-validation/spec.md. This change is archived in
+openspec/changes/archive/2026-11-20-add-model-sql-validation/ before final review,
+as required by repository workflow. Remaining delivery work: obtain a clean
+cross-vendor review and publish exact-head evidence, then request owner review.
+The owner merges. PR: https://github.com/jimmylu/pp-cube-engine/pull/26
 
-Done:
-- Confirmed PR #25 merged and started this branch from updated main.
-- Selected remaining B0 model SQL/expression validation over complete result metadata or another dialect.
-- Read the existing validator, reference/contract types, public parser design, manifests/lockfile and acceptance scenarios.
-- Created proposal/design/tasks and transferred the complete Baseline SQL and joins requirement with B0-VALID-002 through B0-VALID-004 intact. The seed's now-empty model-validation file is removed.
-- Checked sqlparser 0.64.0 primary documentation for GenericDialect, AST parsing and source preservation concerns. The parser is not already in the dependency graph.
+Implemented with Codex / OpenAI GPT-6. DeepSeek V4 Pro reviewed eee45b2 and
+e4010c3 through omp; it reported documentation corrections, with no code findings.
+Corrected the new syn version and reconciled the archived handoff state. Final
+review/evidence are recorded outside Git to avoid invalidating their head SHA.
 
-Open:
-- Review the concrete plan, then request apply. All eight implementation tasks remain unchecked.
-- Publish planning as Draft; implementation and archive continue in that same PR.
-- No product code, parser dependency, lockfile, main spec or snapshot changes in this planning session. Different-vendor review and T1/T2 execution not run.
+## Behavior and validation
 
-Learned:
-- The current public validator is explicitly structural, so SQL checks must extend its report semantics and documentation without changing signatures.
-- Parsing must not rewrite source SQL, and Cube reference provenance must survive in a separate parsing representation.
-- Syntax alone cannot prove opaque UDF semantics. No new function allowlist or catalog dependency is silently authorized; raise a decision if implementation needs one.
-- The repository requires archive before final review in the same Draft PR. Preserve this policy context for reviewers after the folder moves.
+The three existing public validation APIs now parse cube SQL and member
+expressions without rewriting source text. Tests cover row-query restrictions,
+parsing-only reference sentinels, nested/indirect aggregation, cross-cube physical
+columns, unsupported model features, format parity and excessive nesting.
+Member dependency traversal terminates on cycles; a separate cycle rejection
+policy is not introduced. GenericDialect remains the parsing boundary. Opaque
+UDF semantics require catalog knowledge; no function allowlist is introduced.
 
-Verification:
-- Strict OpenSpec validation: seven items passed, none failed; all four required planning artifacts exist.
-- Fast check passed: four steps, none skipped. Official versioned parser documentation confirms GenericDialect and Parser::parse_sql.
-- Exact-head CI evidence will be posted on the Draft PR after checkpoint. These checks validate planning consistency, not unimplemented SQL validation behavior.
+The initial malformed-SQL test and forbidden-query matrix failed before their
+implementation and passed afterward. Model/compile tests, metadata/source
+preservation and existing golden snapshots pass. Strict OpenSpec validation
+passed both before and after archive. T1/T2 are not implemented and were not run.
+Exact-head CI passed 15 steps with 0 skipped at 7d5b712 (36s), eee45b2 (39s)
+and e4010c3. SHA-bound evidence and review reports live on the PR.
 
-## Implementation: 2026-11-20
+## Dependency and scope review
 
-Implemented with Codex / OpenAI GPT-6. Public validation now parses SQL without
-changing source text. Model tests pass across YAML, JSON and typed entry points.
-The initial malformed-SQL test failed before implementation and passed afterward;
-the row-query rejection matrix likewise exposed the missing construct checks.
-One fast-check failure was a Clippy type-complexity diagnostic, fixed with a
-private result type alias; the subsequent fast check passed (4 steps, 0 skipped).
+Pinned sqlparser =0.64.0 (Apache-2.0), with std/visitor. The default optional stack
+extension introduced ar_archive_writer's Apache-2.0 WITH LLVM-exception licence,
+which CI rejected. Disabled that optional feature instead of changing policy;
+the parser's recursion counter remains enabled, covered by a nesting regression.
+Final new dependencies: sqlparser, sqlparser_derive 0.7.0 and syn 3.0.10.
+Existing package versions and upstream pin are unchanged. risk:upstream is applied.
 
-Dependency review: sqlparser =0.64.0, Apache-2.0, visitor enabled; optional stack extension disabled because its transitive LLVM-exception licence
-is outside the existing policy; parser recursion limit retained. New transitive packages are parser/visitor support. Existing package versions and upstream pin remain unchanged. Cargo.lock
-requires risk:upstream. No root configuration, harness, vendor or snapshots edited.
-
-Built-in aggregate classification was checked against official source indexes:
+Built-in aggregate classification was checked against official indexes:
 - https://github.com/prestodb/presto/blob/master/presto-docs/src/main/sphinx/functions/aggregate.rst
 - https://github.com/apache/doris-website/tree/master/docs/sql-manual/sql-functions/aggregate-functions
 - https://druid.apache.org/docs/latest/querying/sql-aggregations/
-Opaque UDF semantics still require catalog knowledge; no function allowlist is
-introduced. GenericDialect remains the parsing boundary. Cyclic member traversal
-terminates; a separate cycle rejection policy is not introduced by this change.
 
-Scope review: above 400 lines including tests/dependency lock entries. Kept together
-because parsing, reference provenance and aggregate dependencies implement one
-independently testable validation boundary. Existing compile golden output and
-metadata regressions run through the repository check command.
-
-Final archive occurs before final review in this same Draft PR, as required by
-repository workflow. Exact-SHA CI/review evidence belongs in PR comments/artifacts.
-
-CI initially rejected ar_archive_writer's Apache-2.0 WITH LLVM-exception licence,
-introduced by sqlparser's optional recursive stack extension. Disabled that optional
-feature in the crate manifest instead of changing harness policy. The parser's
-own recursion counter remains enabled, with a public-interface excessive-nesting
-regression. Final dependency additions are sqlparser, sqlparser_derive and syn 3.0.10;
-existing versions are unchanged.
-
-Final implementation checkpoint: 7d5b7122e81a4973fc525ca7c5d54f371675acfd, pushed to PR #26.
-Exact-head check ci: PASSED — 15 steps, 0 skipped, 36s @ 7d5b712.
-All eight tasks complete. Evidence posted outside Git. Final archive/review is
-the remaining delivery step; the owner merges. T1/T2 not run.
-
-Cross-vendor review of eee45b2 found one P3 documentation error: the new syn
-version was recorded incorrectly. Corrected it to the locked 3.0.10. No code
-findings were reported; final delivery is rerun after this correction.
+Scope exceeds 400 lines including tests/lock entries. Parsing, reference provenance
+and aggregate dependencies remain one independently testable validation boundary.
+No vendor, harness, root configuration or existing SQL snapshots changed. One
+Clippy type-complexity diagnostic was fixed using a private result alias; fast
+passed afterward. No owner-only decision is open.
