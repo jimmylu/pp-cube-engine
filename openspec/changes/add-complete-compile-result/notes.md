@@ -25,3 +25,43 @@ Archive is after implementation and before final review, per repository workflow
 Planning verification: strict OpenSpec validation passed seven items. Full CI
 passed 15 steps, 0 skipped on the planning working tree. No implementation or
 T1/T2 execution is claimed. Exact-head evidence will be posted on the Draft PR.
+
+## Apply feasibility investigation
+
+Final physical projection is local to TopLevelPlanner::plan. Public resolved
+QueryProperties::all_members(false) exposes stable member ids/aliases; the final
+SQL AST provides actual projection order. Pair these, failing on missing or
+ambiguous identity rather than guessing. LogicalSchema::all_dimensions and the
+physical query processor confirm dimensions/time buckets precede measures.
+Lineage can use rendered table factors, not join-graph candidates. This pairing
+uses final SQL plus resolved planner symbols and does not fork the planner.
+
+
+## Implementation
+
+Implementation authorized by the user. Tasks 1–5 are complete. Projection aliases
+are parsed from final rendered SQL and matched to resolved upstream symbols;
+time buckets use their base member identity and explicit granularity. Lineage is
+selected by rendered table factors and cube aliases, then physical table identifier
+components are decoded through the parser. Ambiguous metadata fails internally.
+
+The facade adds columns, used_cubes, fingerprint and correlation-only request_id.
+Fingerprint v1 uses canonical recursively sorted JSON (ordered arrays retained),
+SHA-256 of the complete typed model, and a framed JSON record of query, dialect,
+timezone, security filters, package version and full pin. No runtime Git/IO enters
+compilation; the pin is a constant guarded by a repository-gitlink test. Upstream
+upgrades must update it with the pin. Existing SQL/parameter snapshots pass.
+
+Tests cover public parameter/column correspondence, time buckets, join intermediate
+sources, quoted cube SQL, sql_alias, hidden security/time filters, repeated members,
+request-id exclusion, model/query/context sensitivity, build identity, canonical
+numbers/object ordering and fresh-process comparison. The all-golden process suite
+remains proposed. Only Presto is currently representable as a dialect; the exhaustive
+dialect match ensures a future variant requires an identity choice.
+
+Dependency review: sqlparser reuses =0.64.0 with std/visitor, default stack extension
+disabled. New SHA-256 uses sha2 0.11.1; cargo deny passed advisories, bans, licences
+and sources. Cargo.lock changes require risk:upstream; upstream pin unchanged.
+Scope exceeds 400 lines including tests/dependencies, retained as one complete
+successful-result behavior. No vendor/harness or existing golden snapshots changed.
+Final checks, archive and delivery remain pending; exact-head evidence goes on PR.

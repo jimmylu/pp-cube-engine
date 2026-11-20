@@ -17,6 +17,7 @@ fn compile_in(timezone: &str, rest: &str) -> Result<Compiled, CompileError> {
     let query = format!(r#"{{"measures": ["sales.amount"], {rest}}}"#);
     let query = load_query(&query).expect("the query loads");
     let context = CompileContext {
+        request_id: String::new(),
         dialect: DialectId::Presto,
         timezone: timezone.to_owned(),
         security_filters: Vec::new(),

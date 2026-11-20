@@ -6,6 +6,8 @@
 //! other crate touches the planner's interfaces.
 
 mod expression;
+mod result;
+pub use result::{OutputColumn, UsedCube};
 mod joins;
 mod options;
 mod schema;
@@ -41,6 +43,8 @@ pub enum Parameter {
 /// The SQL of a query and the values of its placeholders, in order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Planned {
+    pub columns: Vec<OutputColumn>,
+    pub used_cubes: Vec<UsedCube>,
     pub sql: String,
     pub parameters: Vec<Parameter>,
 }
@@ -110,7 +114,7 @@ pub fn plan(
         RequestOptions::default(),
     )?;
     let request = QueryPropertiesCompiler::new(state.clone()).build(options)?;
-    let (raw_sql, _) = TopLevelPlanner::new(request, state.clone()).plan()?;
+    let (raw_sql, _) = TopLevelPlanner::new(request.clone(), state.clone()).plan()?;
     let templates = state.plan_sql_templates(false)?;
     let (sql, values) = state.build_sql_and_params(&raw_sql, &templates)?;
     let parameters = values
@@ -122,5 +126,11 @@ pub fn plan(
             FilterValue::Null => Parameter::Null,
         })
         .collect();
-    Ok(Planned { sql, parameters })
+    let (columns, used_cubes) = result::metadata(&sql, request.all_members(false), model)?;
+    Ok(Planned {
+        sql,
+        parameters,
+        columns,
+        used_cubes,
+    })
 }

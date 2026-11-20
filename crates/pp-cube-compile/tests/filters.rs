@@ -13,6 +13,7 @@ fn compile_presto(query: &str) -> Result<Compiled, CompileError> {
     let model = Arc::new(load_yaml(include_str!("fixtures/sales.yaml")).expect("the model loads"));
     let query = load_query(query).expect("the query loads");
     let context = CompileContext {
+        request_id: String::new(),
         dialect: DialectId::Presto,
         timezone: "UTC".to_owned(),
         security_filters: Vec::new(),

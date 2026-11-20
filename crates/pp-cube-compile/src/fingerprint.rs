@@ -1,0 +1,118 @@
+//! Versioned identity of typed compile inputs, independent of correlation ids.
+use crate::{CompileContext, CompileError};
+use pp_cube_model::{Model, Query};
+use sha2::{Digest, Sha256};
+
+pub(crate) fn fingerprint(
+    model: &Model,
+    query: &Query,
+    ctx: &CompileContext,
+) -> Result<[u8; 32], CompileError> {
+    identity(
+        model,
+        query,
+        ctx,
+        env!("CARGO_PKG_VERSION"),
+        "486f0d26bab58ab4fe0be0e4cdd39818b35a7870",
+    )
+}
+// Update the full pin with vendor upgrades; an integration test checks the gitlink.
+fn identity(
+    model: &Model,
+    query: &Query,
+    ctx: &CompileContext,
+    version: &str,
+    pin: &str,
+) -> Result<[u8; 32], CompileError> {
+    let model = serde_json::to_value(model).map_err(error)?;
+    let model = canonical(model).map_err(error)?;
+    let digest = Sha256::digest(model);
+    let record = serde_json::json!([
+        "pp-cube-fingerprint-v1",
+        digest.as_slice(),
+        query,
+        match ctx.dialect {
+            crate::DialectId::Presto => "presto",
+        },
+        ctx.timezone,
+        ctx.security_filters,
+        version,
+        pin
+    ]);
+    let encoded = canonical(record).map_err(error)?;
+    Ok(Sha256::digest(encoded).into())
+}
+fn error(e: serde_json::Error) -> CompileError {
+    CompileError::Internal {
+        detail: e.to_string(),
+    }
+}
+
+fn canonical(mut value: serde_json::Value) -> Result<Vec<u8>, serde_json::Error> {
+    fn sort(v: &mut serde_json::Value) {
+        match v {
+            serde_json::Value::Object(m) => {
+                m.sort_keys();
+                for v in m.values_mut() {
+                    sort(v);
+                }
+            }
+            serde_json::Value::Array(a) => {
+                for v in a {
+                    sort(v);
+                }
+            }
+            _ => {}
+        }
+    }
+    sort(&mut value);
+    serde_json::to_vec(&value)
+}
+// scenario: B0-DET-002
+#[test]
+fn version_and_pin_participate_in_identity() {
+    let model = pp_cube_model::load_yaml(include_str!("../tests/fixtures/sales.yaml")).unwrap();
+    let query = pp_cube_model::Query::default();
+    let ctx = CompileContext {
+        dialect: crate::DialectId::Presto,
+        timezone: "UTC".into(),
+        security_filters: vec![],
+        request_id: String::new(),
+    };
+    let base = identity(&model, &query, &ctx, "v1", "pin1").unwrap();
+    assert_ne!(base, identity(&model, &query, &ctx, "v2", "pin1").unwrap());
+    assert_ne!(base, identity(&model, &query, &ctx, "v1", "pin2").unwrap());
+}
+// scenario: B0-DET-002
+#[test]
+fn canonical_objects_preserve_numbers_and_array_order() {
+    let first = serde_json::json!({"z":{"b":18446744073709551615u64,"a":1.25},"a":[1,2]});
+    let second = serde_json::json!({"a":[1,2],"z":{"a":1.25,"b":18446744073709551615u64}});
+    assert_eq!(
+        canonical(first.clone()).unwrap(),
+        canonical(second).unwrap()
+    );
+    assert!(String::from_utf8(canonical(first.clone()).unwrap())
+        .unwrap()
+        .contains("18446744073709551615"));
+    let mut reversed = first;
+    reversed["a"] = serde_json::json!([2, 1]);
+    assert_ne!(
+        canonical(reversed).unwrap(),
+        canonical(serde_json::json!({"a":[1,2],"z":{"a":1.25,"b":18446744073709551615u64}}))
+            .unwrap()
+    );
+}
+// scenario: B0-DET-002
+#[test]
+fn upstream_identity_matches_repository_gitlink() {
+    let output = std::process::Command::new("git")
+        .args(["ls-tree", "HEAD", "vendor/cube"])
+        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(String::from_utf8(output.stdout)
+        .unwrap()
+        .contains("486f0d26bab58ab4fe0be0e4cdd39818b35a7870"));
+}
