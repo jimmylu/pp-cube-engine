@@ -13,3 +13,24 @@ The kernel SHALL compile count, count_distinct, sum, avg, min, max, filtered mea
 #### Scenario: B0-AGG-002 Conditional measures and ratios
 - **WHEN** sales includes a filtered sum and a number formula dividing sum by NULLIF(distinct count, 0)
 - **THEN** SQL applies the measure condition inside aggregation and divides aggregated results rather than row values
+
+### Requirement: Dimension joins
+The kernel SHALL compile many_to_one and one_to_one joins as LEFT JOINs, starting from the one cube that reaches every other cube of the query. It SHALL return a query error, without choosing, when the requested cubes have more than one eligible join path or belong to more than one data source. It SHALL fail without SQL when no join path connects the cubes or a measure belongs to a cube reached through a join.
+#### Scenario: B0-JOIN-001 Joined dimension
+- **WHEN** sales is grouped and filtered by a uniquely joined store dimension
+- **THEN** SQL has one LEFT JOIN on the declared condition and aggregates sales in the same flat SELECT
+#### Scenario: B0-JOIN-002 Ambiguous path
+- **WHEN** the requested cubes are connected by more than one eligible join path
+- **THEN** compilation returns a query error naming the cubes rather than selecting a path
+#### Scenario: B0-JOIN-003 Cubes on different data sources
+- **WHEN** a query uses members of cubes whose data_source values differ
+- **THEN** compilation returns a query error without SQL
+#### Scenario: B0-JOIN-004 Cubes without a usable join
+- **WHEN** a query names two cubes that no join path connects, and another takes a measure from a cube reached through a join
+- **THEN** each compilation fails without SQL, naming the cubes or the measure
+
+### Requirement: Join conditions
+A join condition SHALL read only the cube that declares the join and the cube it joins. The kernel SHALL fail without SQL for a query that needs a join whose condition reads any other cube, directly or through a member whose expression reads it. A query that does not need that join SHALL compile.
+#### Scenario: B0-JOIN-005 Join condition reading another cube
+- **WHEN** sales joins stores on a condition that reads a member of regions, directly or through a dimension of stores, and one query groups sales by a store dimension while another reads sales alone
+- **THEN** the first fails without SQL, naming the join and the cube it reads, and the second compiles

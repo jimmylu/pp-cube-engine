@@ -113,11 +113,10 @@ fn unknown_member_is_a_query_failure_naming_it() {
 }
 
 #[test]
-fn what_the_kernel_does_not_compile_yet_fails_without_showing_internals() {
-    let two_cubes = compile_presto(&["sales.amount", "valid_sales.amount"], &[]);
+fn internal_failure_does_not_show_its_detail() {
+    let error = CompileError::Internal {
+        detail: "dialect presto has no template `statements/cte`".to_owned(),
+    };
 
-    let error = two_cubes.expect_err("a query over two cubes is not compiled yet");
-
-    assert!(matches!(error, CompileError::Internal { .. }), "{error:?}");
     assert_eq!(error.to_string(), "the query could not be compiled");
 }

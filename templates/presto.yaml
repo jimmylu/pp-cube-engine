@@ -117,3 +117,9 @@ templates:
   driver/convert_tz:
     source: PrestodbQuery.ts
     text: "CAST(date_add('minute', timezone_minute(COALESCE({{ field }}, CAST(NULL AS TIMESTAMP)) AT TIME ZONE '{{ timezone }}'), date_add('hour', timezone_hour(COALESCE({{ field }}, CAST(NULL AS TIMESTAMP)) AT TIME ZONE '{{ timezone }}'), COALESCE({{ field }}, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP)"
+  statements/join:
+    source: BaseQuery.ts
+    text: "{{ join_type }} JOIN {{ source }} ON {{ condition }}"
+  tesseract/join_types_left:
+    source: BaseQuery.ts
+    text: "LEFT"
