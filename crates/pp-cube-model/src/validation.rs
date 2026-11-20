@@ -1,4 +1,4 @@
-//! Accumulated structural diagnostics. SQL semantics are not certified here.
+//! Accumulated structural and baseline SQL diagnostics.
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Deserialize;
@@ -6,7 +6,7 @@ use serde_norway::Value;
 
 use crate::{locate_references, Model, Reference, ReferenceError};
 
-/// A structural fault. Paths are JSON Pointers; the empty path is the root.
+/// A model validation fault. Paths are JSON Pointers; the empty path is the root.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ValidationIssue {
     pub path: String,
@@ -15,7 +15,7 @@ pub struct ValidationIssue {
     pub message: String,
 }
 
-fn issue(out: &mut Vec<ValidationIssue>, path: &str, rule: &str, message: &str) {
+pub(super) fn issue(out: &mut Vec<ValidationIssue>, path: &str, rule: &str, message: &str) {
     out.push(ValidationIssue {
         path: path.into(),
         rule_id: rule.into(),
@@ -30,14 +30,14 @@ fn syntax() -> Vec<ValidationIssue> {
     issue(&mut out, "", "syntax", "The document could not be parsed");
     out
 }
-/// Validates YAML structure; an empty report does not certify SQL constraints.
+/// Validates YAML structure and baseline SQL constraints.
 pub fn validate_yaml(text: &str) -> Vec<ValidationIssue> {
     match serde_norway::from_str(text) {
         Ok(value) => validate(value),
         Err(_) => syntax(),
     }
 }
-/// Validates strict JSON structure, retaining the loader's parser settings.
+/// Validates strict JSON and baseline SQL, retaining the loader's parser settings.
 pub fn validate_json(text: &str) -> Vec<ValidationIssue> {
     let mut parser = serde_json_lenient::Deserializer::from_str(text);
     parser.set_ignore_trailing_commas(false);
@@ -48,7 +48,7 @@ pub fn validate_json(text: &str) -> Vec<ValidationIssue> {
     }
 }
 /// Checks typed definitions, including programmatic mutations. Unknown fields
-/// cannot survive deserialization. Deferred SQL restrictions are not checked.
+/// cannot survive deserialization. Baseline SQL restrictions are checked.
 pub fn validate_model(model: &Model) -> Vec<ValidationIssue> {
     match serde_norway::to_value(model) {
         Ok(value) => validate(value),
@@ -56,10 +56,10 @@ pub fn validate_model(model: &Model) -> Vec<ValidationIssue> {
     }
 }
 
-fn text<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
+pub(super) fn text<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
     v.get(key)?.as_str()
 }
-fn items<'a>(v: &'a Value, key: &str) -> &'a [Value] {
+pub(super) fn items<'a>(v: &'a Value, key: &str) -> &'a [Value] {
     v.get(key)
         .and_then(Value::as_sequence)
         .map(Vec::as_slice)
@@ -70,6 +70,7 @@ fn validate(value: Value) -> Vec<ValidationIssue> {
     let mut out = Vec::new();
     shape(&value, "", "model", &mut out);
     semantics(&value, &mut out);
+    crate::sql_validation::validate(&value, &mut out);
     out.sort();
     out.dedup();
     out

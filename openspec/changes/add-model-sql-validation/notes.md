@@ -26,3 +26,39 @@ Verification:
 - Strict OpenSpec validation: seven items passed, none failed; all four required planning artifacts exist.
 - Fast check passed: four steps, none skipped. Official versioned parser documentation confirms GenericDialect and Parser::parse_sql.
 - Exact-head CI evidence will be posted on the Draft PR after checkpoint. These checks validate planning consistency, not unimplemented SQL validation behavior.
+
+## Implementation: 2026-11-20
+
+Implemented with Codex / OpenAI GPT-6. Public validation now parses SQL without
+changing source text. Model tests pass across YAML, JSON and typed entry points.
+The initial malformed-SQL test failed before implementation and passed afterward;
+the row-query rejection matrix likewise exposed the missing construct checks.
+One fast-check failure was a Clippy type-complexity diagnostic, fixed with a
+private result type alias; the subsequent fast check passed (4 steps, 0 skipped).
+
+Dependency review: sqlparser =0.64.0, Apache-2.0, visitor enabled; optional stack extension disabled because its transitive LLVM-exception licence
+is outside the existing policy; parser recursion limit retained. New transitive packages are parser/visitor support. Existing package versions and upstream pin remain unchanged. Cargo.lock
+requires risk:upstream. No root configuration, harness, vendor or snapshots edited.
+
+Built-in aggregate classification was checked against official source indexes:
+- https://github.com/prestodb/presto/blob/master/presto-docs/src/main/sphinx/functions/aggregate.rst
+- https://github.com/apache/doris-website/tree/master/docs/sql-manual/sql-functions/aggregate-functions
+- https://druid.apache.org/docs/latest/querying/sql-aggregations/
+Opaque UDF semantics still require catalog knowledge; no function allowlist is
+introduced. GenericDialect remains the parsing boundary. Cyclic member traversal
+terminates; a separate cycle rejection policy is not introduced by this change.
+
+Scope review: above 400 lines including tests/dependency lock entries. Kept together
+because parsing, reference provenance and aggregate dependencies implement one
+independently testable validation boundary. Existing compile golden output and
+metadata regressions run through the repository check command.
+
+Final archive occurs before final review in this same Draft PR, as required by
+repository workflow. Exact-SHA CI/review evidence belongs in PR comments/artifacts.
+
+CI initially rejected ar_archive_writer's Apache-2.0 WITH LLVM-exception licence,
+introduced by sqlparser's optional recursive stack extension. Disabled that optional
+feature in the crate manifest instead of changing harness policy. The parser's
+own recursion counter remains enabled, with a public-interface excessive-nesting
+regression. Final dependency additions are sqlparser, sqlparser_derive and syn 1.x;
+existing versions are unchanged.
