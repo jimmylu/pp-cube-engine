@@ -22,6 +22,15 @@ templates:
   expressions/wrap_boolean_dimension:
     source: BaseQuery.ts
     text: "{{ expr }}"
+  expressions/cast:
+    source: BaseQuery.ts
+    text: "CAST({{ expr }} AS {{ data_type }})"
+  expressions/concat_strings:
+    source: BaseQuery.ts
+    text: "{{ strings | join(' || ' ) }}"
+  types/string:
+    source: PrestodbQuery.ts
+    text: "VARCHAR"
   expressions/order_by:
     source: BaseQuery.ts
     text: "{% if index %} {{ index }} {% else %} {{ expr }} {% endif %} {% if asc %}ASC{% else %}DESC{% endif %}{% if nulls_first %} NULLS FIRST{% endif %}"

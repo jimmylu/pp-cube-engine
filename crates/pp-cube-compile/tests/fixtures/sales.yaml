@@ -25,3 +25,20 @@ cubes:
       - { name: channel_cd, sql: "{CUBE}.channel_cd", type: string }
     measures:
       - { name: amount, type: sum, sql: "{CUBE}.amount" }
+  - name: orders
+    sql_table: dw.order_hdr
+    data_source: warehouse
+    dimensions:
+      - { name: order_no, sql: "{CUBE}.order_no", type: number, primary_key: true }
+      - { name: channel_cd, sql: "{CUBE}.channel_cd", type: string }
+    measures:
+      - { name: row_count, type: count }
+  - name: order_lines
+    sql_table: dw.order_line
+    data_source: warehouse
+    dimensions:
+      - { name: order_no, sql: "{CUBE}.order_no", type: number, primary_key: true }
+      - { name: line_no, sql: "{CUBE}.line_no", type: number, primary_key: true }
+      - { name: channel_cd, sql: "{CUBE}.channel_cd", type: string }
+    measures:
+      - { name: row_count, type: count }

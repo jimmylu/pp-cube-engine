@@ -77,6 +77,16 @@ fn boolean_dimension_groups_by_its_condition() {
 }
 
 #[test]
+fn count_over_a_cube_with_one_primary_key() {
+    insta::assert_snapshot!(compiled("orders", &["row_count"]));
+}
+
+#[test]
+fn count_over_a_cube_with_a_composite_primary_key() {
+    insta::assert_snapshot!(compiled("order_lines", &["row_count"]));
+}
+
+#[test]
 fn unknown_member_is_a_query_failure_naming_it() {
     let unknown_measure = compile_presto(&["sales.missing"], &[]);
     let unknown_cube = compile_presto(&[], &["nowhere.channel_cd"]);

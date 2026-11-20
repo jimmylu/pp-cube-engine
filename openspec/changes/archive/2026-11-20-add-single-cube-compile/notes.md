@@ -61,6 +61,13 @@ Not as planned:
 - Indexing into the model by positions found in the same model is kept; it
   cannot fail, since the model is immutable behind its `Arc`.
 
+Review of the first delivery (Codex, openai/gpt-6.1-sol), posted on the pull
+request: one finding. A count without `sql` over a cube with a composite
+primary key failed, because the planner counts the concatenated keys and three
+templates were missing: `types/string`, `expressions/cast`,
+`expressions/concat_strings`. Added, with snapshots for one key and for two.
+A count over a cube with no primary key is `count(*)`.
+
 Open: delivery; execution of the SQL on Presto has never happened (T1, T2).
 
 Learned:
