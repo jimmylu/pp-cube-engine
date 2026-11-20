@@ -19,5 +19,6 @@ pub use reference::{
     locate_references, parse_references, Located, Reference, ReferenceError, Target,
 };
 
+mod sql_validation;
 mod validation;
 pub use validation::{validate_json, validate_model, validate_yaml, ValidationIssue};

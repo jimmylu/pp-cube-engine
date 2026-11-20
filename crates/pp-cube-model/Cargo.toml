@@ -15,6 +15,7 @@ serde_json = "1"
 # upstream planner's serde_json is built. This fork is a separate package.
 serde_json_lenient = { version = "0.2", features = ["float_roundtrip"] }
 serde_norway = "0.9"
+sqlparser = { version = "=0.64.0", default-features = false, features = ["std", "visitor"] }
 
 [lints]
 workspace = true
