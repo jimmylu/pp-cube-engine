@@ -19,6 +19,9 @@ templates:
   expressions/query_aliased:
     source: BaseQuery.ts
     text: "{{ query }} AS {{ quoted_alias }}"
+  expressions/wrap_boolean_dimension:
+    source: BaseQuery.ts
+    text: "{{ expr }}"
   expressions/order_by:
     source: BaseQuery.ts
     text: "{% if index %} {{ index }} {% else %} {{ expr }} {% endif %} {% if asc %}ASC{% else %}DESC{% endif %}{% if nulls_first %} NULLS FIRST{% endif %}"

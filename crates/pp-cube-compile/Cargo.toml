@@ -13,7 +13,9 @@ pp-cube-dialect = { path = "../pp-cube-dialect" }
 pp-cube-model = { path = "../pp-cube-model" }
 
 [dev-dependencies]
-insta = { version = "1", default-features = false }
+# Held at 1.43: later releases depend on tempfile, whose rustix switches on a
+# bitflags feature, and bitflags is one of the planner's dependencies.
+insta = { version = "~1.43", default-features = false }
 
 [lints]
 workspace = true

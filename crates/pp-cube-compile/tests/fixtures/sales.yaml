@@ -4,6 +4,7 @@ cubes:
     data_source: warehouse
     dimensions:
       - { name: channel_cd, sql: "{CUBE}.channel_cd", type: string }
+      - { name: is_valid, sql: "{CUBE}.is_valid = 1", type: boolean }
     measures:
       - { name: row_count, type: count }
       - { name: order_count, type: count_distinct, sql: "{CUBE}.order_no" }
@@ -17,3 +18,10 @@ cubes:
         filters:
           - sql: "{CUBE}.category_cd = 'TOY'"
       - { name: amount_per_order, type: number, sql: "{amount} / NULLIF({order_count}, 0)" }
+  - name: valid_sales
+    sql: SELECT channel_cd, amount FROM dw.sales_dtl WHERE is_valid = 1
+    data_source: warehouse
+    dimensions:
+      - { name: channel_cd, sql: "{CUBE}.channel_cd", type: string }
+    measures:
+      - { name: amount, type: sum, sql: "{CUBE}.amount" }

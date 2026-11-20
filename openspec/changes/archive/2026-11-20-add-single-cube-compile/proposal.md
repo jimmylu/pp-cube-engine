@@ -18,13 +18,12 @@ The workspace can load a model but has never produced SQL. The public design res
 None.
 
 ## Impact
-- `crates/pp-cube-adapter/**`, `crates/pp-cube-dialect/**`, `crates/pp-cube-compile/**`: new code and tests. `crates/pp-cube-model/**`: the query type.
-- `templates/presto/**`: template data with the upstream file and commit it was taken from.
-- `Cargo.lock`: `minijinja` becomes a direct dependency at the version and features the planner already uses; `insta` is new, for tests only. The gate labels this `risk:upstream`; the pin does not move.
+- `crates/pp-cube-adapter/**`, `crates/pp-cube-dialect/**`, `crates/pp-cube-compile/**`: new code and tests. `crates/pp-cube-model/**`: the query type, and the position of each reference in an expression.
+- `templates/presto.yaml`: template data with the upstream file and commit it was taken from.
+- `Cargo.lock`: `minijinja` becomes a direct dependency at the version and features the planner already uses; `insta` and `similar` are new, for tests only. No existing package's features change. The gate labels this `risk:upstream`; the pin does not move.
 - `openspec/changes/seed-baseline-specs/specs/compile-b0/spec.md`: the moved requirement is deleted.
 - Snapshots under `crates/pp-cube-compile/tests/snapshots/`; the gate labels them `risk:golden`.
-- Depends on the open pull request #17 for `parse_references`; implementation starts after it merges.
-- Size: an estimated 1,500 lines without snapshots. It is one behaviour, the first SQL, and no smaller part of it can be tested on its own.
+- Size: about 1,900 lines without snapshots, against an estimate of 1,500. It is one behaviour, the first SQL, and no smaller part of it can be tested on its own.
 
 ## Out of Scope
 Query filters, order, limit, offset, time dimensions, timezone, segments and joins. Doris and Druid. Output columns, used cubes, fingerprint and the four-way error classification of `compile-result`. Model bundles, the per-thread planner cache, the service. Execution of the generated SQL (tiers T1 and T2). Harness paths and `vendor/`.

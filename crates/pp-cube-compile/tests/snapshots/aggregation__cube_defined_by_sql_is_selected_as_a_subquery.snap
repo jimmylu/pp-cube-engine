@@ -1,0 +1,7 @@
+---
+source: crates/pp-cube-compile/tests/aggregation.rs
+expression: "compiled(\"valid_sales\", &[\"amount\"])"
+---
+SELECT "valid_sales".channel_cd "valid_sales__channel_cd", sum("valid_sales".amount) "valid_sales__amount"  
+FROM  (SELECT channel_cd, amount FROM dw.sales_dtl WHERE is_valid = 1)  AS "valid_sales" GROUP BY 1 ORDER BY  2  DESC
+-- parameters: []

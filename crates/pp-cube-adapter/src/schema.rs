@@ -26,7 +26,7 @@ use cubesqlplanner::cube_bridge::segment_definition::SegmentDefinition;
 use cubesqlplanner::cube_bridge::struct_with_sql_member::StructWithSqlMember;
 use cubesqlplanner::cube_bridge::timeshift_definition::TimeShiftDefinition;
 use cubesqlplanner::cube_bridge::view_filter_definition::ViewFilterDefinition;
-use pp_cube_model::{Cube, DimensionType, MeasureType, Model};
+use pp_cube_model::{Cube, DimensionType, MeasureType, Model, Query};
 
 use crate::expression::Expression;
 use crate::unavailable;
@@ -80,6 +80,18 @@ impl Evaluator {
             .chain(segments)
             .cloned()
             .collect()
+    }
+
+    /// Fails for the first member of `query` that the model does not declare.
+    /// The planner would refuse it too, with a message that leaves out the cube.
+    pub(crate) fn check(&self, query: &Query) -> Result<(), CubeError> {
+        for measure in &query.measures {
+            self.measure_index(measure)?;
+        }
+        for dimension in &query.dimensions {
+            self.dimension_index(dimension)?;
+        }
+        Ok(())
     }
 
     fn cube_index(&self, name: &str) -> Result<usize, CubeError> {

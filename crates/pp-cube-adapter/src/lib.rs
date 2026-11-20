@@ -74,6 +74,7 @@ pub fn plan(
     dialect: &'static Dialect,
 ) -> Result<Planned, PlanError> {
     let evaluator = Rc::new(Evaluator::new(model.clone()));
+    evaluator.check(query)?;
     let joins = Rc::new(Joins);
     let tools = Rc::new(Tools::new(evaluator.clone(), dialect, joins.clone()));
     let security_context = Rc::new(Opaque);
