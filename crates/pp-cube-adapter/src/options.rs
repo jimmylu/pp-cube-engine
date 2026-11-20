@@ -84,9 +84,16 @@ impl Options {
                 .map(OptionsMember::MemberName)
                 .collect()
         };
-        let order = query.order.iter().map(|order| OrderByItem {
-            id: order.member.clone(),
-            desc: Some(order.direction == Direction::Desc),
+        // An order written empty stays `Some`: it turns the planner's default
+        // order off, where an absent one asks for it.
+        let order = query.order.as_ref().map(|order| {
+            order
+                .iter()
+                .map(|order| OrderByItem {
+                    id: order.member.clone(),
+                    desc: Some(order.direction == Direction::Desc),
+                })
+                .collect()
         });
         Self {
             measures: members(&query.measures),
@@ -103,7 +110,7 @@ impl Options {
                 timezone: None,
                 filters: Some(query.filters.iter().map(filter_item).collect())
                     .filter(|filters: &Vec<_>| !filters.is_empty()),
-                order: Some(order.collect()).filter(|order: &Vec<_>| !order.is_empty()),
+                order,
                 limit: None,
                 // The planner reads the row limit from here, not from `limit`.
                 row_limit: query.limit.map(|limit| limit.to_string()),

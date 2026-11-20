@@ -12,7 +12,7 @@ The kernel SHALL preserve nested and/or groups and combine top-level filters wit
 - **WHEN** a query has two top-level filters, one of them an or group that contains an and group
 - **THEN** SQL joins the top-level entries with AND and keeps each group's nesting and operator
 ### Requirement: Segments, order and row limits
-The kernel SHALL accept segments, order, limit and offset in Cube's query format. Order SHALL name measures or dimensions of the query and SHALL be applied in the sequence it is written; an order on any other member SHALL be refused, not dropped.
+The kernel SHALL accept segments, order, limit and offset in Cube's query format. Order SHALL name measures or dimensions of the query and SHALL be applied in the sequence it is written; an order on any other member SHALL be refused, not dropped. A query without an order SHALL get the planner's default order; an order written empty SHALL produce no ORDER BY.
 #### Scenario: B0-QUERY-007 Segment, order, limit and offset
 - **WHEN** a query names a segment, orders by two members in opposite directions, and sets a limit and an offset
 - **THEN** SQL applies the segment's condition, orders by both members in the written sequence and direction, and carries the limit and the offset

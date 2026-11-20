@@ -52,10 +52,10 @@ fn query_loads_from_cube_query_json() {
                 ]),
             ]),
         ],
-        order: vec![
+        order: Some(vec![
             order("sales.channel_cd", Direction::Asc),
             order("sales.amount", Direction::Desc),
-        ],
+        ]),
         limit: Some(50),
         offset: Some(100),
     };
@@ -67,14 +67,36 @@ fn query_loads_from_cube_query_json() {
 fn order_is_kept_as_written_in_either_form() {
     let as_object = r#"{"order": {"sales.z": "desc", "sales.a": "asc"}}"#;
     let as_pairs = r#"{"order": [["sales.z", "desc"], ["sales.a", "asc"]]}"#;
-    let expected = vec![
+    let expected = Some(vec![
         order("sales.z", Direction::Desc),
         order("sales.a", Direction::Asc),
-    ];
+    ]);
 
     let loaded = [as_object, as_pairs].map(|text| load_query(text).map(|query| query.order));
 
     assert_eq!(loaded, [Ok(expected.clone()), Ok(expected)]);
+}
+
+#[test]
+fn order_written_empty_is_not_an_absent_order() {
+    let loaded = [r#"{"order": {}}"#, r#"{"order": []}"#, "{}"]
+        .map(|text| load_query(text).map(|query| query.order));
+
+    assert_eq!(loaded, [Ok(Some(vec![])), Ok(Some(vec![])), Ok(None)]);
+}
+
+#[test]
+fn empty_and_absent_order_each_survive_a_json_round_trip() {
+    let round_trip = |text: &str| {
+        let query = load_query(text).expect("the query loads");
+        let written = serde_json::to_string(&query).expect("a query serialises");
+        load_query(&written).map(|query| query.order)
+    };
+
+    assert_eq!(
+        [round_trip(r#"{"order": []}"#), round_trip("{}")],
+        [Ok(Some(vec![])), Ok(None)]
+    );
 }
 
 #[test]

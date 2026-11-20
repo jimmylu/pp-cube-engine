@@ -21,12 +21,14 @@ pub struct Query {
     #[serde(default)]
     pub filters: Vec<Filter>,
     /// In the sequence it was written, whichever of Cube's two forms was used.
+    /// Absent means the planner's default order; written empty means no order.
     #[serde(
         default,
         deserialize_with = "read_order",
-        serialize_with = "write_order"
+        serialize_with = "write_order",
+        skip_serializing_if = "Option::is_none"
     )]
-    pub order: Vec<Order>,
+    pub order: Option<Vec<Order>>,
     pub limit: Option<u64>,
     pub offset: Option<u64>,
 }
@@ -157,7 +159,7 @@ impl From<Filter> for FilterFields {
 
 /// Cube writes order as `{"member": "asc"}` or as `[["member", "asc"]]`.
 /// Reading the object as a sequence of entries keeps the order it was written in.
-fn read_order<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<Order>, D::Error> {
+fn read_order<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Vec<Order>>, D::Error> {
     struct Written;
 
     impl<'de> Visitor<'de> for Written {
@@ -184,10 +186,18 @@ fn read_order<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<Order>, 
         }
     }
 
-    deserializer.deserialize_any(Written)
+    deserializer.deserialize_any(Written).map(Some)
 }
 
-fn write_order<S: Serializer>(order: &[Order], serializer: S) -> Result<S::Ok, S::Error> {
+#[expect(
+    clippy::ref_option,
+    reason = "serde passes the field by reference; absent is skipped before this runs"
+)]
+fn write_order<S: Serializer>(
+    order: &Option<Vec<Order>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    let order = order.as_deref().unwrap_or_default();
     let mut pairs = serializer.serialize_seq(Some(order.len()))?;
     for item in order {
         pairs.serialize_element(&(&item.member, item.direction))?;

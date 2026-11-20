@@ -140,7 +140,7 @@ impl Evaluator {
             self.check_filter(filter)?;
         }
         // The planner drops an order on anything else without a word.
-        for order in &query.order {
+        for order in query.order.iter().flatten() {
             let selected =
                 query.measures.contains(&order.member) || query.dimensions.contains(&order.member);
             if !selected {

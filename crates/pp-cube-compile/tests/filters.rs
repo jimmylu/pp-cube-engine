@@ -123,6 +123,20 @@ fn segment_order_limit_and_offset() {
     ));
 }
 
+#[test]
+fn order_written_empty_turns_the_default_order_off() {
+    let ordered = |rest: &str| compiled(rest).contains("ORDER BY");
+
+    assert_eq!(
+        [
+            ordered(r#""order": {}"#),
+            ordered(r#""order": []"#),
+            ordered(r#""limit": 5"#),
+        ],
+        [false, false, true]
+    );
+}
+
 // scenario: B0-QUERY-002
 #[test]
 fn filter_on_an_unknown_member_names_it() {

@@ -51,4 +51,12 @@ Not as proposed, see design.md and the delta:
 - An order on a member the query does not select is refused.
 - Values are not checked against the member's type.
 
+## 2026-11-20: review, round 1
+
+Codex (OpenAI) found one P2: an order written empty was passed on as absent,
+so the planner put its default order back. Confirmed in the planner
+(`compile_order_by` keeps `Some(empty)`). Fixed: the query type keeps absent
+and empty apart; tests for both forms, loading and compiling; the requirement
+says so.
+
 Open: delivery. The SQL has not been executed (T1, T2).
