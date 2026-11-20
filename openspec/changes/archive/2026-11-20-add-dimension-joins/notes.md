@@ -131,4 +131,36 @@ Corrected: the stop record above named a commit by its hash, which the
 spelling check rejects, so the pushed commit of that record fails `t0`.
 The hash is replaced by words.
 
-Open: the owner's decision on the two findings; then the fixes and delivery.
+## 2026-11-20: the owner's decisions
+
+1. A join condition that reads a third cube: refuse it now and record it;
+   support it later, at lower priority. Recorded as the requirement "Join
+   conditions" (`B0-JOIN-005`); support is issue #22.
+2. Measures through a join that the planner compiles flat: keep refusing
+   them; support later, at lower priority. Already refused by `B0-JOIN-004`;
+   support is issue #23.
+
+The deferred requirements are issues labelled `after-baseline`, not seed
+requirements: the seed is the B0 backlog and is closed out before B1, and
+the owner gave these a lower priority than that. Each issue holds the
+requirement and a draft scenario; the change that adopts one assigns its id.
+
+## 2026-11-20: the two fixes
+
+By Claude (Anthropic) through omp. Both findings were reproduced by a failing
+test before the fix: the first returned SQL naming a cube it did not join;
+the second had not answered after twenty seconds.
+
+- Join conditions: a tree that needs a join whose condition reads a cube
+  other than its two is refused, with the planner's own wording for aliased
+  joins. The condition is followed through member expressions.
+- Path search: one breadth-first chain, then one search per join of that
+  chain with the join left out. The walk over every chain is gone. The deep
+  model now answers within the test run's hundredths of a second.
+- design.md has a table of what a join tree guarantees and where each point
+  is held. Before the fix, every other place an expression can read another
+  cube was probed: segments, measure filters, measure and dimension
+  expressions, one and two joins away. The planner joins the cubes for all
+  of them; only join conditions were open.
+
+Open: delivery. The SQL has not been executed (T1, T2).

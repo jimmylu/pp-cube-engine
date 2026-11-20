@@ -28,3 +28,9 @@ The kernel SHALL compile many_to_one and one_to_one joins as LEFT JOINs, startin
 #### Scenario: B0-JOIN-004 Cubes without a usable join
 - **WHEN** a query names two cubes that no join path connects, and another takes a measure from a cube reached through a join
 - **THEN** each compilation fails without SQL, naming the cubes or the measure
+
+### Requirement: Join conditions
+A join condition SHALL read only the cube that declares the join and the cube it joins. The kernel SHALL fail without SQL for a query that needs a join whose condition reads any other cube, directly or through a member whose expression reads it. A query that does not need that join SHALL compile.
+#### Scenario: B0-JOIN-005 Join condition reading another cube
+- **WHEN** sales joins stores on a condition that reads a member of regions, directly or through a dimension of stores, and one query groups sales by a store dimension while another reads sales alone
+- **THEN** the first fails without SQL, naming the join and the cube it reads, and the second compiles

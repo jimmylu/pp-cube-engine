@@ -252,6 +252,101 @@ cubes:
     );
 }
 
+// scenario: B0-JOIN-005
+#[test]
+fn join_whose_condition_reads_a_third_cube_is_refused_where_it_is_needed() {
+    let model = |condition: &str| {
+        r#"
+cubes:
+  - name: sales
+    sql_table: dw.sales_dtl
+    data_source: warehouse
+    joins: [{ name: stores, relationship: many_to_one, sql: "CONDITION" }]
+    dimensions: [{ name: sale_id, sql: "{CUBE}.sale_id", type: number, primary_key: true }]
+    measures: [{ name: amount, type: sum, sql: "{CUBE}.amount" }]
+  - name: stores
+    sql_table: dw.dim_store
+    data_source: warehouse
+    joins: [{ name: regions, relationship: many_to_one, sql: "{CUBE}.region_cd = {regions.region_cd}" }]
+    dimensions:
+      - { name: store_cd, sql: "{CUBE}.store_cd", type: string, primary_key: true }
+      - { name: store_name, sql: "{CUBE}.store_name", type: string }
+      - { name: region_key, sql: "{regions.region_cd}", type: string }
+  - name: regions
+    sql_table: dw.dim_region
+    data_source: warehouse
+    dimensions:
+      - { name: region_cd, sql: "{CUBE}.region_cd", type: string, primary_key: true }
+      - { name: active, sql: "{CUBE}.active", type: number }
+"#
+        .replace("CONDITION", condition)
+    };
+    let through_a_dimension = model("{CUBE}.region_cd = {stores.region_key}");
+    let directly = model("{CUBE}.store_cd = {stores.store_cd} AND {regions.active} = 1");
+    let by_store = r#"{"measures": ["sales.amount"], "dimensions": ["stores.store_name"]}"#;
+    let refused =
+        "The join `stores` of cube `sales` reads `regions`, which is neither side of the join";
+
+    assert_eq!(
+        [
+            failure_with(&through_a_dimension, by_store),
+            failure_with(&directly, by_store),
+        ],
+        [refused, refused]
+    );
+    let alone = compile_with(&directly, r#"{"measures": ["sales.amount"]}"#)
+        .expect("a query that does not need the join compiles");
+    assert!(!alone.sql.contains("JOIN"), "{}", alone.sql);
+}
+
+// scenario: B0-JOIN-002
+#[test]
+fn deep_model_with_two_joins_per_cube_is_answered_without_walking_every_chain() {
+    // Thirty layers of two cubes, each cube joining both cubes of the next
+    // layer: hundreds of millions of chains lead from the first layer to the
+    // last, and as many lead nowhere near a cube that is not connected.
+    const LAYERS: usize = 30;
+    let mut model = String::from("cubes:\n");
+    let mut cube = |name: &str, joined: &[String]| {
+        model.push_str(&format!(
+            "  - name: {name}\n    sql_table: dw.{name}\n    data_source: warehouse\n"
+        ));
+        if !joined.is_empty() {
+            model.push_str("    joins:\n");
+        }
+        for other in joined {
+            model.push_str(&format!(
+                "      - {{ name: {other}, relationship: many_to_one, sql: \"{{CUBE}}.{other}_id = {{{other}.id}}\" }}\n"
+            ));
+        }
+        model.push_str(
+            "    dimensions:\n      - { name: id, sql: \"{CUBE}.id\", type: number, primary_key: true }\n",
+        );
+    };
+    for layer in 0..LAYERS {
+        let next: Vec<String> = ["a", "b"]
+            .iter()
+            .filter(|_| layer + 1 < LAYERS)
+            .map(|side| format!("l{}{side}", layer + 1))
+            .collect();
+        cube(&format!("l{layer}a"), &next);
+        cube(&format!("l{layer}b"), &next);
+    }
+    cube("island", &[]);
+
+    let unconnected = failure_with(&model, r#"{"dimensions": ["l0a.id", "island.id"]}"#);
+    let ambiguous = failure_with(&model, r#"{"dimensions": ["l0a.id", "l29a.id"]}"#);
+
+    assert_eq!(
+        (unconnected, ambiguous),
+        (
+            "No join path connects cubes `l0a`, `island`: none of them reaches all the others"
+                .to_owned(),
+            "There is more than one join path from `l0a` to `l29a`".to_owned(),
+        )
+    );
+}
+
 #[test]
 fn join_to_a_cube_the_model_lacks_names_both_cubes() {
     let message = failure_with(

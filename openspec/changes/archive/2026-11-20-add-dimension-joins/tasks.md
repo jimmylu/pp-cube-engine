@@ -16,3 +16,8 @@ Each task is bounded to two hours.
 ## 4. Close
 - [x] 4.1 Verify that `Cargo.lock` is unchanged against `main` and that no existing snapshot changed.
 - [x] 4.2 Archive; verify the traceability step reports the four scenarios as specified and named by tests.
+
+## 5. After review and the owner's decisions of 2026-11-20
+- [x] 5.1 Add the requirement "Join conditions" with `B0-JOIN-005` to the delta and the main spec; record both decisions in design.md and proposal.md; open the two deferred requirements as issues labelled `after-baseline`. Verify with strict validation and the id audit.
+- [x] 5.2 Refuse a tree that needs a join whose condition reads a cube other than its two; add the test for `// scenario: B0-JOIN-005`; verify the message for a direct reference and for one through a dimension, and that a query not needing the join compiles.
+- [x] 5.3 Replace the walk over every chain by the bounded search; verify with a model thirty cubes deep, two joins per cube, that an unconnected query and an ambiguous one each answer at once.

@@ -5,7 +5,7 @@
 //! that one would choose.
 
 use std::any::Any;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -33,6 +33,12 @@ struct Edge {
 struct Tree {
     root: usize,
     edges: Vec<Edge>,
+}
+
+/// How one cube is reached from another.
+enum Chain {
+    One(Vec<Edge>),
+    Several,
 }
 
 pub(crate) struct Joins {
@@ -192,22 +198,7 @@ impl Joins {
                 }
             }
         }
-        while let Some((cube, expression)) = read.pending.pop() {
-            let targets = self
-                .model
-                .resolve(self.cube(cube), expression)
-                .map_err(|error| CubeError::user(error.to_string()))?;
-            for target in targets {
-                let (owner, name) = match target {
-                    Target::Column { .. } => continue,
-                    Target::Dimension(owner, dimension) => (owner, &dimension.name),
-                    Target::Measure(owner, measure) => (owner, &measure.name),
-                };
-                if let Some(owner) = self.position(&owner.name) {
-                    self.read(owner, name, &mut read);
-                }
-            }
-        }
+        self.follow(&mut read)?;
 
         let mut owners: Vec<usize> = read.measures.iter().map(|(cube, _)| *cube).collect();
         owners.sort_unstable();
@@ -239,46 +230,111 @@ impl Joins {
         ))
     }
 
-    /// The chains of joins that lead from `from` to `to`, as far as two: one
-    /// is the answer, two are an ambiguity.
-    fn paths(&self, from: usize, to: usize) -> Vec<Vec<Edge>> {
-        let mut found = Vec::new();
-        self.walk(from, to, &mut Vec::new(), &mut found);
-        found
+    /// Follows the expressions queued in `read` until none is left: each
+    /// member they refer to is noted, and its own expressions are queued.
+    fn follow<'m>(&'m self, read: &mut Read<'m>) -> Result<(), CubeError> {
+        while let Some((cube, expression)) = read.pending.pop() {
+            let targets = self
+                .model
+                .resolve(self.cube(cube), expression)
+                .map_err(|error| CubeError::user(error.to_string()))?;
+            for target in targets {
+                let (owner, name) = match target {
+                    Target::Column { .. } => continue,
+                    Target::Dimension(owner, dimension) => (owner, &dimension.name),
+                    Target::Measure(owner, measure) => (owner, &measure.name),
+                };
+                if let Some(owner) = self.position(&owner.name) {
+                    self.read(owner, name, read);
+                }
+            }
+        }
+        Ok(())
     }
 
-    /// Extends `walked`, a chain of joins from `start`, towards `to` along
-    /// every join that does not return to a cube already on the chain.
-    fn walk(&self, start: usize, to: usize, walked: &mut Vec<Edge>, found: &mut Vec<Vec<Edge>>) {
-        let at = walked.last().map_or(start, |step| step.to);
-        if at == to {
-            found.push(walked.clone());
-            return;
+    /// Fails if the condition of the join `edge` reads a cube other than the
+    /// two it joins, directly or through the expression of a member. The
+    /// planner would name that cube in the `ON` clause and not join it. Cube
+    /// joins such a cube first; the baseline refuses the join.
+    fn check_condition(&self, edge: Edge) -> Result<(), CubeError> {
+        let declaring = self.cube(edge.from);
+        let join = &declaring.joins[edge.join];
+        let mut read = Read::default();
+        read.pending.push((edge.from, join.sql.as_str()));
+        self.follow(&mut read)?;
+        let mut outside = read.cubes.iter();
+        match outside.find(|cube| **cube != edge.from && **cube != edge.to) {
+            None => Ok(()),
+            Some(outside) => Err(CubeError::user(format!(
+                "The join `{}` of cube `{}` reads `{}`, which is neither side of the join",
+                join.name,
+                declaring.name,
+                self.cube(*outside).name
+            ))),
         }
-        for edge in &self.edges[at] {
-            let visited = edge.to == start || walked.iter().any(|step| step.to == edge.to);
-            if visited || found.len() > 1 {
-                continue;
+    }
+
+    /// A shortest chain of joins from `from` to `to` that does not use the
+    /// join `without`, or `None` when `to` is not reached. One pass over the
+    /// joins.
+    fn reach(&self, from: usize, to: usize, without: Option<Edge>) -> Option<Vec<Edge>> {
+        let mut arrived_by: Vec<Option<Edge>> = vec![None; self.edges.len()];
+        let mut queue = VecDeque::from([from]);
+        while let Some(at) = queue.pop_front() {
+            if at == to {
+                let mut chain = Vec::new();
+                let mut at = to;
+                while let Some(edge) = arrived_by[at] {
+                    chain.push(edge);
+                    at = edge.from;
+                }
+                chain.reverse();
+                return Some(chain);
             }
-            walked.push(*edge);
-            self.walk(start, to, walked, found);
-            walked.pop();
+            for edge in &self.edges[at] {
+                let seen = edge.to == from || arrived_by[edge.to].is_some();
+                if seen || Some(*edge) == without {
+                    continue;
+                }
+                arrived_by[edge.to] = Some(*edge);
+                queue.push_back(edge.to);
+            }
         }
+        None
+    }
+
+    /// How `to` is reached from `from`: not at all, by one chain of joins, or
+    /// by more than one.
+    ///
+    /// A second chain, differing in any join, lacks some join of the first:
+    /// a chain holding them all would be the first. So there is another chain
+    /// exactly when `to` is still reached with one of those joins left out,
+    /// which takes one pass per join of the chain, however many chains the
+    /// model holds.
+    fn path(&self, from: usize, to: usize) -> Option<Chain> {
+        let chain = self.reach(from, to, None)?;
+        let mut joins = chain.iter();
+        let another = joins.any(|edge| self.reach(from, to, Some(*edge)).is_some());
+        Some(if another {
+            Chain::Several
+        } else {
+            Chain::One(chain)
+        })
     }
 
     /// The tree for `cubes`, or `None` when none of them reaches all the
-    /// others. Fails when there is more than one way to join them, or when
-    /// the joined cubes are not on one data source.
+    /// others. Fails when there is more than one way to join them, when a
+    /// join of the tree reads a cube it does not join, or when the joined
+    /// cubes are not on one data source.
     fn tree(&self, cubes: &[usize]) -> Result<Option<Tree>, CubeError> {
         let mut trees = cubes.iter().filter_map(|root| {
             let others = cubes.iter().filter(|cube| *cube != root);
-            let paths: Vec<_> = others
-                .map(|cube| (*cube, self.paths(*root, *cube)))
+            let chains: Option<Vec<_>> = others
+                .map(|cube| Some((*cube, self.path(*root, *cube)?)))
                 .collect();
-            let reaches_all = paths.iter().all(|(_, paths)| !paths.is_empty());
-            reaches_all.then_some((*root, paths))
+            Some((*root, chains?))
         });
-        let Some((root, paths)) = trees.next() else {
+        let Some((root, chains)) = trees.next() else {
             return Ok(None);
         };
         if let Some((other, _)) = trees.next() {
@@ -291,19 +347,22 @@ impl Joins {
             )));
         }
         let mut edges: Vec<Edge> = Vec::new();
-        for (cube, mut paths) in paths {
-            if paths.len() > 1 {
+        for (cube, chain) in chains {
+            let Chain::One(chain) = chain else {
                 return Err(CubeError::user(format!(
                     "There is more than one join path from `{}` to `{}`",
                     self.cube(root).name,
                     self.cube(cube).name
                 )));
-            }
-            for edge in paths.pop().unwrap_or_default() {
+            };
+            for edge in chain {
                 if !edges.contains(&edge) {
                     edges.push(edge);
                 }
             }
+        }
+        for edge in &edges {
+            self.check_condition(*edge)?;
         }
 
         let joined = std::iter::once(root).chain(edges.iter().map(|edge| edge.to));
