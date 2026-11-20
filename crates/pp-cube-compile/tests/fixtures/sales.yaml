@@ -4,6 +4,8 @@ cubes:
     data_source: warehouse
     dimensions:
       - { name: channel_cd, sql: "{CUBE}.channel_cd", type: string }
+      - { name: category_cd, sql: "{CUBE}.category_cd", type: string }
+      - { name: region_cd, sql: "{CUBE}.region_cd", type: string }
       - { name: is_valid, sql: "{CUBE}.is_valid = 1", type: boolean }
       - { name: qty, sql: "{CUBE}.qty", type: number }
       - { name: sold_at, sql: "{CUBE}.sold_at", type: time }
