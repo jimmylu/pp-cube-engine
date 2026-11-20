@@ -67,7 +67,7 @@ fn dimension_two_joins_away_is_reached_through_the_cube_between() {
 fn second_path_to_a_cube_is_refused_instead_of_choosing_one() {
     let two_paths =
         query_failure(r#"{"measures": ["refunds.amount"], "dimensions": ["regions.region_name"]}"#);
-    let two_roots = failure_with(
+    let two_roots = compile_with(
         r#"
 cubes:
   - name: orders
@@ -82,16 +82,14 @@ cubes:
     dimensions: [{ name: order_no, sql: "{CUBE}.order_no", type: number, primary_key: true }]
 "#,
         r#"{"dimensions": ["orders.order_no", "invoices.order_no"]}"#,
-    );
+    ).unwrap_err();
 
     assert_eq!(
-        (two_paths, two_roots),
-        (
-            "There is more than one join path from `refunds` to `regions`".to_owned(),
-            "Cubes `orders`, `invoices` can be joined starting from `orders` or from \
-             `invoices`; there is more than one join path"
-                .to_owned(),
-        )
+        two_paths,
+        "There is more than one join path from `refunds` to `regions`"
+    );
+    assert!(
+        matches!(two_roots, CompileError::Model(issues) if issues.iter().any(|i| i.rule_id == "duplicate-join"))
     );
 }
 
@@ -108,6 +106,7 @@ cubes:
     sql_table: dw.order_hdr
     data_source: warehouse
     joins: [{ name: customers, relationship: many_to_one, sql: "{CUBE}.customer_id = {customers.customer_id}" }]
+    dimensions: [{ name: id, sql: "{CUBE}.id", type: number, primary_key: true }]
     measures: [{ name: row_count, type: count }]
   - name: customers
     sql_table: crm.customer
@@ -195,7 +194,7 @@ cubes:
     sql_table: dw.sales_dtl
     data_source: warehouse
     joins: [{ name: receipts, relationship: one_to_one, sql: "{CUBE}.receipt_no = {receipts.receipt_no}" }]
-    dimensions: [{ name: channel_cd, sql: "{CUBE}.channel_cd", type: string }]
+    dimensions: [{ name: channel_cd, sql: "{CUBE}.channel_cd", type: string, primary_key: true }]
     measures: [{ name: amount, type: sum, sql: "{CUBE}.amount" }]
   - name: receipts
     sql_table: dw.receipt
@@ -236,7 +235,7 @@ cubes:
     sql_table: dw.sales_dtl
     data_source: warehouse
     joins: [{ name: receipts, relationship: one_to_one, sql: "{CUBE}.receipt_no = {receipts.receipt_no}" }]
-    dimensions: [{ name: receipt_no, sql: "{CUBE}.receipt_no", type: string }]
+    dimensions: [{ name: receipt_no, sql: "{CUBE}.receipt_no", type: string, primary_key: true }]
   - name: receipts
     sql_table: dw.receipt
     data_source: warehouse
@@ -350,7 +349,7 @@ fn deep_model_with_two_joins_per_cube_is_answered_without_walking_every_chain() 
 
 #[test]
 fn join_to_a_cube_the_model_lacks_names_both_cubes() {
-    let message = failure_with(
+    let error = compile_with(
         r#"
 cubes:
   - name: orders
@@ -360,10 +359,9 @@ cubes:
     measures: [{ name: row_count, type: count }]
 "#,
         r#"{"measures": ["orders.row_count"]}"#,
-    );
+    ).unwrap_err();
 
-    assert_eq!(
-        message,
-        "Cube `orders` joins `customers`, which is not in the model"
+    assert!(
+        matches!(error, CompileError::Model(issues) if issues.iter().any(|i| i.rule_id == "join-target"))
     );
 }
