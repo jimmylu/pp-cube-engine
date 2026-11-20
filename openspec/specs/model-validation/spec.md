@@ -22,3 +22,9 @@ Validation SHALL restrict cube sql to one single-table row-level SELECT, forbid 
 #### Scenario: B0-VALID-004 Expression constraints
 - **WHEN** a dimension or segment expression contains an aggregate function, or a member expression reaches another cube's column other than through a declared member
 - **THEN** validation rejects each at the expression's field
+
+### Requirement: Validation at the compile boundary
+The public compile facade SHALL validate the complete typed model before checking queries or security filters and before invoking the planner. Invalid models SHALL return a model error containing the existing deterministic validation report. The public error message SHALL NOT include SQL or physical schema details. Successful output for valid models SHALL remain unchanged.
+#### Scenario: B0-VALID-005 Invalid bundles cannot bypass validation
+- **WHEN** an invalid typed bundle is compiled, including with an independently invalid query or security filter
+- **THEN** compilation returns its model issues before query errors, without SQL, and leaves all inputs unchanged
