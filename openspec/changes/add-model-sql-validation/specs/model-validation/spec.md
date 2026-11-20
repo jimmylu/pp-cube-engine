@@ -1,5 +1,3 @@
-## Purpose
-Reject invalid or out-of-baseline models before they reach the planner.
 ## ADDED Requirements
 ### Requirement: Baseline SQL and joins
 Validation SHALL restrict cube sql to one single-table row-level SELECT, forbid aggregation outside measures, permit only many_to_one or one_to_one joins, and restrict expressions to own-cube columns and declared members. SQL validation SHALL NOT rewrite the text.
