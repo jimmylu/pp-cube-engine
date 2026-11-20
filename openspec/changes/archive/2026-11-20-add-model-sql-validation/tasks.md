@@ -17,10 +17,10 @@ Implementation authorized. Each implementation task is bounded to two hours.
 
 - [x] 3.1 Add B0-VALID-003 tests for one_to_many, undeclared references, time_shift, rolling_window and pre-aggregations. Verify located rejection for each alone and mixed with SQL faults, across YAML/JSON/typed entry points where representable; preserve structural diagnostic regressions.
 - [x] 3.2 Run model/compile tests and strict OpenSpec validation. Verify meaningful coverage of all three ids, unchanged existing golden SQL, metadata and source text, and no vendor/harness edits; record scope review and remaining limitations in notes.md.
-- [ ] 3.3 Run fast before checkpoint and CI before final review. Verify exact summary lines and dependency review, apply risk:upstream if Cargo.lock changes, and publish SHA-bound evidence outside Git.
+- [x] 3.3 Run fast before checkpoint and CI before final review. Verify exact summary lines and dependency review, apply risk:upstream if Cargo.lock changes, and publish SHA-bound evidence outside Git.
 
 ## Workflow follow-up
 
-- Continue apply in this one Draft PR only after a new implementation request.
+- Implementation authorized and completed in this Draft PR.
 - Archive the implemented requirement into the existing main spec before final review, per repository workflow. Other seed capabilities remain proposed.
 - Obtain different-vendor review and successful remote t0 before Ready. Owner approves the final head and merges.

@@ -62,3 +62,8 @@ feature in the crate manifest instead of changing harness policy. The parser's
 own recursion counter remains enabled, with a public-interface excessive-nesting
 regression. Final dependency additions are sqlparser, sqlparser_derive and syn 1.x;
 existing versions are unchanged.
+
+Final implementation checkpoint: 7d5b7122e81a4973fc525ca7c5d54f371675acfd, pushed to PR #26.
+Exact-head check ci: PASSED — 15 steps, 0 skipped, 36s @ 7d5b712.
+All eight tasks complete. Evidence posted outside Git. Final archive/review is
+the remaining delivery step; the owner merges. T1/T2 not run.
