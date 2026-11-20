@@ -40,3 +40,10 @@ User authorized apply. Implemented with Codex / OpenAI GPT-6.
 - Scope review: planning, tests and new snapshots take the PR beyond 400 lines; all implement one independently testable restriction path. No adapter, lockfile, vendor or harness changes were needed.
 - Verification: completeness, correctness and coherence match the four requirements and design. T1/T2 SQL execution remains not run.
 - Archived the four implemented requirements into the security-filters main spec. Next: checkpoint and run cross-vendor delivery review. Exact-head evidence belongs on PR #24. Owner merges.
+
+## 2026-11-20: first delivery review
+
+- Exact-head local CI and remote t0 passed. Claude review could not run because its provider quota was exhausted; DeepSeek V4 Pro produced the first completed review.
+- The review's archive-timing finding conflicts with repository policy. `docs/agents/workflow.md`, lifecycle table, explicitly says: "Before final review in the same Draft PR: sync the implemented spec delta into openspec/specs/ and the folder moves to openspec/changes/archive/". Owner approval and merge happen afterward. This is the policy used here; archive is branch-local until merge.
+- The controller's review prompt included AGENTS.md and the diff but omitted workflow.md because the active folder had already moved. Retain the required archive and supply this policy context in the change record for the next review.
+- Corrected the proposal's artifact paths and historical planning-only language to describe implementation and archive. Re-run cross-vendor review on the revised head; no product code changed.
