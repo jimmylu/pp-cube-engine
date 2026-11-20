@@ -1,6 +1,6 @@
 # Session notes
 
-## Current state: next PR planning
+## Planning history
 
 PR #27 merged; branch starts from origin/main 8e85004. User requested the next PR.
 Planning uses OpenSpec propose; implementation has not begun. All seven tasks
@@ -64,4 +64,11 @@ disabled. New SHA-256 uses sha2 0.11.1; cargo deny passed advisories, bans, lice
 and sources. Cargo.lock changes require risk:upstream; upstream pin unchanged.
 Scope exceeds 400 lines including tests/dependencies, retained as one complete
 successful-result behavior. No vendor/harness or existing golden snapshots changed.
-Final checks, archive and delivery remain pending; exact-head evidence goes on PR.
+Final working-tree CI passed 15 steps, 0 skipped (55s); fast also passed before
+checkpoint. Implementation is published on PR #28. Both implemented requirements
+are synced into main specs, and this folder is archived before final review per
+repository workflow. Cross-vendor review and exact-head CI evidence remain final
+delivery work, recorded on the PR without changing the reviewed commit. Owner
+approval/merge follows. T1/T2 not run.
+
+Current implementation tasks: 7/7 complete. Archive is complete; final delivery review is pending.
