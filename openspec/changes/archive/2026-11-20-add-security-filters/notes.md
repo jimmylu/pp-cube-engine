@@ -28,3 +28,15 @@ Verification:
 - CI first failed because the sandbox prevented the advisory database lock. Authorized execution outside the sandbox passed: `check ci: PASSED — 15 steps, 0 skipped, 32s @ d5bd5ff+dirty`.
 - These checks cover the planning working tree, not an exact published commit. Re-run CI on the committed head and store that evidence on the PR.
 - No Rust source, snapshots, main specs, vendor, dependency or harness paths changed. Security scenarios remain proposed and unimplemented.
+
+## 2026-11-20: implementation
+
+User authorized apply. Implemented with Codex / OpenAI GPT-6.
+- Added typed security filters to CompileContext and composed them before existing query/join validation. Caller inputs remain unchanged.
+- Test-first: the initial test failed on the missing context field. The empty-group test then reproduced unrestricted SQL; recursive validation now rejects it.
+- Nine facade/deserialization tests name all four scenario ids. Four new SQL snapshots were inspected and accepted using cargo insta review; existing snapshots are unchanged.
+- Tests cover exact channel/category/region grouping, conflicting conditions, parameter order, mandatory cube SQL, two-hop security-only joins and prohibited join trees.
+- Full compile-crate tests and strict OpenSpec validation passed. fast passed; CI passed 15 steps, none skipped (working tree evidence).
+- Scope review: planning, tests and new snapshots take the PR beyond 400 lines; all implement one independently testable restriction path. No adapter, lockfile, vendor or harness changes were needed.
+- Verification: completeness, correctness and coherence match the four requirements and design. T1/T2 SQL execution remains not run.
+- Archived the four implemented requirements into the security-filters main spec. Next: checkpoint and run cross-vendor delivery review. Exact-head evidence belongs on PR #24. Owner merges.

@@ -1,0 +1,12 @@
+---
+source: crates/pp-cube-compile/tests/security.rs
+expression: "outputs.join(\"\\n\\n\")"
+---
+SELECT sum("valid_sales".amount) "valid_sales__amount"  
+FROM  (SELECT channel_cd, amount FROM dw.sales_dtl WHERE is_valid = 1)  AS "valid_sales"
+-- parameters: []
+
+SELECT sum("valid_sales".amount) "valid_sales__amount"  
+FROM  (SELECT channel_cd, amount FROM dw.sales_dtl WHERE is_valid = 1)  AS "valid_sales"
+WHERE ("valid_sales".channel_cd <> ? OR "valid_sales".channel_cd IS NULL) AND ("valid_sales".channel_cd = ?)
+-- parameters: [Text("C9"), Text("C1")]

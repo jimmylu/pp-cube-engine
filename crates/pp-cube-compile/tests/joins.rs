@@ -15,6 +15,7 @@ fn compile_with(model: &str, query: &str) -> Result<Compiled, CompileError> {
     let context = CompileContext {
         dialect: DialectId::Presto,
         timezone: "UTC".to_owned(),
+        security_filters: Vec::new(),
     };
     compile(&model, &query, &context)
 }

@@ -1,0 +1,8 @@
+---
+source: crates/pp-cube-compile/tests/security.rs
+expression: "format!(\"{}\\n-- parameters: {:?}\", result.sql, result.parameters)"
+---
+SELECT sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE (("sales".channel_cd = ?) OR (("sales".channel_cd = ?) AND ("sales".qty > CAST(? AS DOUBLE)))) AND ("sales".channel_cd = ?) AND ("sales".qty < CAST(? AS DOUBLE))
+-- parameters: [Text("C1"), Text("C2"), Text("10"), Text("C9"), Text("20")]
