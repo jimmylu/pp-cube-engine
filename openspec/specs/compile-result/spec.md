@@ -1,7 +1,7 @@
 # compile-result Specification
 
 ## Purpose
-TBD - created by archiving change add-complete-compile-result. Update Purpose after archive.
+Give callers SQL, parameters and the metadata needed to interpret successful compilation.
 
 ## Requirements
 

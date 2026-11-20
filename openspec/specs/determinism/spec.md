@@ -1,7 +1,7 @@
 # determinism Specification
 
 ## Purpose
-TBD - created by archiving change add-complete-compile-result. Update Purpose after archive.
+Identify compilation inputs and build versions with a stable, correlation-independent fingerprint.
 
 ## Requirements
 
