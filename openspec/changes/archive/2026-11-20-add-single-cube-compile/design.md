@@ -31,7 +31,7 @@ Read from the pinned planner (`vendor/cube/rust/cube/cubesqlplanner/cubesqlplann
 - The facts above came from reading, not running → the tracer confirmed them: the bridge traits can be implemented outside the planner, the test binary links against system libraries only, and the first query returned SQL without a change to the design. Its findings are in notes.md.
 - Default templates are PostgreSQL style and Presto's `statements/select` differs → the golden SQL is Presto text nobody has executed; the snapshots say so, and execution stays with tiers T1 and T2.
 - Hand-transcribed templates can drift from upstream → each file names its source and commit; the upgrade procedure compares them.
-- About 1,900 lines in one pull request → it is one Draft with separate commits for the tracer with the two scenarios, and for the rest.
+- About 2,000 lines in one pull request → it is one Draft with separate commits for the tracer with the two scenarios, and for the rest.
 - `B0-AGG-001` is a matrix scenario → its test compiles all six aggregate types.
 
 ## Migration Plan
