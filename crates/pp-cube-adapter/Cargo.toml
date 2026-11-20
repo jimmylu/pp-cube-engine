@@ -8,6 +8,10 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Same version requirements as the pinned planner; the root manifest patches
+# chrono-tz to the fork upstream uses.
+chrono = "0.4.15"
+chrono-tz = "0.10.4"
 cubenativeutils = { path = "../../vendor/cube/rust/cube/cubenativeutils" }
 cubesqlplanner = { path = "../../vendor/cube/rust/cube/cubesqlplanner/cubesqlplanner" }
 # Same version requirement and features as the pinned planner.

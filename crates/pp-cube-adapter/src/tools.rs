@@ -5,6 +5,8 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use chrono::{NaiveDateTime, Offset, TimeZone};
+use chrono_tz::Tz;
 use cubenativeutils::CubeError;
 use cubesqlplanner::cube_bridge::base_query_options::FilterValue;
 use cubesqlplanner::cube_bridge::base_tools::BaseTools;
@@ -19,6 +21,7 @@ use cubesqlplanner::cube_bridge::query_context::QueryContextData;
 use cubesqlplanner::cube_bridge::security_context::SecurityContext;
 use cubesqlplanner::cube_bridge::sql_templates_render::SqlTemplatesRender;
 use cubesqlplanner::cube_bridge::sql_utils::SqlUtils;
+use minijinja::context;
 use pp_cube_dialect::{Dialect, DialectError};
 
 use crate::expression::Expression;
@@ -54,28 +57,43 @@ impl SqlTemplatesRender for Templates {
 pub(crate) struct Driver {
     dialect: &'static Dialect,
     templates: Rc<Templates>,
+    zone: Tz,
 }
 
 impl Driver {
-    pub(crate) fn new(dialect: &'static Dialect) -> Self {
+    pub(crate) fn new(dialect: &'static Dialect, zone: Tz) -> Self {
         Self {
             dialect,
             templates: Rc::new(Templates(dialect)),
+            zone,
         }
+    }
+
+    /// Renders one of the dialect's functions, kept as `driver/` templates.
+    fn function(&self, name: &str, arguments: minijinja::Value) -> Result<String, CubeError> {
+        self.dialect.render(name, arguments).map_err(dialect_error)
     }
 }
 
 impl DriverTools for Driver {
-    fn convert_tz(&self, _field: String) -> Result<String, CubeError> {
-        unavailable("the dialect function convert_tz")
+    // The zone's name comes from the timezone database, not from the caller's
+    // text, so it is safe inside the quotes of the template.
+    fn convert_tz(&self, field: String) -> Result<String, CubeError> {
+        self.function(
+            "driver/convert_tz",
+            context! { field, timezone => self.zone.name() },
+        )
     }
 
     fn time_grouped_column(
         &self,
-        _granularity: String,
-        _dimension: String,
+        granularity: String,
+        dimension: String,
     ) -> Result<String, CubeError> {
-        unavailable("the dialect function time_grouped_column")
+        self.function(
+            "driver/time_grouped_column",
+            context! { granularity, dimension },
+        )
     }
 
     fn sql_templates(&self) -> Result<Rc<dyn SqlTemplatesRender>, CubeError> {
@@ -83,19 +101,29 @@ impl DriverTools for Driver {
     }
 
     fn timestamp_precision(&self) -> Result<u32, CubeError> {
-        unavailable("the dialect setting timestamp_precision")
+        Ok(self.dialect.timestamp_precision())
     }
 
-    fn time_stamp_cast(&self, _field: String) -> Result<String, CubeError> {
-        unavailable("the dialect function time_stamp_cast")
+    fn time_stamp_cast(&self, field: String) -> Result<String, CubeError> {
+        self.function("driver/time_stamp_cast", context! { value => field })
     }
 
     fn date_time_cast(&self, _field: String) -> Result<String, CubeError> {
         unavailable("the dialect function date_time_cast")
     }
 
-    fn in_db_time_zone(&self, _date: String) -> Result<String, CubeError> {
-        unavailable("the dialect function in_db_time_zone")
+    /// A timestamp of the query's timezone as UTC text, the way Cube's
+    /// `localTimestampToUtc` (packages/cubejs-backend-shared/src/time.ts)
+    /// does it. The offset is looked up as if the local time were UTC, so
+    /// within a clock change's width of the change it is the offset of the
+    /// other side. That is kept: the kernel binds what Cube binds.
+    fn in_db_time_zone(&self, date: String) -> Result<String, CubeError> {
+        const FORMAT: &str = "%Y-%m-%dT%H:%M:%S%.3f";
+        let local = NaiveDateTime::parse_from_str(&date, FORMAT).map_err(|_| {
+            CubeError::internal(format!("`{date}` is not a timestamp the adapter wrote"))
+        })?;
+        let offset = self.zone.offset_from_utc_datetime(&local).fix();
+        Ok(format!("{}Z", (local - offset).format(FORMAT)))
     }
 
     fn get_allocated_params(&self) -> Result<Vec<String>, CubeError> {
@@ -174,11 +202,12 @@ impl Tools {
     pub(crate) fn new(
         evaluator: Rc<Evaluator>,
         dialect: &'static Dialect,
+        zone: Tz,
         joins: Rc<Joins>,
     ) -> Self {
         Self {
             evaluator,
-            driver: Rc::new(Driver::new(dialect)),
+            driver: Rc::new(Driver::new(dialect, zone)),
             joins,
         }
     }

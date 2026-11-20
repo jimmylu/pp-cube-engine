@@ -53,6 +53,7 @@ pub struct Dialect {
     sources: HashMap<String, String>,
     engine: Environment<'static>,
     reuses_parameters: bool,
+    timestamp_precision: u32,
 }
 
 #[derive(Deserialize)]
@@ -61,6 +62,8 @@ struct DataFile {
     /// The upstream commit the templates were taken from; for readers of the file.
     #[serde(rename = "commit")]
     _commit: String,
+    /// The digits after the second in a timestamp the engine is given.
+    timestamp_precision: u32,
     templates: HashMap<String, TemplateEntry>,
 }
 
@@ -114,6 +117,7 @@ impl Dialect {
             sources,
             engine,
             reuses_parameters,
+            timestamp_precision: file.timestamp_precision,
         })
     }
 
@@ -148,5 +152,9 @@ impl Dialect {
     /// Whether one bound value may be referred to by several placeholders.
     pub fn reuses_parameters(&self) -> bool {
         self.reuses_parameters
+    }
+
+    pub fn timestamp_precision(&self) -> u32 {
+        self.timestamp_precision
     }
 }

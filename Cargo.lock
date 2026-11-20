@@ -981,6 +981,8 @@ dependencies = [
 name = "pp-cube-adapter"
 version = "0.0.0"
 dependencies = [
+ "chrono",
+ "chrono-tz",
  "cubenativeutils",
  "cubesqlplanner",
  "minijinja",

@@ -14,6 +14,7 @@ fn compile_presto(query: &str) -> Result<Compiled, CompileError> {
     let query = load_query(query).expect("the query loads");
     let context = CompileContext {
         dialect: DialectId::Presto,
+        timezone: "UTC".to_owned(),
     };
     compile(&model, &query, &context)
 }

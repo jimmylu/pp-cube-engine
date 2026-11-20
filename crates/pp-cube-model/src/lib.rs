@@ -11,7 +11,10 @@ pub use model::{
     Cube, Dimension, DimensionType, Join, Measure, MeasureFilter, MeasureType, Model, Relationship,
     Segment,
 };
-pub use query::{Condition, Direction, Filter, Operator, Order, Query};
+pub use query::{
+    Condition, DateRange, DateValue, Direction, Filter, Granularity, Operator, Order, Query,
+    TimeDimension,
+};
 pub use reference::{
     locate_references, parse_references, Located, Reference, ReferenceError, Target,
 };

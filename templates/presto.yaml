@@ -2,7 +2,12 @@
 # Only the templates the kernel renders so far are here; a request for any
 # other fails with an error naming it. `source` is the upstream file under
 # packages/cubejs-schema-compiler/src/adapter/ that defines the text.
+#
+# The `driver/` templates are not templates upstream: each is the body of
+# the method of that name in `source`, with its arguments as holes.
 commit: 486f0d26bab58ab4fe0be0e4cdd39818b35a7870
+# BaseQuery.ts, timestampPrecision; Presto does not override it.
+timestamp_precision: 3
 templates:
   statements/select:
     source: PrestodbQuery.ts
@@ -97,3 +102,18 @@ templates:
   tesseract/number_param_cast:
     source: PrestodbQuery.ts
     text: "CAST({{ expr }} AS DOUBLE)"
+  filters/time_range_filter:
+    source: BaseQuery.ts
+    text: "{{ column }} >= {{ from_timestamp }} AND {{ column }} <= {{ to_timestamp }}"
+  filters/time_not_in_range_filter:
+    source: BaseQuery.ts
+    text: "{{ column }} < {{ from_timestamp }} OR {{ column }} > {{ to_timestamp }}"
+  driver/time_stamp_cast:
+    source: PrestodbQuery.ts
+    text: "from_iso8601_timestamp({{ value }})"
+  driver/time_grouped_column:
+    source: PrestodbQuery.ts
+    text: "date_trunc('{{ granularity }}', {{ dimension }})"
+  driver/convert_tz:
+    source: PrestodbQuery.ts
+    text: "CAST(date_add('minute', timezone_minute(COALESCE({{ field }}, CAST(NULL AS TIMESTAMP)) AT TIME ZONE '{{ timezone }}'), date_add('hour', timezone_hour(COALESCE({{ field }}, CAST(NULL AS TIMESTAMP)) AT TIME ZONE '{{ timezone }}'), COALESCE({{ field }}, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP)"

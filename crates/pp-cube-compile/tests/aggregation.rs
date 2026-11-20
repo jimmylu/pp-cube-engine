@@ -20,6 +20,7 @@ fn compile_presto(measures: &[&str], dimensions: &[&str]) -> Result<Compiled, Co
     };
     let context = CompileContext {
         dialect: DialectId::Presto,
+        timezone: "UTC".to_owned(),
     };
     compile(&model(), &query, &context)
 }
