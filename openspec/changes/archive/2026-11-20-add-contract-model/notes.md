@@ -92,3 +92,30 @@ Open: review of these fixes by a vendor other than Anthropic (task 3.2); group 2
 Learned: to see whether a dependency change touches the planner's build, compare
 each package's resolved features from `cargo metadata` before and after. Adding
 `serde_json_lenient` changed none; `struson` switched on a `serde_core` feature.
+
+## 2026-11-20: second implementation pull request and archive
+By Claude (Anthropic) through omp, test first. Tasks 2.1 to 2.3 and 3.3.
+- `Join`, `Relationship` and `Segment` types; `Cube` gains `joins` and `segments`.
+- `parse_references` finds the three forms; `Model::resolve` maps them to a
+  column, dimension or measure, and `Model::cube` finds a join's target.
+- Tests for `B0-MODEL-004`; each malformed use of braces is rejected at the
+  offset where it opens.
+- Archived: `openspec/specs/contract-model/spec.md` holds three requirements.
+
+Decided while implementing:
+- A segment cannot be referenced from an expression, and `{CUBE.member}` is not
+  a fourth form; see design.md.
+- The owner's rule for `meta` numbers changed what loads, so it is now its own
+  requirement, "Exact metadata numbers", with scenario `B0-MODEL-005`. Without
+  it the main spec would still promise that `meta` is always preserved.
+
+Review of the first delivery (Codex, openai/gpt-6.1-sol), posted on the pull
+request: one finding, an unmatched closing brace was accepted. Fixed with
+regression cases; the scanner now rejects a `}` that no `{` opens.
+
+Open: delivery through `scripts/dev deliver`; the review of the first pull
+request's fixes is covered by the review of this one only where the diff touches
+them. The seed keeps "Cube fields" and "Immutable model bundles".
+
+Learned: after #16 a change is one Draft pull request; task lists no longer
+carry CI or review steps, because that evidence is posted on the pull request.
