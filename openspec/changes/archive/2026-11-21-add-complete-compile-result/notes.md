@@ -1,85 +1,77 @@
 # Session notes
 
-## Planning history
+## Current handoff state: stopped after bounded review repair
 
-PR #27 merged; branch starts from origin/main 8e85004. User requested the next PR.
-Planning uses OpenSpec propose; implementation has not begun. All seven tasks
-remain pending. No product code, dependencies, main specs, snapshots or vendor
-files changed in this planning increment.
+PR: https://github.com/jimmylu/pp-cube-engine/pull/28
+Branch: change/add-complete-compile-result
+Last reviewed implementation: 69f0294e47ba273b7c649be4b69f7e456d228454.
+Tasks 1–6 complete; task 7 remains open. The two requirements have already been
+synced into main compile-result/determinism specs and this folder is archived,
+as repository workflow requires before final review. Implementation/checkpoint
+publication is complete and risk:upstream is applied. Clean cross-vendor review
+and final accepted exact-head evidence are NOT complete. PR remains Draft.
+Owner approval and merge have not been requested.
 
-Selected complete compile result plus fingerprint identity, transferring the
-whole requirements and preserving B0-RESULT-001/B0-DET-002. Classified errors and
-all-golden process determinism remain in the seed. Adapter currently returns SQL
-and parameters only. TopLevelPlanner::plan does not directly return projection
-metadata. The first task must prove the usable pinned projection/source API;
-stop for decision if faithful metadata needs vendor changes or a planner fork.
+Stopped under AGENTS.md: the review gate remained failing after two different
+repair rounds. This handoff updates tracking only, without further product fixes.
+Implementer: Codex / OpenAI GPT-6. Reviewer: omp / DeepSeek V4 Pro.
 
-The current typed Model has no external bundle version/digest. Design defines its
-identity by canonical full typed content; SQL/metadata remain covered. Request id
-will be explicit correlation-only context. No new function or SQL behavior is
-promised, and golden output changes are not authorized.
+## Open findings and next work
 
-Next: review the concrete plan, then apply the tasks in this same Draft PR.
-Archive is after implementation and before final review, per repository workflow.
+The 69f0294 review reported:
+- P2: task 7 was checked while notes still described final evidence as pending.
+  This handoff unchecks task 7 and states the done/open boundary explicitly;
+  a new review must assess the corrected record.
+- P3: the gitlink guard test in fingerprint.rs requires Git and a checkout and
+  duplicates the upstream pin literal. Consolidate the production pin constant,
+  and make repository-only pin checking compatible with tests without Git state,
+  without introducing harness changes or runtime IO into compilation.
 
-Planning verification: strict OpenSpec validation passed seven items. Full CI
-passed 15 steps, 0 skipped on the planning working tree. No implementation or
-T1/T2 execution is claimed. Exact-head evidence will be posted on the Draft PR.
+After the remaining fix, run targeted tests and fast, checkpoint/push in this same
+PR, then run delivery for exact-head CI, cross-vendor review and remote t0. Do not
+mark task 7 complete or Ready until its evidence/review requirements are satisfied.
+Evidence belongs in PR comments/artifacts, not an extra evidence-only commit.
+No owner-only design decision or vendor/harness edit is currently required.
 
-## Apply feasibility investigation
+## Implemented behavior
 
-Final physical projection is local to TopLevelPlanner::plan. Public resolved
-QueryProperties::all_members(false) exposes stable member ids/aliases; the final
-SQL AST provides actual projection order. Pair these, failing on missing or
-ambiguous identity rather than guessing. LogicalSchema::all_dimensions and the
-physical query processor confirm dimensions/time buckets precede measures.
-Lineage can use rendered table factors, not join-graph candidates. This pairing
-uses final SQL plus resolved planner symbols and does not fork the planner.
+The facade adds ordered output columns, used cubes/physical sources and a SHA-256
+fingerprint, plus correlation-only request_id. The adapter pairs aliases from the
+final SQL AST with resolved planner symbols, not query-list order. Time buckets
+retain base member identity/granularity. Missing/ambiguous correspondence fails
+internally. Sources are selected from rendered table factors, not graph search
+candidates; quoted identifiers are decoded by the parser. CTE/derived cube sources
+are rejected defensively even for direct adapter callers.
 
+Fingerprint v1 covers canonical complete typed-model content, original query,
+dialect, timezone, security filters, package version and full upstream pin. Object
+keys are recursively sorted, ordered arrays and numeric metadata are preserved,
+and request_id is excluded. Compile itself performs no runtime Git/IO. The pin
+constant's repository test is the remaining portability finding, described above.
+Raw YAML/JSON formatting is absent from the typed-model identity contract.
 
-## Implementation
+## Verification and repair history
 
-Implementation authorized by the user. Tasks 1–5 are complete. Projection aliases
-are parsed from final rendered SQL and matched to resolved upstream symbols;
-time buckets use their base member identity and explicit granularity. Lineage is
-selected by rendered table factors and cube aliases, then physical table identifier
-components are decoded through the parser. Ambiguous metadata fails internally.
+Model/adapter/compile tests and all existing SQL/parameter snapshots pass. Tests
+cover region grouping and ordered parameter values, exact alias/member/types,
+join intermediates, quoted cube SQL/sql_alias, hidden security/time filters,
+repeated output occurrences, CTE rejection, input/build fingerprint sensitivity,
+canonical objects/numbers, request-id exclusion and fresh-process equality.
+The pinned planner preserves both repeated selected measures; the test now
+asserts exactly two columns. The all-golden four-process suite remains proposed.
 
-The facade adds columns, used_cubes, fingerprint and correlation-only request_id.
-Fingerprint v1 uses canonical recursively sorted JSON (ordered arrays retained),
-SHA-256 of the complete typed model, and a framed JSON record of query, dialect,
-timezone, security filters, package version and full pin. No runtime Git/IO enters
-compilation; the pin is a constant guarded by a repository-gitlink test. Upstream
-upgrades must update it with the pin. Existing SQL/parameter snapshots pass.
+Full CI and remote t0 passed on 69f0294; exact summary/review are in delivery
+artifacts and PR comments. This handoff commit only receives checkpoint's fast
+check unless a later CI result is explicitly recorded. T1/T2 were not run.
+Strict main-spec validation passed 8 items after archive Purpose text was filled.
+First review repairs added exact region/parameter/type assertions. Second repairs
+added explicit repeated-column count and defensive CTE handling. Third review
+found the handoff inconsistency and Git-test portability issue, triggering stop.
 
-Tests cover public parameter/column correspondence, time buckets, join intermediate
-sources, quoted cube SQL, sql_alias, hidden security/time filters, repeated members,
-request-id exclusion, model/query/context sensitivity, build identity, canonical
-numbers/object ordering and fresh-process comparison. The all-golden process suite
-remains proposed. Only Presto is currently representable as a dialect; the exhaustive
-dialect match ensures a future variant requires an identity choice.
+## Dependency and scope review
 
-Dependency review: sqlparser reuses =0.64.0 with std/visitor, default stack extension
-disabled. New SHA-256 uses sha2 0.11.1; cargo deny passed advisories, bans, licences
-and sources. Cargo.lock changes require risk:upstream; upstream pin unchanged.
-Scope exceeds 400 lines including tests/dependencies, retained as one complete
-successful-result behavior. No vendor/harness or existing golden snapshots changed.
-Final working-tree CI passed 15 steps, 0 skipped (55s); fast also passed before
-checkpoint. Implementation is published on PR #28. Both implemented requirements
-are synced into main specs, and this folder is archived before final review per
-repository workflow. Cross-vendor review and exact-head CI evidence remain final
-delivery work, recorded on the PR without changing the reviewed commit. Owner
-approval/merge follows. T1/T2 not run.
-
-Current implementation tasks: 7/7 complete. Archive is complete; final delivery review is pending.
-
-Cross-vendor review of a83420b identified two B0-RESULT-001 test gaps. The
-public correspondence case now groups sales by region and asserts ordered
-parameter values plus exact alias/member/semantic-type correspondence. No
-production code change was needed; final delivery is rerun after this test fix.
-
-Second cross-vendor review requested an explicit repeated-selection count and
-defensive CTE source handling. The pinned planner preserves two selected measure
-occurrences, now asserted exactly. Metadata rejects CTE/derived cube sources even
-for direct adapter callers; public compile already rejects them through model
-validation. Added public/direct-adapter regression coverage and rerun delivery.
+sqlparser reuses =0.64.0 with std/visitor, without optional stack extension. SHA-256
+uses sha2 0.11.1. Cargo deny passed advisories, bans, licences and sources.
+Cargo.lock changed; risk:upstream is applied and upstream pin is unchanged.
+Size exceeds 400 lines including tests/dependencies, retained as one successful
+result behavior. No vendor, harness or existing golden snapshot edits occurred.
