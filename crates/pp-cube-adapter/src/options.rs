@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use cubenativeutils::CubeError;
 use cubesqlplanner::cube_bridge::base_query_options::{
-    BaseQueryOptions, BaseQueryOptionsStatic, FilterItem, FilterValue, OrderByItem,
+    self, BaseQueryOptions, BaseQueryOptionsStatic, FilterItem, FilterValue, OrderByItem,
 };
 use cubesqlplanner::cube_bridge::base_tools::BaseTools;
 use cubesqlplanner::cube_bridge::evaluator::CubeEvaluator;
@@ -14,7 +14,7 @@ use cubesqlplanner::cube_bridge::join_hints::JoinHintItem;
 use cubesqlplanner::cube_bridge::options_member::OptionsMember;
 use cubesqlplanner::cube_bridge::security_context::SecurityContext;
 use cubesqlplanner::cube_bridge::subquery_join::SubqueryJoin;
-use pp_cube_model::{Direction, Filter, Operator, Query};
+use pp_cube_model::{Direction, Filter, Granularity, Operator, Query, TimeDimension};
 
 /// The operator as Cube's query format writes it.
 pub(crate) fn operator_name(operator: Operator) -> &'static str {
@@ -33,6 +33,36 @@ pub(crate) fn operator_name(operator: Operator) -> &'static str {
         Operator::Lte => "lte",
         Operator::Set => "set",
         Operator::NotSet => "notSet",
+        Operator::InDateRange => "inDateRange",
+        Operator::NotInDateRange => "notInDateRange",
+        Operator::BeforeDate => "beforeDate",
+        Operator::BeforeOrOnDate => "beforeOrOnDate",
+        Operator::AfterDate => "afterDate",
+        Operator::AfterOrOnDate => "afterOrOnDate",
+    }
+}
+
+/// How many dates a date operator takes; `None` for the other operators.
+pub(crate) fn dates_taken(operator: Operator) -> Option<usize> {
+    match operator {
+        Operator::InDateRange | Operator::NotInDateRange => Some(2),
+        Operator::BeforeDate
+        | Operator::BeforeOrOnDate
+        | Operator::AfterDate
+        | Operator::AfterOrOnDate => Some(1),
+        _ => None,
+    }
+}
+
+/// A date value as the planner takes it. The planner completes a date to a
+/// timestamp of the dialect's precision and leaves any other text alone, so
+/// a time written without milliseconds is completed here.
+fn date_text(date: &str) -> String {
+    const WITHOUT_MILLISECONDS: usize = "YYYY-MM-DDTHH:mm:ss".len();
+    if date.len() == WITHOUT_MILLISECONDS {
+        format!("{date}.000")
+    } else {
+        date.to_owned()
     }
 }
 
@@ -51,11 +81,39 @@ fn filter_item(filter: &Filter) -> FilterItem {
         Filter::Condition(condition) => {
             item.member = Some(condition.member.clone());
             item.operator = Some(operator_name(condition.operator).to_owned());
-            let values = condition.values.iter().cloned().map(FilterValue::Str);
+            let dates = dates_taken(condition.operator).is_some();
+            let values = condition.values.iter().map(|value| {
+                FilterValue::Str(if dates {
+                    date_text(value)
+                } else {
+                    value.clone()
+                })
+            });
             item.values = Some(values.collect()).filter(|values: &Vec<_>| !values.is_empty());
         }
     }
     item
+}
+
+fn time_dimension(time_dimension: &TimeDimension) -> base_query_options::TimeDimension {
+    let granularity = time_dimension
+        .granularity
+        .map(|granularity| match granularity {
+            Granularity::Day => "day",
+            Granularity::Week => "week",
+            Granularity::Month => "month",
+            Granularity::Quarter => "quarter",
+            Granularity::Year => "year",
+        });
+    base_query_options::TimeDimension {
+        dimension: time_dimension.dimension.clone(),
+        granularity: granularity.map(str::to_owned),
+        // Always two entries: the planner asserts it.
+        date_range: time_dimension
+            .date_range
+            .as_ref()
+            .map(|range| vec![date_text(range.from.as_str()), date_text(range.to.as_str())]),
+    }
 }
 
 pub(crate) struct Options {
@@ -72,6 +130,7 @@ pub(crate) struct Options {
 impl Options {
     pub(crate) fn new(
         query: &Query,
+        timezone: &str,
         evaluator: Rc<dyn CubeEvaluator>,
         tools: Rc<dyn BaseTools>,
         joins: Rc<dyn JoinGraph>,
@@ -106,8 +165,9 @@ impl Options {
             // Every field is named, so a field the planner adds shows up here
             // as a compile error when the pin moves.
             statics: BaseQueryOptionsStatic {
-                time_dimensions: None,
-                timezone: None,
+                time_dimensions: Some(query.time_dimensions.iter().map(time_dimension).collect())
+                    .filter(|time_dimensions: &Vec<_>| !time_dimensions.is_empty()),
+                timezone: Some(timezone.to_owned()),
                 filters: Some(query.filters.iter().map(filter_item).collect())
                     .filter(|filters: &Vec<_>| !filters.is_empty()),
                 order,

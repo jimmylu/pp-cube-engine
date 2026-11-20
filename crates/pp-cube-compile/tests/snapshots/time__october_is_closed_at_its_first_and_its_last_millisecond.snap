@@ -1,0 +1,8 @@
+---
+source: crates/pp-cube-compile/tests/time.rs
+expression: "compiled(\"UTC\",\nr#\"\"timezone\": \"UTC\",\n           \"timeDimensions\": [\n             {\"dimension\": \"sales.sold_at\", \"dateRange\": [\"2026-10-01\", \"2026-10-31\"]}\n           ]\"#)"
+---
+SELECT sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".sold_at >= from_iso8601_timestamp(?) AND "sales".sold_at <= from_iso8601_timestamp(?))
+-- parameters: [Text("2026-10-01T00:00:00.000Z"), Text("2026-10-31T23:59:59.999Z")]

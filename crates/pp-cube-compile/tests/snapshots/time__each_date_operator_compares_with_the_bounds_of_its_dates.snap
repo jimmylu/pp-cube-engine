@@ -1,0 +1,8 @@
+---
+source: crates/pp-cube-compile/tests/time.rs
+expression: "compiled(\"UTC\",\nr#\"\"filters\": [\n             {\"member\": \"sales.sold_at\", \"operator\": \"inDateRange\", \"values\": [\"2026-01-01\", \"2026-12-31\"]},\n             {\"member\": \"sales.sold_at\", \"operator\": \"notInDateRange\", \"values\": [\"2026-07-01\", \"2026-07-31\"]},\n             {\"member\": \"sales.sold_at\", \"operator\": \"beforeDate\", \"values\": [\"2026-12-25\"]},\n             {\"member\": \"sales.sold_at\", \"operator\": \"beforeOrOnDate\", \"values\": [\"2026-12-24\"]},\n             {\"member\": \"sales.sold_at\", \"operator\": \"afterDate\", \"values\": [\"2026-01-05\"]},\n             {\"member\": \"sales.sold_at\", \"operator\": \"afterOrOnDate\", \"values\": [\"2026-01-06T08:30:00\"]}\n           ]\"#)"
+---
+SELECT sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".sold_at >= from_iso8601_timestamp(?) AND "sales".sold_at <= from_iso8601_timestamp(?)) AND ("sales".sold_at < from_iso8601_timestamp(?) OR "sales".sold_at > from_iso8601_timestamp(?)) AND ("sales".sold_at < from_iso8601_timestamp(?)) AND ("sales".sold_at <= from_iso8601_timestamp(?)) AND ("sales".sold_at > from_iso8601_timestamp(?)) AND ("sales".sold_at >= from_iso8601_timestamp(?))
+-- parameters: [Text("2026-01-01T00:00:00.000Z"), Text("2026-12-31T23:59:59.999Z"), Text("2026-07-01T00:00:00.000Z"), Text("2026-07-31T23:59:59.999Z"), Text("2026-12-25T00:00:00.000Z"), Text("2026-12-24T23:59:59.999Z"), Text("2026-01-05T23:59:59.999Z"), Text("2026-01-06T08:30:00.000Z")]

@@ -16,6 +16,8 @@ pub use pp_cube_dialect::DialectId;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompileContext {
     pub dialect: DialectId,
+    /// An IANA name. A query that names its own timezone is compiled in that one.
+    pub timezone: String,
 }
 
 /// One SELECT in the context's dialect and the values of its placeholders, in order.
@@ -54,7 +56,7 @@ pub fn compile(
     let dialect = dialect(context.dialect).map_err(|error| CompileError::Internal {
         detail: error.to_string(),
     })?;
-    match plan(model, query, dialect) {
+    match plan(model, query, dialect, &context.timezone) {
         Ok(planned) => Ok(Compiled {
             sql: planned.sql,
             parameters: planned.parameters,

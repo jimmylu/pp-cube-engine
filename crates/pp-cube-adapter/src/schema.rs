@@ -14,7 +14,9 @@ use cubesqlplanner::cube_bridge::dimension_definition::{
 };
 use cubesqlplanner::cube_bridge::evaluator::{CubeEvaluator, CubeEvaluatorStatic};
 use cubesqlplanner::cube_bridge::geo_item::GeoItem;
-use cubesqlplanner::cube_bridge::granularity_definition::GranularityDefinition;
+use cubesqlplanner::cube_bridge::granularity_definition::{
+    GranularityDefinition, GranularityDefinitionStatic,
+};
 use cubesqlplanner::cube_bridge::join_item_definition::JoinItemDefinition;
 use cubesqlplanner::cube_bridge::measure_definition::{MeasureDefinition, MeasureDefinitionStatic};
 use cubesqlplanner::cube_bridge::member_order_by::MemberOrderBy;
@@ -26,10 +28,13 @@ use cubesqlplanner::cube_bridge::segment_definition::{SegmentDefinition, Segment
 use cubesqlplanner::cube_bridge::struct_with_sql_member::StructWithSqlMember;
 use cubesqlplanner::cube_bridge::timeshift_definition::TimeShiftDefinition;
 use cubesqlplanner::cube_bridge::view_filter_definition::ViewFilterDefinition;
-use pp_cube_model::{Condition, Cube, DimensionType, Filter, MeasureType, Model, Operator, Query};
+use pp_cube_model::{
+    Condition, Cube, DateValue, DimensionType, Filter, MeasureType, Model, Operator, Query,
+    TimeDimension,
+};
 
 use crate::expression::Expression;
-use crate::options::operator_name;
+use crate::options::{dates_taken, operator_name};
 use crate::unavailable;
 
 /// What a filter is applied to, as far as an operator cares.
@@ -51,16 +56,20 @@ impl MemberKind {
     }
 
     /// Which operators each kind of member takes, as Cube documents them. A
-    /// time dimension takes no value comparison yet: the planner would compare
-    /// the column with a text parameter, and the date operators are not compiled.
+    /// time dimension takes the date operators and no value comparison: the
+    /// planner would not read the value of one in the query's timezone.
     fn takes(self, operator: Operator) -> bool {
         use Operator::{
-            Contains, EndsWith, Equals, Gt, Gte, Lt, Lte, NotContains, NotEndsWith, NotEquals,
-            NotSet, NotStartsWith, Set, StartsWith,
+            AfterDate, AfterOrOnDate, BeforeDate, BeforeOrOnDate, Contains, EndsWith, Equals, Gt,
+            Gte, InDateRange, Lt, Lte, NotContains, NotEndsWith, NotEquals, NotInDateRange, NotSet,
+            NotStartsWith, Set, StartsWith,
         };
+        let time = matches!(self, Self::Dimension(DimensionType::Time));
         match operator {
             Set | NotSet => true,
-            Equals | NotEquals => !matches!(self, Self::Dimension(DimensionType::Time)),
+            Equals | NotEquals => !time,
+            InDateRange | NotInDateRange | BeforeDate | BeforeOrOnDate | AfterDate
+            | AfterOrOnDate => time,
             Contains | NotContains | StartsWith | NotStartsWith | EndsWith | NotEndsWith => {
                 matches!(self, Self::Dimension(DimensionType::String))
             }
@@ -139,16 +148,41 @@ impl Evaluator {
         for filter in &query.filters {
             self.check_filter(filter)?;
         }
-        // The planner drops an order on anything else without a word.
+        for time_dimension in &query.time_dimensions {
+            self.check_time_dimension(time_dimension)?;
+        }
+        // The planner drops an order on anything else without a word. A time
+        // dimension is ordered by its member, and only where it is grouped by.
         for order in query.order.iter().flatten() {
-            let selected =
-                query.measures.contains(&order.member) || query.dimensions.contains(&order.member);
+            let selected = query.measures.contains(&order.member)
+                || query.dimensions.contains(&order.member)
+                || query.time_dimensions.iter().any(|time_dimension| {
+                    time_dimension.dimension == order.member && time_dimension.granularity.is_some()
+                });
             if !selected {
                 return Err(CubeError::user(format!(
                     "Order member `{}` is not among the query's measures and dimensions",
                     order.member
                 )));
             }
+        }
+        Ok(())
+    }
+
+    fn check_time_dimension(&self, time_dimension: &TimeDimension) -> Result<(), CubeError> {
+        let member = &time_dimension.dimension;
+        let kind = self.member_kind(member)?;
+        if !matches!(kind, MemberKind::Dimension(DimensionType::Time)) {
+            return Err(CubeError::user(format!(
+                "`{member}` is {}; `timeDimensions` takes time dimensions",
+                kind.described()
+            )));
+        }
+        // The planner drops one that asks for nothing without a word.
+        if time_dimension.granularity.is_none() && time_dimension.date_range.is_none() {
+            return Err(CubeError::user(format!(
+                "Time dimension `{member}` asks for neither a granularity nor a date range"
+            )));
         }
         Ok(())
     }
@@ -175,6 +209,21 @@ impl Evaluator {
                 "Operator `{name}` does not fit `{member}`, {}",
                 kind.described()
             )));
+        }
+        if let Some(count) = dates_taken(*operator) {
+            if values.len() != count {
+                let dates = if count == 1 { "one date" } else { "two dates" };
+                return Err(CubeError::user(format!(
+                    "Operator `{name}` on `{member}` takes {dates}"
+                )));
+            }
+            return values.iter().try_for_each(|value| {
+                DateValue::try_from(value.clone())
+                    .map(drop)
+                    .map_err(|message| {
+                        CubeError::user(format!("Operator `{name}` on `{member}`: {message}"))
+                    })
+            });
         }
         let takes_values = !matches!(operator, Operator::Set | Operator::NotSet);
         match (takes_values, values.is_empty()) {
@@ -335,11 +384,24 @@ impl CubeEvaluator for Evaluator {
         Ok(self.model.cube(&name).is_some())
     }
 
+    // The planner asks for the predefined granularities too, and the query
+    // type admits no other.
     fn resolve_granularity(
         &self,
-        _path: Vec<String>,
+        path: Vec<String>,
     ) -> Result<Rc<dyn GranularityDefinition>, CubeError> {
-        unavailable("granularities")
+        let Some(granularity) = path.last() else {
+            return Err(CubeError::internal(
+                "a granularity without a path".to_owned(),
+            ));
+        };
+        Ok(Rc::new(PredefinedGranularity(
+            GranularityDefinitionStatic {
+                interval: format!("1 {granularity}"),
+                origin: None,
+                offset: None,
+            },
+        )))
     }
 
     // The baseline has no pre-aggregations; the planner asks on every query.
@@ -596,6 +658,26 @@ impl SegmentDefinition for SegmentDef {
 
     fn sql(&self) -> Result<Rc<dyn MemberSql>, CubeError> {
         Ok(self.condition.clone())
+    }
+
+    fn as_any(self: Rc<Self>) -> Rc<dyn Any> {
+        self
+    }
+}
+
+struct PredefinedGranularity(GranularityDefinitionStatic);
+
+impl GranularityDefinition for PredefinedGranularity {
+    fn static_data(&self) -> &GranularityDefinitionStatic {
+        &self.0
+    }
+
+    fn sql(&self) -> Result<Option<Rc<dyn MemberSql>>, CubeError> {
+        Ok(None)
+    }
+
+    fn has_sql(&self) -> Result<bool, CubeError> {
+        Ok(false)
     }
 
     fn as_any(self: Rc<Self>) -> Rc<dyn Any> {

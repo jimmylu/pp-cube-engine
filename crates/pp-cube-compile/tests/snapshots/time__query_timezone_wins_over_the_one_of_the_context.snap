@@ -1,0 +1,15 @@
+---
+source: crates/pp-cube-compile/tests/time.rs
+expression: "format!(\"-- context Asia/Tokyo\\n{context_only}\\n\\n-- context Asia/Tokyo, query Europe/Berlin\\n{query_too}\")"
+---
+-- context Asia/Tokyo
+SELECT date_trunc('month', CAST(date_add('minute', timezone_minute(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'Asia/Tokyo'), date_add('hour', timezone_hour(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'Asia/Tokyo'), COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP)) "sales__sold_at_month", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".sold_at >= from_iso8601_timestamp(?) AND "sales".sold_at <= from_iso8601_timestamp(?)) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: [Text("2026-09-30T15:00:00.000Z"), Text("2026-10-31T14:59:59.999Z")]
+
+-- context Asia/Tokyo, query Europe/Berlin
+SELECT date_trunc('month', CAST(date_add('minute', timezone_minute(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'Europe/Berlin'), date_add('hour', timezone_hour(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'Europe/Berlin'), COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP)) "sales__sold_at_month", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".sold_at >= from_iso8601_timestamp(?) AND "sales".sold_at <= from_iso8601_timestamp(?)) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: [Text("2026-09-30T22:00:00.000Z"), Text("2026-10-31T22:59:59.999Z")]

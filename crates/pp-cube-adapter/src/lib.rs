@@ -13,6 +13,7 @@ mod tools;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use chrono_tz::Tz;
 use cubenativeutils::{CubeError, CubeErrorCauseType};
 use cubesqlplanner::cube_bridge::base_query_options::FilterValue;
 use cubesqlplanner::planner::{
@@ -67,19 +68,26 @@ fn unavailable<T>(what: &str) -> Result<T, CubeError> {
     )))
 }
 
-/// Plans `query` against `model` and renders it in `dialect`.
+/// Plans `query` against `model` and renders it in `dialect`. `timezone` is
+/// the one of the compile context; the query's own, if it has one, wins.
 pub fn plan(
     model: &Arc<Model>,
     query: &Query,
     dialect: &'static Dialect,
+    timezone: &str,
 ) -> Result<Planned, PlanError> {
+    let timezone = query.timezone.as_deref().unwrap_or(timezone);
+    let zone: Tz = timezone
+        .parse()
+        .map_err(|_| PlanError::User(format!("Timezone `{timezone}` is not known")))?;
     let evaluator = Rc::new(Evaluator::new(model.clone()));
     evaluator.check(query)?;
     let joins = Rc::new(Joins);
-    let tools = Rc::new(Tools::new(evaluator.clone(), dialect, joins.clone()));
+    let tools = Rc::new(Tools::new(evaluator.clone(), dialect, zone, joins.clone()));
     let security_context = Rc::new(Opaque);
     let options = Rc::new(Options::new(
         query,
+        zone.name(),
         evaluator.clone(),
         tools.clone(),
         joins.clone(),
