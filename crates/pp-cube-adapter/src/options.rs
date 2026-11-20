@@ -4,7 +4,9 @@ use std::any::Any;
 use std::rc::Rc;
 
 use cubenativeutils::CubeError;
-use cubesqlplanner::cube_bridge::base_query_options::{BaseQueryOptions, BaseQueryOptionsStatic};
+use cubesqlplanner::cube_bridge::base_query_options::{
+    BaseQueryOptions, BaseQueryOptionsStatic, FilterItem, FilterValue, OrderByItem,
+};
 use cubesqlplanner::cube_bridge::base_tools::BaseTools;
 use cubesqlplanner::cube_bridge::evaluator::CubeEvaluator;
 use cubesqlplanner::cube_bridge::join_graph::JoinGraph;
@@ -12,11 +14,54 @@ use cubesqlplanner::cube_bridge::join_hints::JoinHintItem;
 use cubesqlplanner::cube_bridge::options_member::OptionsMember;
 use cubesqlplanner::cube_bridge::security_context::SecurityContext;
 use cubesqlplanner::cube_bridge::subquery_join::SubqueryJoin;
-use pp_cube_model::Query;
+use pp_cube_model::{Direction, Filter, Operator, Query};
+
+/// The operator as Cube's query format writes it.
+pub(crate) fn operator_name(operator: Operator) -> &'static str {
+    match operator {
+        Operator::Equals => "equals",
+        Operator::NotEquals => "notEquals",
+        Operator::Contains => "contains",
+        Operator::NotContains => "notContains",
+        Operator::StartsWith => "startsWith",
+        Operator::NotStartsWith => "notStartsWith",
+        Operator::EndsWith => "endsWith",
+        Operator::NotEndsWith => "notEndsWith",
+        Operator::Gt => "gt",
+        Operator::Gte => "gte",
+        Operator::Lt => "lt",
+        Operator::Lte => "lte",
+        Operator::Set => "set",
+        Operator::NotSet => "notSet",
+    }
+}
+
+fn filter_item(filter: &Filter) -> FilterItem {
+    let mut item = FilterItem {
+        or: None,
+        and: None,
+        member: None,
+        dimension: None,
+        operator: None,
+        values: None,
+    };
+    match filter {
+        Filter::And(filters) => item.and = Some(filters.iter().map(filter_item).collect()),
+        Filter::Or(filters) => item.or = Some(filters.iter().map(filter_item).collect()),
+        Filter::Condition(condition) => {
+            item.member = Some(condition.member.clone());
+            item.operator = Some(operator_name(condition.operator).to_owned());
+            let values = condition.values.iter().cloned().map(FilterValue::Str);
+            item.values = Some(values.collect()).filter(|values: &Vec<_>| !values.is_empty());
+        }
+    }
+    item
+}
 
 pub(crate) struct Options {
     measures: Vec<OptionsMember>,
     dimensions: Vec<OptionsMember>,
+    segments: Vec<OptionsMember>,
     evaluator: Rc<dyn CubeEvaluator>,
     tools: Rc<dyn BaseTools>,
     joins: Rc<dyn JoinGraph>,
@@ -39,9 +84,14 @@ impl Options {
                 .map(OptionsMember::MemberName)
                 .collect()
         };
+        let order = query.order.iter().map(|order| OrderByItem {
+            id: order.member.clone(),
+            desc: Some(order.direction == Direction::Desc),
+        });
         Self {
             measures: members(&query.measures),
             dimensions: members(&query.dimensions),
+            segments: members(&query.segments),
             evaluator,
             tools,
             joins,
@@ -51,11 +101,13 @@ impl Options {
             statics: BaseQueryOptionsStatic {
                 time_dimensions: None,
                 timezone: None,
-                filters: None,
-                order: None,
+                filters: Some(query.filters.iter().map(filter_item).collect())
+                    .filter(|filters: &Vec<_>| !filters.is_empty()),
+                order: Some(order.collect()).filter(|order: &Vec<_>| !order.is_empty()),
                 limit: None,
-                row_limit: None,
-                offset: None,
+                // The planner reads the row limit from here, not from `limit`.
+                row_limit: query.limit.map(|limit| limit.to_string()),
+                offset: query.offset.map(|offset| offset.to_string()),
                 ungrouped: None,
                 export_annotated_sql: false,
                 pre_aggregation_query: None,
@@ -103,11 +155,11 @@ impl BaseQueryOptions for Options {
     }
 
     fn has_segments(&self) -> Result<bool, CubeError> {
-        Ok(false)
+        Ok(!self.segments.is_empty())
     }
 
     fn segments(&self) -> Result<Option<Vec<OptionsMember>>, CubeError> {
-        Ok(None)
+        Ok(Some(self.segments.clone()).filter(|segments| !segments.is_empty()))
     }
 
     fn cube_evaluator(&self) -> Result<Rc<dyn CubeEvaluator>, CubeError> {

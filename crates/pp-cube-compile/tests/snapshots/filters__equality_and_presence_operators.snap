@@ -1,0 +1,8 @@
+---
+source: crates/pp-cube-compile/tests/filters.rs
+expression: "compiled(r#\"\"filters\": [\n            {\"member\": \"sales.channel_cd\", \"operator\": \"equals\", \"values\": [\"C1\", \"C2\"]},\n            {\"member\": \"sales.channel_cd\", \"operator\": \"notEquals\", \"values\": [\"C9\"]},\n            {\"member\": \"sales.is_valid\", \"operator\": \"equals\", \"values\": [\"true\"]},\n            {\"member\": \"sales.qty\", \"operator\": \"set\"},\n            {\"member\": \"sales.sold_at\", \"operator\": \"notSet\"}\n        ]\"#)"
+---
+SELECT "sales".channel_cd "sales__channel_cd", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".channel_cd IN (?, ?)) AND ("sales".channel_cd <> ? OR "sales".channel_cd IS NULL) AND (("sales".is_valid = 1) = CAST(? AS BOOLEAN)) AND ("sales".qty IS NOT NULL) AND ("sales".sold_at IS NULL) GROUP BY 1 ORDER BY  2  DESC
+-- parameters: [Text("C1"), Text("C2"), Text("C9"), Text("true")]
