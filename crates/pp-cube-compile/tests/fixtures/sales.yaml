@@ -1,0 +1,19 @@
+cubes:
+  - name: sales
+    sql_table: dw.sales_dtl
+    data_source: warehouse
+    dimensions:
+      - { name: channel_cd, sql: "{CUBE}.channel_cd", type: string }
+    measures:
+      - { name: row_count, type: count }
+      - { name: order_count, type: count_distinct, sql: "{CUBE}.order_no" }
+      - { name: amount, type: sum, sql: "{CUBE}.amount" }
+      - { name: avg_amount, type: avg, sql: "{CUBE}.amount" }
+      - { name: min_amount, type: min, sql: "{CUBE}.amount" }
+      - { name: max_amount, type: max, sql: "{CUBE}.amount" }
+      - name: toy_amount
+        type: sum
+        sql: "{CUBE}.amount"
+        filters:
+          - sql: "{CUBE}.category_cd = 'TOY'"
+      - { name: amount_per_order, type: number, sql: "{amount} / NULLIF({order_count}, 0)" }

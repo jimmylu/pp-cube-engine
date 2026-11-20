@@ -1,10 +1,11 @@
-//! Loading a model document into the contract types.
+//! Loading model and query documents into the contract types.
 
 use std::fmt;
 
-use serde::Deserialize;
+use serde::de::DeserializeOwned;
 
 use crate::model::Model;
+use crate::query::Query;
 
 /// A place in a document; lines and columns start at 1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,13 +43,22 @@ pub fn load_yaml(text: &str) -> Result<Model, LoadError> {
 
 /// Loads a model written in JSON.
 pub fn load_json(text: &str) -> Result<Model, LoadError> {
+    from_json(text)
+}
+
+/// Loads a query written in Cube's JSON query format.
+pub fn load_query(text: &str) -> Result<Query, LoadError> {
+    from_json(text)
+}
+
+fn from_json<T: DeserializeOwned>(text: &str) -> Result<T, LoadError> {
     // The parser is a serde_json fork chosen for exact floats; its two
     // extensions to JSON are on by default and are switched off here.
     let mut parser = serde_json_lenient::Deserializer::from_str(text);
     parser.set_ignore_trailing_commas(false);
     parser.set_allow_comments(false);
-    Model::deserialize(&mut parser)
-        .and_then(|model| parser.end().map(|()| model))
+    T::deserialize(&mut parser)
+        .and_then(|value| parser.end().map(|()| value))
         .map_err(|error| LoadError {
             position: Some(Position {
                 line: error.line(),

@@ -1,0 +1,7 @@
+---
+source: crates/pp-cube-compile/tests/aggregation.rs
+expression: "compiled(&[\"toy_amount\", \"amount_per_order\"])"
+---
+SELECT "sales".channel_cd "sales__channel_cd", sum(CASE WHEN ("sales".category_cd = 'TOY') THEN "sales".amount END) "sales__toy_amount", sum("sales".amount) / NULLIF(COUNT(DISTINCT "sales".order_no), 0) "sales__amount_per_order"  
+FROM  dw.sales_dtl  AS "sales" GROUP BY 1 ORDER BY  2  DESC
+-- parameters: []

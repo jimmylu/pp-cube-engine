@@ -7,5 +7,13 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[dependencies]
+pp-cube-adapter = { path = "../pp-cube-adapter" }
+pp-cube-dialect = { path = "../pp-cube-dialect" }
+pp-cube-model = { path = "../pp-cube-model" }
+
+[dev-dependencies]
+insta = { version = "1", default-features = false }
+
 [lints]
 workspace = true

@@ -1,0 +1,33 @@
+# Presto dialect templates, transcribed from Cube at the commit below.
+# Only the templates the kernel renders so far are here; a request for any
+# other fails with an error naming it. `source` is the upstream file under
+# packages/cubejs-schema-compiler/src/adapter/ that defines the text.
+commit: 486f0d26bab58ab4fe0be0e4cdd39818b35a7870
+templates:
+  statements/select:
+    source: PrestodbQuery.ts
+    text: "{% if ctes %} WITH \n{{ ctes | join(',\n') }}\n{% endif %}SELECT {% if distinct %}DISTINCT {% endif %}{{ select_concat | map(attribute='aliased') | join(', ') }}  {% if from %}\nFROM (\n  {{ from }}\n) AS {{ from_alias }} {% elif from_prepared %}\nFROM {{ from_prepared }}{% endif %}{% for join in joins %}\n{{ join }}{% endfor %}{% if filter %}\nWHERE {{ filter }}{% endif %}{% if group_by %} GROUP BY {{ group_by }}{% endif %}{% if having %}\nHAVING {{ having }}{% endif %}{% if order_by %} ORDER BY {{ order_by | map(attribute='expr') | join(', ') }}{% endif %}{% if offset is not none %}\nOFFSET {{ offset }}{% endif %}{% if limit is not none %}\nLIMIT {{ limit }}{% endif %}"
+  functions/COUNT_DISTINCT:
+    source: BaseQuery.ts
+    text: "COUNT(DISTINCT {{ args_concat }})"
+  statements/group_by_exprs:
+    source: BaseQuery.ts
+    text: "{{ group_by | map(attribute='index') | join(', ') }}"
+  expressions/column_aliased:
+    source: BaseQuery.ts
+    text: "{{expr}} {{quoted_alias}}"
+  expressions/query_aliased:
+    source: BaseQuery.ts
+    text: "{{ query }} AS {{ quoted_alias }}"
+  expressions/order_by:
+    source: BaseQuery.ts
+    text: "{% if index %} {{ index }} {% else %} {{ expr }} {% endif %} {% if asc %}ASC{% else %}DESC{% endif %}{% if nulls_first %} NULLS FIRST{% endif %}"
+  quotes/identifiers:
+    source: BaseQuery.ts
+    text: '"'
+  quotes/escape:
+    source: BaseQuery.ts
+    text: '""'
+  params/param:
+    source: BaseQuery.ts
+    text: "?"

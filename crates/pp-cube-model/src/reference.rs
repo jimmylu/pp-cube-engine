@@ -2,6 +2,7 @@
 //! `{cube.member}`. Any other use of braces is an error.
 
 use std::fmt;
+use std::ops::Range;
 
 use crate::model::{Cube, Dimension, Measure, Model};
 
@@ -14,6 +15,14 @@ pub enum Reference<'a> {
     OwnMember(&'a str),
     /// `{cube.member}`: a member of another cube.
     Member { cube: &'a str, member: &'a str },
+}
+
+/// A reference and the bytes of the expression that its braces occupy. For a
+/// column that is `{CUBE}` alone; `.column` follows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Located<'a> {
+    pub braces: Range<usize>,
+    pub reference: Reference<'a>,
 }
 
 /// What a reference points at in a model.
@@ -62,6 +71,12 @@ impl std::error::Error for ReferenceError {}
 
 /// Finds the references in `expression`, in the order they are written.
 pub fn parse_references(expression: &str) -> Result<Vec<Reference<'_>>, ReferenceError> {
+    let located = locate_references(expression)?;
+    Ok(located.into_iter().map(|found| found.reference).collect())
+}
+
+/// Like [`parse_references`], with the position of each reference.
+pub fn locate_references(expression: &str) -> Result<Vec<Located<'_>>, ReferenceError> {
     let mut found = Vec::new();
     let mut scanned = 0;
     while let Some(brace) = expression[scanned..].find(['{', '}']) {
@@ -93,7 +108,10 @@ pub fn parse_references(expression: &str) -> Result<Vec<Reference<'_>>, Referenc
                 _ => return Err(malformed),
             }
         };
-        found.push(reference);
+        found.push(Located {
+            braces: at..at + length + 2,
+            reference,
+        });
     }
     Ok(found)
 }
