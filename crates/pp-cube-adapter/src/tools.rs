@@ -2,7 +2,6 @@
 //! functions, expression compilation and the join tree.
 
 use std::any::Any;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use chrono::{NaiveDateTime, Offset, TimeZone};
@@ -11,10 +10,9 @@ use cubenativeutils::CubeError;
 use cubesqlplanner::cube_bridge::base_query_options::FilterValue;
 use cubesqlplanner::cube_bridge::base_tools::BaseTools;
 use cubesqlplanner::cube_bridge::driver_tools::DriverTools;
-use cubesqlplanner::cube_bridge::join_definition::{JoinDefinition, JoinDefinitionStatic};
+use cubesqlplanner::cube_bridge::join_definition::JoinDefinition;
 use cubesqlplanner::cube_bridge::join_graph::JoinGraph;
 use cubesqlplanner::cube_bridge::join_hints::JoinHintItem;
-use cubesqlplanner::cube_bridge::join_item::JoinItem;
 use cubesqlplanner::cube_bridge::member_sql::{CompiledMemberTemplate, MemberSql};
 use cubesqlplanner::cube_bridge::pre_aggregation_obj::PreAggregationObj;
 use cubesqlplanner::cube_bridge::query_context::QueryContextData;
@@ -25,6 +23,7 @@ use minijinja::context;
 use pp_cube_dialect::{Dialect, DialectError};
 
 use crate::expression::Expression;
+use crate::joins::Joins;
 use crate::schema::Evaluator;
 use crate::unavailable;
 
@@ -265,7 +264,7 @@ impl BaseTools for Tools {
         &self,
         hints: Vec<JoinHintItem>,
     ) -> Result<Vec<Rc<dyn JoinDefinition>>, CubeError> {
-        Ok(vec![self.joins.build_join(hints)?])
+        Ok(self.joins.try_build(&hints)?.into_iter().collect())
     }
 
     fn compile_member_sql(
@@ -287,51 +286,6 @@ impl BaseTools for Tools {
         _query_context: QueryContextData,
     ) -> Result<bool, CubeError> {
         unavailable("query context conditions")
-    }
-
-    fn as_any(self: Rc<Self>) -> Rc<dyn Any> {
-        self
-    }
-}
-
-/// The join tree of a query. Only a query over one cube has one so far.
-pub(crate) struct Joins;
-
-impl JoinGraph for Joins {
-    fn build_join(
-        &self,
-        cubes_to_join: Vec<JoinHintItem>,
-    ) -> Result<Rc<dyn JoinDefinition>, CubeError> {
-        let mut cubes = cubes_to_join.iter().flat_map(|hint| match hint {
-            JoinHintItem::Single(cube) => std::slice::from_ref(cube),
-            JoinHintItem::Vector(cubes) => cubes.as_slice(),
-        });
-        let root = cubes
-            .next()
-            .ok_or_else(|| CubeError::internal("a join tree was asked for no cube".to_owned()))?;
-        if cubes.any(|cube| cube != root) {
-            return unavailable("a query over more than one cube");
-        }
-        Ok(Rc::new(SingleCube(JoinDefinitionStatic {
-            root: root.clone(),
-            multiplication_factor: HashMap::from([(root.clone(), false)]),
-        })))
-    }
-
-    fn as_any(self: Rc<Self>) -> Rc<dyn Any> {
-        self
-    }
-}
-
-struct SingleCube(JoinDefinitionStatic);
-
-impl JoinDefinition for SingleCube {
-    fn static_data(&self) -> &JoinDefinitionStatic {
-        &self.0
-    }
-
-    fn joins(&self) -> Result<Vec<Rc<dyn JoinItem>>, CubeError> {
-        Ok(Vec::new())
     }
 
     fn as_any(self: Rc<Self>) -> Rc<dyn Any> {

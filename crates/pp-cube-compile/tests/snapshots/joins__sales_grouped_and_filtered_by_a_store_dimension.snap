@@ -1,0 +1,9 @@
+---
+source: crates/pp-cube-compile/tests/joins.rs
+expression: "compiled(r#\"{\n          \"measures\": [\"sales.amount\"],\n          \"dimensions\": [\"stores.store_name\"],\n          \"filters\": [{\"member\": \"stores.store_name\", \"operator\": \"startsWith\", \"values\": [\"North\"]}]\n        }\"#)"
+---
+SELECT "stores".store_name "stores__store_name", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+LEFT JOIN  dw.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+WHERE ((LOWER("stores".store_name)  LIKE CONCAT('', LOWER(?), '%') ESCAPE '\')) GROUP BY 1 ORDER BY  2  DESC
+-- parameters: [Text("North")]

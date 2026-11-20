@@ -1,0 +1,11 @@
+---
+source: crates/pp-cube-compile/tests/joins.rs
+expression: "compiled(r#\"{\n          \"measures\": [\"sales.amount\"],\n          \"dimensions\": [\"regions.region_name\", \"receipts.printed\"],\n          \"segments\": [\"stores.open\"],\n          \"timeDimensions\": [{\"dimension\": \"sales.sold_at\", \"granularity\": \"month\"}]\n        }\"#)"
+---
+SELECT "regions".region_name "regions__region_name", "receipts".printed = 1 "receipts__printed", date_trunc('month', CAST(date_add('minute', timezone_minute(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), date_add('hour', timezone_hour(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP)) "sales__sold_at_month", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+LEFT JOIN  dw.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+LEFT JOIN  dw.dim_region  AS "regions" ON "stores".region_cd = "regions".region_cd
+LEFT JOIN  dw.receipt  AS "receipts" ON "sales".receipt_no = "receipts".receipt_no
+WHERE ("stores".closed_at IS NULL) GROUP BY 1, 2, 3 ORDER BY  3  ASC
+-- parameters: []

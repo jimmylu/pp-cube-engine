@@ -17,7 +17,9 @@ use cubesqlplanner::cube_bridge::geo_item::GeoItem;
 use cubesqlplanner::cube_bridge::granularity_definition::{
     GranularityDefinition, GranularityDefinitionStatic,
 };
-use cubesqlplanner::cube_bridge::join_item_definition::JoinItemDefinition;
+use cubesqlplanner::cube_bridge::join_item_definition::{
+    JoinItemDefinition, JoinItemDefinitionStatic,
+};
 use cubesqlplanner::cube_bridge::measure_definition::{MeasureDefinition, MeasureDefinitionStatic};
 use cubesqlplanner::cube_bridge::member_order_by::MemberOrderBy;
 use cubesqlplanner::cube_bridge::member_sql::MemberSql;
@@ -29,8 +31,8 @@ use cubesqlplanner::cube_bridge::struct_with_sql_member::StructWithSqlMember;
 use cubesqlplanner::cube_bridge::timeshift_definition::TimeShiftDefinition;
 use cubesqlplanner::cube_bridge::view_filter_definition::ViewFilterDefinition;
 use pp_cube_model::{
-    Condition, Cube, DateValue, DimensionType, Filter, MeasureType, Model, Operator, Query,
-    TimeDimension,
+    Condition, Cube, DateValue, DimensionType, Filter, Join, MeasureType, Model, Operator, Query,
+    Relationship, TimeDimension,
 };
 
 use crate::expression::Expression;
@@ -494,13 +496,15 @@ impl CubeDefinition for CubeDef {
         Ok(None)
     }
 
-    // Joins are not compiled yet; a query that needs one fails in the join graph.
     fn has_joins(&self) -> Result<bool, CubeError> {
-        Ok(false)
+        Ok(!self.definition().joins.is_empty())
     }
 
     fn joins(&self) -> Result<Option<Vec<Rc<dyn JoinItemDefinition>>>, CubeError> {
-        Ok(None)
+        let joins = self.definition().joins.iter();
+        let joins =
+            joins.map(|join| Ok(Rc::new(JoinDef::new(join)?) as Rc<dyn JoinItemDefinition>));
+        joins.collect::<Result<_, CubeError>>().map(Some)
     }
 
     fn as_any(self: Rc<Self>) -> Rc<dyn Any> {
@@ -653,6 +657,43 @@ struct SegmentDef {
 
 impl SegmentDefinition for SegmentDef {
     fn static_data(&self) -> &SegmentDefinitionStatic {
+        &self.statics
+    }
+
+    fn sql(&self) -> Result<Rc<dyn MemberSql>, CubeError> {
+        Ok(self.condition.clone())
+    }
+
+    fn as_any(self: Rc<Self>) -> Rc<dyn Any> {
+        self
+    }
+}
+
+/// A join as its cube declares it. The condition is an expression of that cube.
+pub(crate) struct JoinDef {
+    condition: Rc<Expression>,
+    statics: JoinItemDefinitionStatic,
+}
+
+impl JoinDef {
+    pub(crate) fn new(join: &Join) -> Result<Self, CubeError> {
+        let relationship = match join.relationship {
+            Relationship::ManyToOne => "many_to_one",
+            Relationship::OneToOne => "one_to_one",
+        };
+        Ok(Self {
+            condition: Expression::compile(&join.sql)?,
+            statics: JoinItemDefinitionStatic {
+                name: join.name.clone(),
+                alias: None,
+                relationship: relationship.to_owned(),
+            },
+        })
+    }
+}
+
+impl JoinItemDefinition for JoinDef {
+    fn static_data(&self) -> &JoinItemDefinitionStatic {
         &self.statics
     }
 

@@ -6,6 +6,7 @@
 //! other crate touches the planner's interfaces.
 
 mod expression;
+mod joins;
 mod options;
 mod schema;
 mod tools;
@@ -23,9 +24,10 @@ use cubesqlplanner::planner::{
 use pp_cube_dialect::Dialect;
 use pp_cube_model::{Model, Query};
 
+use crate::joins::Joins;
 use crate::options::Options;
 use crate::schema::Evaluator;
-use crate::tools::{Joins, Opaque, Tools};
+use crate::tools::{Opaque, Tools};
 
 /// One value bound to a placeholder of the SQL.
 #[derive(Debug, Clone, PartialEq)]
@@ -82,7 +84,8 @@ pub fn plan(
         .map_err(|_| PlanError::User(format!("Timezone `{timezone}` is not known")))?;
     let evaluator = Rc::new(Evaluator::new(model.clone()));
     evaluator.check(query)?;
-    let joins = Rc::new(Joins);
+    let joins = Rc::new(Joins::new(model.clone())?);
+    joins.check(query)?;
     let tools = Rc::new(Tools::new(evaluator.clone(), dialect, zone, joins.clone()));
     let security_context = Rc::new(Opaque);
     let options = Rc::new(Options::new(
