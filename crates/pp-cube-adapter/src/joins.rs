@@ -15,7 +15,7 @@ use cubesqlplanner::cube_bridge::join_graph::JoinGraph;
 use cubesqlplanner::cube_bridge::join_hints::JoinHintItem;
 use cubesqlplanner::cube_bridge::join_item::{JoinItem, JoinItemStatic};
 use cubesqlplanner::cube_bridge::join_item_definition::JoinItemDefinition;
-use pp_cube_model::{Cube, Filter, Model, Query, Relationship};
+use pp_cube_model::{Cube, Filter, Model, Query, Relationship, Target};
 
 use crate::schema::JoinDef;
 
@@ -39,6 +39,19 @@ pub(crate) struct Joins {
     model: Arc<Model>,
     /// The joins each cube declares, by the cube's position in the model.
     edges: Vec<Vec<Edge>>,
+}
+
+/// What a query reads, found by following member expressions.
+#[derive(Default)]
+struct Read<'m> {
+    /// Every member met, with its cube; one is followed once.
+    members: Vec<(usize, &'m str)>,
+    /// The cubes of those members, in the order they were met.
+    cubes: Vec<usize>,
+    /// The measures among them, with their cubes.
+    measures: Vec<(usize, &'m str)>,
+    /// Expressions still to follow, each with the cube it belongs to.
+    pending: Vec<(usize, &'m str)>,
 }
 
 fn quoted(names: impl IntoIterator<Item = impl AsRef<str>>) -> String {
@@ -89,6 +102,10 @@ impl Joins {
         &self.model.cubes[index]
     }
 
+    fn position(&self, cube: &str) -> Option<usize> {
+        self.model.cubes.iter().position(|known| known.name == cube)
+    }
+
     fn names(&self, cubes: &[usize]) -> String {
         quoted(cubes.iter().map(|cube| &self.cube(*cube).name))
     }
@@ -97,43 +114,88 @@ impl Joins {
         self.cube(edge.from).joins[edge.join].relationship
     }
 
-    /// Fails unless the cubes `query` names form one tree of joins whose root
+    /// Notes that the query reads the member `name` of `cube`, and queues the
+    /// member's expressions to be followed.
+    fn read<'m>(&'m self, cube: usize, name: &str, read: &mut Read<'m>) {
+        let definition = self.cube(cube);
+        let dimension = definition
+            .dimensions
+            .iter()
+            .find(|found| found.name == name);
+        let measure = definition.measures.iter().find(|found| found.name == name);
+        let segment = definition.segments.iter().find(|found| found.name == name);
+        let known = dimension
+            .map(|dimension| dimension.name.as_str())
+            .or(measure.map(|measure| measure.name.as_str()))
+            .or(segment.map(|segment| segment.name.as_str()));
+        let Some(known) = known else {
+            return;
+        };
+        if read.members.contains(&(cube, known)) {
+            return;
+        }
+        read.members.push((cube, known));
+        if !read.cubes.contains(&cube) {
+            read.cubes.push(cube);
+        }
+        let expressions = dimension
+            .map(|dimension| &dimension.sql)
+            .into_iter()
+            .chain(segment.map(|segment| &segment.sql));
+        read.pending
+            .extend(expressions.map(|expression| (cube, expression.as_str())));
+        if let Some(measure) = measure {
+            read.measures.push((cube, known));
+            let conditions = measure.filters.iter().map(|filter| &filter.sql);
+            let expressions = measure.sql.iter().chain(conditions);
+            read.pending
+                .extend(expressions.map(|expression| (cube, expression.as_str())));
+        }
+    }
+
+    /// Fails unless the cubes `query` reads form one tree of joins whose root
     /// owns every measure. A measure anywhere else needs the planner's
     /// multi-stage SQL, which is beyond the baseline.
     ///
-    /// Call it after the members are known to be in the model.
+    /// What a query reads is the members it names and the members their
+    /// expressions refer to, in any cube: the planner joins all of those.
+    ///
+    /// Call it after the named members are known to be in the model.
     pub(crate) fn check(&self, query: &Query) -> Result<(), CubeError> {
-        let mut members: Vec<&str> = Vec::new();
-        members.extend(query.measures.iter().map(String::as_str));
-        members.extend(query.dimensions.iter().map(String::as_str));
-        members.extend(query.segments.iter().map(String::as_str));
-        filter_members(&query.filters, &mut members);
+        let mut named: Vec<&str> = Vec::new();
+        named.extend(query.measures.iter().map(String::as_str));
+        named.extend(query.dimensions.iter().map(String::as_str));
+        named.extend(query.segments.iter().map(String::as_str));
+        filter_members(&query.filters, &mut named);
         let time_dimensions = query.time_dimensions.iter();
-        members.extend(time_dimensions.map(|time_dimension| time_dimension.dimension.as_str()));
+        named.extend(time_dimensions.map(|time_dimension| time_dimension.dimension.as_str()));
 
-        let mut cubes = Vec::new();
-        let mut measures = Vec::new();
-        for member in members {
-            let Some((cube, name)) = member.split_once('.') else {
-                continue;
-            };
-            let Some(cube) = self.model.cubes.iter().position(|known| known.name == cube) else {
-                continue;
-            };
-            if !cubes.contains(&cube) {
-                cubes.push(cube);
+        let mut read = Read::default();
+        for member in named {
+            if let Some((cube, name)) = member.split_once('.') {
+                if let Some(cube) = self.position(cube) {
+                    self.read(cube, name, &mut read);
+                }
             }
-            if self
-                .cube(cube)
-                .measures
-                .iter()
-                .any(|measure| measure.name == name)
-            {
-                measures.push((cube, member));
+        }
+        while let Some((cube, expression)) = read.pending.pop() {
+            let targets = self
+                .model
+                .resolve(self.cube(cube), expression)
+                .map_err(|error| CubeError::user(error.to_string()))?;
+            for target in targets {
+                let (owner, name) = match target {
+                    Target::Column { .. } => continue,
+                    Target::Dimension(owner, dimension) => (owner, &dimension.name),
+                    Target::Measure(owner, measure) => (owner, &measure.name),
+                };
+                if let Some(owner) = self.position(&owner.name) {
+                    self.read(owner, name, &mut read);
+                }
             }
         }
 
-        let mut owners: Vec<usize> = measures.iter().map(|(cube, _)| *cube).collect();
+        let mut owners: Vec<usize> = read.measures.iter().map(|(cube, _)| *cube).collect();
         owners.sort_unstable();
         owners.dedup();
         if owners.len() > 1 {
@@ -142,16 +204,16 @@ impl Joins {
                 self.names(&owners)
             )));
         }
-        let Some(tree) = self.tree(&cubes)? else {
-            return Err(self.unconnected(&cubes));
+        let Some(tree) = self.tree(&read.cubes)? else {
+            return Err(self.unconnected(&read.cubes));
         };
-        match measures.iter().find(|(cube, _)| *cube != tree.root) {
+        match read.measures.iter().find(|(cube, _)| *cube != tree.root) {
             None => Ok(()),
             Some((cube, measure)) => Err(CubeError::user(format!(
-                "Measure `{measure}` belongs to `{}`, which this query reaches through a join \
-                 from `{}`; measures are taken from the cube the joins start from",
-                self.cube(*cube).name,
-                self.cube(tree.root).name
+                "Measure `{owner}.{measure}` belongs to `{owner}`, which this query reaches \
+                 through a join from `{}`; measures are taken from the cube the joins start from",
+                self.cube(tree.root).name,
+                owner = self.cube(*cube).name
             ))),
         }
     }

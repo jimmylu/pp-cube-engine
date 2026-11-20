@@ -52,4 +52,13 @@ Changed on the way:
 - A model with a join to a cube it does not declare now fails every query
   against it, naming both cubes, until model validation reports it earlier.
 
+## 2026-11-20: review, round 1
+
+Codex (OpenAI) found one P2: the check before planning looked only at the
+members the query names. A dimension whose expression reads another cube
+brings that cube into the join, and a measure beside it could then be
+compiled from a joined cube. Fixed: the check follows member expressions
+through the model's references; a test covers a dimension and a formula that
+read another cube.
+
 Open: delivery. The SQL has not been executed (T1, T2).

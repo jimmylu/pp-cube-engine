@@ -183,6 +183,46 @@ fn measure_of_a_joined_cube_is_refused_under_either_relationship() {
     );
 }
 
+// scenario: B0-JOIN-004
+#[test]
+fn cube_reached_only_through_a_member_expression_counts_as_joined() {
+    // Every member below is one of `receipts`; two of them read `sales`,
+    // which is the cube the join starts from.
+    let model = r#"
+cubes:
+  - name: sales
+    sql_table: dw.sales_dtl
+    data_source: warehouse
+    joins: [{ name: receipts, relationship: one_to_one, sql: "{CUBE}.receipt_no = {receipts.receipt_no}" }]
+    dimensions: [{ name: channel_cd, sql: "{CUBE}.channel_cd", type: string }]
+    measures: [{ name: amount, type: sum, sql: "{CUBE}.amount" }]
+  - name: receipts
+    sql_table: dw.receipt
+    data_source: warehouse
+    dimensions:
+      - { name: receipt_no, sql: "{CUBE}.receipt_no", type: string, primary_key: true }
+      - { name: channel, sql: "{sales.channel_cd}", type: string }
+    measures:
+      - { name: tax, type: sum, sql: "{CUBE}.tax" }
+      - { name: tax_share, type: number, sql: "{tax} / NULLIF({sales.amount}, 0)" }
+"#;
+
+    let through_a_dimension = failure_with(
+        model,
+        r#"{"measures": ["receipts.tax"], "dimensions": ["receipts.channel"]}"#,
+    );
+    let through_a_formula = failure_with(model, r#"{"measures": ["receipts.tax_share"]}"#);
+
+    assert_eq!(
+        [through_a_dimension, through_a_formula],
+        [
+            "Measure `receipts.tax` belongs to `receipts`, which this query reaches through a \
+             join from `sales`; measures are taken from the cube the joins start from",
+            "Measures of more than one cube (`sales`, `receipts`) are outside the baseline",
+        ]
+    );
+}
+
 #[test]
 fn join_to_a_cube_the_model_lacks_names_both_cubes() {
     let message = failure_with(
