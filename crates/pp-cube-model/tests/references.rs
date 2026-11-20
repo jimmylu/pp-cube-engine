@@ -192,3 +192,16 @@ fn a_segment_is_not_a_member_an_expression_can_reference() {
         })
     );
 }
+
+#[test]
+fn each_reference_is_located_by_the_bytes_of_its_braces() {
+    let expression = "{CUBE}.amount / {order_count}";
+
+    let braces: Vec<_> = pp_cube_model::locate_references(expression)
+        .expect("the expression is well formed")
+        .into_iter()
+        .map(|found| &expression[found.braces])
+        .collect();
+
+    assert_eq!(braces, ["{CUBE}", "{order_count}"]);
+}

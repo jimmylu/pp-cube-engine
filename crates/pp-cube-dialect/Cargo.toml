@@ -7,5 +7,12 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[dependencies]
+# Same version requirement and features as the pinned planner, so that the
+# planner's minijinja is built as before.
+minijinja = { version = "1", features = ["json", "loader"] }
+serde = { version = "1", features = ["derive"] }
+serde_norway = "0.9"
+
 [lints]
 workspace = true

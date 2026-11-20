@@ -675,6 +675,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "insta"
+version = "1.43.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46fdb647ebde000f43b5b53f773c30cf9b0cb4300453208713fa38b2c70935a0"
+dependencies = [
+ "once_cell",
+ "similar",
+]
+
+[[package]]
 name = "ipnet"
 version = "2.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -971,12 +981,22 @@ dependencies = [
 name = "pp-cube-adapter"
 version = "0.0.0"
 dependencies = [
+ "cubenativeutils",
  "cubesqlplanner",
+ "minijinja",
+ "pp-cube-dialect",
+ "pp-cube-model",
 ]
 
 [[package]]
 name = "pp-cube-compile"
 version = "0.0.0"
+dependencies = [
+ "insta",
+ "pp-cube-adapter",
+ "pp-cube-dialect",
+ "pp-cube-model",
+]
 
 [[package]]
 name = "pp-cube-conformance"
@@ -985,6 +1005,11 @@ version = "0.0.0"
 [[package]]
 name = "pp-cube-dialect"
 version = "0.0.0"
+dependencies = [
+ "minijinja",
+ "serde",
+ "serde_norway",
+]
 
 [[package]]
 name = "pp-cube-model"
@@ -1406,6 +1431,12 @@ dependencies = [
  "errno",
  "libc",
 ]
+
+[[package]]
+name = "similar"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
 
 [[package]]
 name = "siphasher"

@@ -8,7 +8,12 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+cubenativeutils = { path = "../../vendor/cube/rust/cube/cubenativeutils" }
 cubesqlplanner = { path = "../../vendor/cube/rust/cube/cubesqlplanner/cubesqlplanner" }
+# Same version requirement and features as the pinned planner.
+minijinja = { version = "1", features = ["json", "loader"] }
+pp-cube-dialect = { path = "../pp-cube-dialect" }
+pp-cube-model = { path = "../pp-cube-model" }
 
 [lints]
 workspace = true

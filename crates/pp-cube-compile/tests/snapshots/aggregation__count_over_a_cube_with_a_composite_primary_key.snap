@@ -1,0 +1,7 @@
+---
+source: crates/pp-cube-compile/tests/aggregation.rs
+expression: "compiled(\"order_lines\", &[\"row_count\"])"
+---
+SELECT "order_lines".channel_cd "order_lines__channel_cd", count(CAST("order_lines".order_no AS VARCHAR) || CAST("order_lines".line_no AS VARCHAR)) "order_lines__row_count"  
+FROM  dw.order_line  AS "order_lines" GROUP BY 1 ORDER BY  2  DESC
+-- parameters: []

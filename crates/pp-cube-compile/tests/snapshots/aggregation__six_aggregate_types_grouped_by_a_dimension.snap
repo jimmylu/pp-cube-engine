@@ -1,0 +1,7 @@
+---
+source: crates/pp-cube-compile/tests/aggregation.rs
+expression: "compiled(&[\"row_count\", \"order_count\", \"amount\", \"avg_amount\", \"min_amount\",\n\"max_amount\",])"
+---
+SELECT "sales".channel_cd "sales__channel_cd", count(*) "sales__row_count", COUNT(DISTINCT "sales".order_no) "sales__order_count", sum("sales".amount) "sales__amount", avg("sales".amount) "sales__avg_amount", min("sales".amount) "sales__min_amount", max("sales".amount) "sales__max_amount"  
+FROM  dw.sales_dtl  AS "sales" GROUP BY 1 ORDER BY  2  DESC
+-- parameters: []

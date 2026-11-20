@@ -3,11 +3,15 @@
 mod load;
 mod meta;
 mod model;
+mod query;
 mod reference;
 
-pub use load::{load_json, load_yaml, LoadError, Position};
+pub use load::{load_json, load_query, load_yaml, LoadError, Position};
 pub use model::{
     Cube, Dimension, DimensionType, Join, Measure, MeasureFilter, MeasureType, Model, Relationship,
     Segment,
 };
-pub use reference::{parse_references, Reference, ReferenceError, Target};
+pub use query::Query;
+pub use reference::{
+    locate_references, parse_references, Located, Reference, ReferenceError, Target,
+};
