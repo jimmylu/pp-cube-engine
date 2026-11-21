@@ -4,9 +4,12 @@
 //! templates, followed by the parameters in placeholder order. Nobody has
 //! executed them; execution belongs to tiers T1 and T2.
 
+mod support;
+use support::compile;
+
 use std::sync::Arc;
 
-use pp_cube_compile::{compile, CompileContext, CompileError, Compiled, DialectId};
+use pp_cube_compile::{CompileContext, CompileError, Compiled, DialectId};
 use pp_cube_model::{load_query, load_yaml};
 
 fn compile_with(model: &str, query: &str) -> Result<Compiled, CompileError> {
@@ -47,6 +50,7 @@ fn query_failure(query: &str) -> String {
 }
 
 // scenario: B0-JOIN-001
+// scenario: B0-DET-001
 #[test]
 fn sales_grouped_and_filtered_by_a_store_dimension() {
     insta::assert_snapshot!(compiled(
@@ -58,6 +62,7 @@ fn sales_grouped_and_filtered_by_a_store_dimension() {
     ));
 }
 
+// scenario: B0-DET-001
 #[test]
 fn dimension_two_joins_away_is_reached_through_the_cube_between() {
     insta::assert_snapshot!(compiled(
