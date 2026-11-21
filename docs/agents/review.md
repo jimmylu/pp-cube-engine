@@ -85,3 +85,26 @@ Do not delete acceptance evidence or edit cached reports to clear questions.
 Repeated reviews on the same SHA with different context produce distinct report
 comment markers, so the PR retains the new verdict instead of hiding it behind
 an earlier comment for that SHA.
+
+## Bounded delivery stop
+
+Stopped after two different review repairs. At cf1036b, Opus returned valid
+citations and explicitly marked all three prior findings resolved. It reported
+new issues: P2 base-side full files use the main tip while the three-dot diff uses
+the merge base; P3 strict text decoding prevents review of non-UTF-8 files.
+These are remaining implementation issues, not a service failure or ungrounded
+policy inference. PR #35 stays Draft; do not bypass the gate or mark Ready.
+
+Resume with a diverged-history regression and make the packet distinguish the
+PR base tip from the diff pre-image, using consistent revisions for citations.
+Add binary/non-UTF-8 coverage and a documented explicit handling path that does
+not silently omit changed content. Keep all work in harness paths. Existing
+issue #33 remains open until this PR is accepted. No product PR changes or merge.
+
+Latest reviewed-head evidence: 27 offline tests passed;
+`check ci: PASSED — 15 steps, 0 skipped, 44s @ cf1036b`.
+Remote t0 passed on that head. T1/T2 not run. This final handoff-only commit will
+receive its own CI evidence in PR comments; it is not a reviewed/accepted head.
+The original automatic Opus route failed a service preflight; the explicitly
+selected alternative Opus 5.5 route returned real reports. No credentials or
+service configuration changes were needed.
