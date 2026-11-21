@@ -3,9 +3,12 @@
 //! The snapshots are the SQL the pinned planner emits with the Presto
 //! templates. Nobody has executed them; execution belongs to tiers T1 and T2.
 
+mod support;
+use support::compile;
+
 use std::sync::Arc;
 
-use pp_cube_compile::{compile, CompileContext, CompileError, Compiled, DialectId};
+use pp_cube_compile::{CompileContext, CompileError, Compiled, DialectId};
 use pp_cube_model::{load_yaml, Model, Query};
 
 fn model() -> Arc<Model> {

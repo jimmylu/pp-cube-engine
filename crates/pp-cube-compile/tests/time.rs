@@ -5,9 +5,12 @@
 //! templates, followed by the parameters in placeholder order. Nobody has
 //! executed them; execution belongs to tiers T1 and T2.
 
+mod support;
+use support::compile;
+
 use std::sync::Arc;
 
-use pp_cube_compile::{compile, CompileContext, CompileError, Compiled, DialectId, Parameter};
+use pp_cube_compile::{CompileContext, CompileError, Compiled, DialectId, Parameter};
 use pp_cube_model::{load_query, load_yaml};
 
 /// Compiles `sales.amount` with `rest` added to the query, with `timezone`

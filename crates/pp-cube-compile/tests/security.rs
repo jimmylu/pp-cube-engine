@@ -1,7 +1,10 @@
 //! Caller restrictions through the public facade; no SQL is executed.
+mod support;
+use support::compile;
+
 use std::sync::Arc;
 
-use pp_cube_compile::{compile, CompileContext, CompileError, Compiled, DialectId, Parameter};
+use pp_cube_compile::{CompileContext, CompileError, Compiled, DialectId, Parameter};
 use pp_cube_model::{load_query, load_yaml, Filter};
 
 fn filters(json: &str) -> Vec<Filter> {

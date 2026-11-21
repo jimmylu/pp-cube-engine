@@ -4,9 +4,12 @@
 //! templates, followed by the parameters in placeholder order. Nobody has
 //! executed them; execution belongs to tiers T1 and T2.
 
+mod support;
+use support::compile;
+
 use std::sync::Arc;
 
-use pp_cube_compile::{compile, CompileContext, CompileError, Compiled, DialectId};
+use pp_cube_compile::{CompileContext, CompileError, Compiled, DialectId};
 use pp_cube_model::{load_query, load_yaml};
 
 fn compile_presto(query: &str) -> Result<Compiled, CompileError> {
