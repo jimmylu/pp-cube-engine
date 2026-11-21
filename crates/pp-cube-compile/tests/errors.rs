@@ -121,3 +121,36 @@ fn security_measure_dependencies_are_classified_without_being_selected() {
         ));
     }
 }
+
+// scenario: B0-RESULT-002
+#[test]
+fn upstream_depth_failure_names_filter_member_and_actual_rule() {
+    // Debug planner frames are large; reach its explicit 160-level guard on a
+    // bounded test thread stack instead of exhausting libtest's default stack.
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(assert_depth_error)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+fn assert_depth_error() {
+    let mut text = String::from("cubes:\n  - name: sales\n    sql_table: hidden_schema.hidden_table\n    data_source: warehouse\n    measures:\n");
+    for i in 0..170 {
+        text.push_str(&format!(
+            "      - {{name: m{i}, type: number, sql: \"{{m{}}}\"}}\n",
+            i + 1
+        ));
+    }
+    text.push_str("      - {name: m170, type: sum, sql: \"{CUBE}.hidden_column\"}\n");
+    let model = Arc::new(load_yaml(&text).unwrap());
+    let query = load_query(r#"{"measures":["sales.m170"],"filters":[{"member":"sales.m0","operator":"gt","values":["1"]}]}"#).unwrap();
+    let error = compile(&model, &query, &context()).unwrap_err();
+    let CompileError::Query(message) = error else {
+        panic!("expected Query: {error:?}")
+    };
+    assert!(message.contains("sales.m0"), "{message}");
+    assert!(message.contains("resolution depth limit"), "{message}");
+    assert!(!message.contains("hidden_"));
+}

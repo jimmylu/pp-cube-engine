@@ -57,3 +57,16 @@ error behavior together. No new owner decision or implementation blocker exists.
 The next step is checkpoint, exact-head CI, cross-vendor reassessment and remote
 t0. Evidence belongs in PR comments/artifacts, avoiding an unreviewed evidence
 commit. A successful checkpoint is not a claim of final accepted CI/review.
+
+
+## Final diagnostic repair
+
+49e502a review requested all query-member contexts and concrete upstream rules.
+Mapping now includes nested filter, segment, time and order members. Audited
+pinned-upstream depth/date/precision/parameter templates map to fixed safe rules.
+A real 170-member filter dependency chain triggers the planner's 160-level
+resolution guard through compile(); the test verifies its member/rule and no
+physical identifiers. Debug frames require a bounded 32 MiB test thread stack.
+The existing facade Internal.detail field is retained for source compatibility
+and documented as a safe category rather than a diagnostic record.
+Final CI, cross-vendor review and Ready evidence remain pending at checkpoint.

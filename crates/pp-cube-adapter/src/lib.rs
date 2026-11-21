@@ -24,7 +24,7 @@ use cubesqlplanner::planner::{
     TopLevelPlanner,
 };
 use pp_cube_dialect::Dialect;
-use pp_cube_model::{Model, Query};
+use pp_cube_model::{Filter, Model, Query};
 
 use crate::joins::Joins;
 use crate::options::Options;
@@ -63,10 +63,52 @@ pub enum PlanError {
 impl PlanError {
     fn upstream(error: CubeError, query: &Query, stage: &str) -> Self {
         match error.cause {
-            CubeErrorCauseType::User => Self::User(format!(
-                "Members {:?} / {:?} must satisfy planner {stage} rules",
-                query.measures, query.dimensions
-            )),
+            CubeErrorCauseType::User => {
+                // Translate audited pinned-upstream rule templates; never echo their
+                // interpolated SQL/values. Error class comes from cause, not text.
+                let rule = if error.message.starts_with("Member ")
+                    && error.message.contains("levels deep")
+                {
+                    "Member reference chains must stay within the planner resolution depth limit"
+                } else if error
+                    .message
+                    .starts_with("Could not resolve nonexistent time ")
+                {
+                    "Local time must exist in the effective timezone"
+                } else if error.message.starts_with("Can't parse date:") {
+                    "Date values must be valid absolute dates"
+                } else if error
+                    .message
+                    .starts_with("Unsupported timestamp precision:")
+                {
+                    "Timestamp precision must be supported by the planner"
+                } else if error.message == "Expected one parameter but nothing found" {
+                    "The filter requires a parameter"
+                } else {
+                    "The request must satisfy the planner's query rules"
+                };
+                fn filters<'a>(items: &'a [Filter], members: &mut Vec<&'a str>) {
+                    for filter in items {
+                        match filter {
+                            Filter::Condition(c) => members.push(&c.member),
+                            Filter::And(items) | Filter::Or(items) => filters(items, members),
+                        }
+                    }
+                }
+                let mut members: Vec<&str> = query
+                    .measures
+                    .iter()
+                    .chain(&query.dimensions)
+                    .chain(&query.segments)
+                    .map(String::as_str)
+                    .collect();
+                filters(&query.filters, &mut members);
+                members.extend(query.time_dimensions.iter().map(|t| t.dimension.as_str()));
+                members.extend(query.order.iter().flatten().map(|o| o.member.as_str()));
+                members.sort_unstable();
+                members.dedup();
+                Self::User(format!("{rule}; members {members:?}; stage {stage}"))
+            }
             _ => Self::Internal(error.message),
         }
     }
