@@ -1,37 +1,32 @@
 # Session notes
 
-## Current handoff state: stopped after bounded review repair
+## Current handoff state: resumed repair; final delivery pending
 
 PR: https://github.com/jimmylu/pp-cube-engine/pull/28
 Branch: change/add-complete-compile-result
-Last reviewed implementation: 69f0294e47ba273b7c649be4b69f7e456d228454.
-Tasks 1–6 complete; task 7 remains open. The two requirements have already been
-synced into main compile-result/determinism specs and this folder is archived,
-as repository workflow requires before final review. Implementation/checkpoint
-publication is complete and risk:upstream is applied. Clean cross-vendor review
-and final accepted exact-head evidence are NOT complete. PR remains Draft.
-Owner approval and merge have not been requested.
-
-Stopped under AGENTS.md: the review gate remained failing after two different
-repair rounds. This handoff updates tracking only, without further product fixes.
+User authorized continuing after the bounded stop. Tasks 1–7 cover completed
+implementation, sync/archive and checkpoint publication; risk:upstream is applied.
+Exact-head acceptance is a separate final delivery gate recorded in PR comments
+and artifacts, so recording evidence does not create another unreviewed commit.
+Clean cross-vendor review and accepted final-head CI/t0 evidence remain pending
+at this checkpoint. PR remains Draft. Owner reviews and merges after Ready.
 Implementer: Codex / OpenAI GPT-6. Reviewer: omp / DeepSeek V4 Pro.
 
-## Open findings and next work
+## Review repairs and next work
 
-The 69f0294 review reported:
-- P2: task 7 was checked while notes still described final evidence as pending.
-  This handoff unchecks task 7 and states the done/open boundary explicitly;
-  a new review must assess the corrected record.
-- P3: the gitlink guard test in fingerprint.rs requires Git and a checkout and
-  duplicates the upstream pin literal. Consolidate the production pin constant,
-  and make repository-only pin checking compatible with tests without Git state,
-  without introducing harness changes or runtime IO into compilation.
+The 69f0294 review's tracking contradiction was corrected in ce32819. This resumed
+repair separates completed archive/publication tasks from the exact-head delivery
+gate explicitly, rather than checking a task that claims future evidence.
+The Git-test portability finding is repaired: one UPSTREAM_PIN constant feeds
+production identity and the repository test. The test skips source archives
+without .git and missing Git executables; other process failures and gitlink
+mismatches still fail. Compilation itself performs no Git or filesystem IO.
 
-After the remaining fix, run targeted tests and fast, checkpoint/push in this same
-PR, then run delivery for exact-head CI, cross-vendor review and remote t0. Do not
-mark task 7 complete or Ready until its evidence/review requirements are satisfied.
-Evidence belongs in PR comments/artifacts, not an extra evidence-only commit.
-No owner-only design decision or vendor/harness edit is currently required.
+`cargo test -p pp-cube-compile --locked` passed after the repair. Running the exact
+gitlink unit test with PATH=/nonexistent also passed with an explicit skip reason.
+Final-head fast/CI, cross-vendor review and remote t0 are next; their SHA-bound
+results belong in PR evidence. T1/T2 were not run. No owner-only design decision
+or vendor/harness edit is required.
 
 ## Implemented behavior
 
@@ -47,7 +42,7 @@ Fingerprint v1 covers canonical complete typed-model content, original query,
 dialect, timezone, security filters, package version and full upstream pin. Object
 keys are recursively sorted, ordered arrays and numeric metadata are preserved,
 and request_id is excluded. Compile itself performs no runtime Git/IO. The pin
-constant's repository test is the remaining portability finding, described above.
+constant's repository test is conditional on Git metadata and executable availability.
 Raw YAML/JSON formatting is absent from the typed-model identity contract.
 
 ## Verification and repair history

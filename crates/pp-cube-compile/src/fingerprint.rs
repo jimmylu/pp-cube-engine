@@ -3,20 +3,16 @@ use crate::{CompileContext, CompileError};
 use pp_cube_model::{Model, Query};
 use sha2::{Digest, Sha256};
 
+// Update with vendor upgrades; the repository-only test checks the gitlink.
+const UPSTREAM_PIN: &str = "486f0d26bab58ab4fe0be0e4cdd39818b35a7870";
+
 pub(crate) fn fingerprint(
     model: &Model,
     query: &Query,
     ctx: &CompileContext,
 ) -> Result<[u8; 32], CompileError> {
-    identity(
-        model,
-        query,
-        ctx,
-        env!("CARGO_PKG_VERSION"),
-        "486f0d26bab58ab4fe0be0e4cdd39818b35a7870",
-    )
+    identity(model, query, ctx, env!("CARGO_PKG_VERSION"), UPSTREAM_PIN)
 }
-// Update the full pin with vendor upgrades; an integration test checks the gitlink.
 fn identity(
     model: &Model,
     query: &Query,
@@ -106,13 +102,32 @@ fn canonical_objects_preserve_numbers_and_array_order() {
 // scenario: B0-DET-002
 #[test]
 fn upstream_identity_matches_repository_gitlink() {
-    let output = std::process::Command::new("git")
+    let root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+    // Source archives have no gitlink to validate. A worktree's .git is a file.
+    if !root.join(".git").exists() {
+        eprintln!("gitlink check skipped: source archive without Git metadata");
+        return;
+    }
+    let output = match std::process::Command::new("git")
         .args(["ls-tree", "HEAD", "vendor/cube"])
-        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
+        .current_dir(root)
         .output()
-        .unwrap();
-    assert!(output.status.success());
-    assert!(String::from_utf8(output.stdout)
-        .unwrap()
-        .contains("486f0d26bab58ab4fe0be0e4cdd39818b35a7870"));
+    {
+        Ok(output) => output,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!("gitlink check skipped: Git executable unavailable");
+            return;
+        }
+        Err(error) => panic!("cannot run Git gitlink check: {error}"),
+    };
+    assert!(
+        output.status.success(),
+        "git ls-tree failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(
+        stdout.trim(),
+        format!("160000 commit {UPSTREAM_PIN}\tvendor/cube")
+    );
 }
