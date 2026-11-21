@@ -240,8 +240,16 @@ def review():
               '"path":"file","line":1,"quote":"exact text on that line"}]}],'
               '"questions":[],"reassessments":[{"index":0,"status":"resolved","reason":"evidence"}]}. '
               'Use empty arrays when appropriate. Evidence revision is base or head.\n')
-    prompt += json.dumps(packet, ensure_ascii=False)
+    numbered = dict(packet, files={path: [{'line': n, 'text': text}
+                                         for n, text in enumerate(source.splitlines(), 1)]
+                                   for path, source in packet['files'].items()})
+    encoded = json.dumps(numbered, ensure_ascii=False)
+    if len(encoded.encode()) > 500_000:
+        raise ValueError('Review context exceeds 500 KB; no truncation')
+    save(state / 'review-packet.json', packet)
+    prompt += encoded
     raw = model('reviewer', prompt).strip()
+    (state / 'review-response.txt').write_text(raw)
     if raw.startswith('```json\n') and raw.endswith('```'):
         raw = raw[8:-3]
     report = json.loads(raw)
@@ -252,7 +260,6 @@ def review():
     report['reviewer'] = cfg['reviewer']
     report['protocol'] = REVIEW_PROTOCOL
     report['command'] = cfg.get('reviewer_command')
-    save(state / 'review-packet.json', packet)
     save(state / 'review.json', report)
     path = state / 'review.md'
     path.write_text('<!-- dev-review:' + bound['head'] + ' -->\n'

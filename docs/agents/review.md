@@ -64,3 +64,9 @@ Offline implementation and verification are complete before checkpoint. Real
 Opus review and exact-head CI/t0 acceptance are pending publication; their results
 and any bounded repairs are recorded in this PR rather than evidence-only commits.
 Owner performs final review and merge. No production, vendor or OpenSpec changes.
+
+First live Opus review returned a report but citation validation rejected its
+line references. Add explicit per-line numbers in the model packet and retain
+review-response.txt even for invalid responses, alongside the exact packet.
+These are diagnostic artifacts, never acceptance evidence. The 500 KB cap also
+covers the final numbered packet plus previous report. This is the first repair.
