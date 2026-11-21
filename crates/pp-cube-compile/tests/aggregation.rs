@@ -19,6 +19,7 @@ fn compile_presto(measures: &[&str], dimensions: &[&str]) -> Result<Compiled, Co
         ..Query::default()
     };
     let context = CompileContext {
+        request_id: String::new(),
         dialect: DialectId::Presto,
         timezone: "UTC".to_owned(),
         security_filters: Vec::new(),

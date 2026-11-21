@@ -18,6 +18,7 @@ cubesqlplanner = { path = "../../vendor/cube/rust/cube/cubesqlplanner/cubesqlpla
 minijinja = { version = "1", features = ["json", "loader"] }
 pp-cube-dialect = { path = "../pp-cube-dialect" }
 pp-cube-model = { path = "../pp-cube-model" }
+sqlparser = { version = "=0.64.0", default-features = false, features = ["std", "visitor"] }
 
 [lints]
 workspace = true

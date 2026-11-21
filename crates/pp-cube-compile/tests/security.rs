@@ -12,6 +12,7 @@ fn filters(json: &str) -> Vec<Filter> {
 
 fn context(json: &str) -> CompileContext {
     CompileContext {
+        request_id: String::new(),
         dialect: DialectId::Presto,
         timezone: "UTC".to_owned(),
         security_filters: filters(json),

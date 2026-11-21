@@ -26,6 +26,7 @@ fn invalid_models_precede_query_and_security_checks_without_mutation() {
                 })
                 .unwrap();
                 let context = CompileContext {
+                    request_id: String::new(),
                     dialect: DialectId::Presto,
                     timezone: "UTC".into(),
                     security_filters: if bad_security {

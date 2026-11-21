@@ -2,6 +2,8 @@
 //!
 //! Nothing here executes SQL, reads the clock or performs IO.
 
+mod fingerprint;
+
 use std::fmt;
 use std::sync::Arc;
 
@@ -9,12 +11,14 @@ use pp_cube_adapter::{plan, PlanError};
 use pp_cube_dialect::dialect;
 use pp_cube_model::{validate_model, Filter, Model, Query, ValidationIssue};
 
-pub use pp_cube_adapter::Parameter;
+pub use pp_cube_adapter::{OutputColumn, Parameter, UsedCube};
 pub use pp_cube_dialect::DialectId;
 
 /// What a compilation needs besides the model and the query.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompileContext {
+    /// Correlation only; excluded from result identity.
+    pub request_id: String,
     pub dialect: DialectId,
     /// An IANA name. A query that names its own timezone is compiled in that one.
     pub timezone: String,
@@ -27,6 +31,11 @@ pub struct CompileContext {
 /// One SELECT in the context's dialect and the values of its placeholders, in order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Compiled {
+    pub columns: Vec<OutputColumn>,
+    pub used_cubes: Vec<UsedCube>,
+    /// SHA-256 of canonical typed-model content, query, semantic context and build identity.
+    /// Raw YAML/JSON formatting and request_id are excluded.
+    pub fingerprint: [u8; 32],
     pub sql: String,
     pub parameters: Vec<Parameter>,
 }
@@ -68,6 +77,7 @@ pub fn compile(
     for filter in &context.security_filters {
         check_security_filter(filter)?;
     }
+    let fingerprint = fingerprint::fingerprint(model, query, context)?;
     let mut query = query.clone();
     query
         .filters
@@ -77,6 +87,9 @@ pub fn compile(
     })?;
     match plan(model, &query, dialect, &context.timezone) {
         Ok(planned) => Ok(Compiled {
+            columns: planned.columns,
+            used_cubes: planned.used_cubes,
+            fingerprint,
             sql: planned.sql,
             parameters: planned.parameters,
         }),
