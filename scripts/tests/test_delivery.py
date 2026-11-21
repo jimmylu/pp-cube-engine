@@ -218,9 +218,6 @@ class DeliveryTests(unittest.TestCase):
             model.assert_not_called()
 
 
-if __name__ == '__main__':
-    unittest.main()
-
 
 class ReviewQuestionTests(unittest.TestCase):
     def test_context_questions_block_without_code_repair(self):
@@ -231,3 +228,7 @@ class ReviewQuestionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'context clarification'):
                 dev.deliver(2)
             model.assert_not_called()
+
+
+if __name__ == '__main__':
+    unittest.main()

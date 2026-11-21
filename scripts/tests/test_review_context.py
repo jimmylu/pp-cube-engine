@@ -64,3 +64,42 @@ class ReviewContextTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'cannot pass'):
             dev.validate_review({'findings': [], 'reassessments': [
                 dict(index=0, status='remaining', reason='Still a defect')]}, {'files': {}}, previous)
+
+    def test_nonancestor_history_does_not_prevent_fresh_review(self):
+        from unittest.mock import patch
+        import json
+        for code in (1, 128):
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as directory:
+                dev.state = Path(directory)
+                dev.repo = 'example/kernel'
+                bound = dict(repo=dev.repo, number=1, branch='harness/x', base='a', head='new')
+                (dev.state / 'review.json').write_text(json.dumps(dict(bound, head='old', findings=[])))
+                with patch.object(dev, 'config', return_value={'reviewer': 'anthropic/opus'}), \
+                     patch.object(dev, 'binding', return_value=bound), \
+                     patch.object(dev, 'git', side_effect=subprocess.CalledProcessError(code, 'git')), \
+                     patch.object(dev, 'review_packet', return_value={'files': {}}), \
+                     patch.object(dev, 'model', return_value='{"findings":[]}') as model, \
+                     patch.object(dev, 'run', return_value='{"comments":[]}'):
+                    report = dev.review()
+                    self.assertEqual(report['findings'], [])
+                    self.assertIn('"previous_review": null', model.call_args.args[1])
+
+    def test_context_selection_invalidates_cached_questions(self):
+        from unittest.mock import patch
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            dev.state = Path(directory)
+            dev.repo = 'example/kernel'
+            bound = dict(repo=dev.repo, number=1, branch='harness/x', base='a', head='b')
+            old = dict(bound, findings=[], questions=['Need source'], protocol=dev.REVIEW_PROTOCOL,
+                       reviewer='anthropic/opus', command=None, context_paths=[])
+            (dev.state / 'review.json').write_text(json.dumps(old))
+            with patch.object(dev, 'context_paths', ['source.rs']), \
+                 patch.object(dev, 'config', return_value={'reviewer': 'anthropic/opus'}), \
+                 patch.object(dev, 'binding', return_value=bound), patch.object(dev, 'git'), \
+                 patch.object(dev, 'review_packet', return_value={'files': {}}) as packet, \
+                 patch.object(dev, 'model', return_value='{"findings":[]}') as model, \
+                 patch.object(dev, 'run', return_value='{"comments":[]}'):
+                self.assertFalse(dev.review()['questions'])
+                model.assert_called_once()
+                packet.assert_called_once_with(bound, extra_paths=['source.rs'])

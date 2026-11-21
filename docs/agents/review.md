@@ -70,3 +70,15 @@ line references. Add explicit per-line numbers in the model packet and retain
 review-response.txt even for invalid responses, alongside the exact packet.
 These are diagnostic artifacts, never acceptance evidence. The 500 KB cap also
 covers the final numbered packet plus previous report. This is the first repair.
+
+
+Second repair from a valid Opus report: non-ancestor/missing old heads now discard
+history, test classes precede the direct-run entry point, and delivery.md links
+this contract. To resolve context questions, rerun `scripts/dev review` or
+`scripts/dev deliver` with repeatable `--review-context path/to/tracked/file`.
+The named files are read from both pinned revisions, never the filesystem;
+unknown paths and vendor files are rejected. The selected path set participates
+in cache identity, so a changed selection triggers a fresh review on the same
+head. Supply the same flags when resuming. If new repository evidence is needed,
+commit it normally; a genuine owner-only decision follows the decision-issue rule.
+Do not delete acceptance evidence or edit cached reports to clear questions.
