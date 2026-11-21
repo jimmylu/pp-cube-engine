@@ -60,17 +60,6 @@ pub enum PlanError {
     Internal(String),
 }
 
-impl From<CubeError> for PlanError {
-    fn from(error: CubeError) -> Self {
-        match error.cause {
-            CubeErrorCauseType::User => {
-                Self::User("The query does not satisfy the planner rules".into())
-            }
-            _ => Self::Internal(error.message),
-        }
-    }
-}
-
 impl PlanError {
     fn upstream(error: CubeError, query: &Query, stage: &str) -> Self {
         match error.cause {
@@ -177,14 +166,14 @@ pub fn plan(
 
 // scenario: B0-RESULT-002
 #[test]
-fn upstream_messages_are_not_public_and_internal_causes_survive() {
+fn upstream_internal_cause_retains_adapter_diagnostics() {
     let detail = "SELECT hidden_column FROM hidden_schema.hidden_table";
     assert_eq!(
-        PlanError::from(CubeError::user(detail.into())),
-        PlanError::User("The query does not satisfy the planner rules".into())
-    );
-    assert_eq!(
-        PlanError::from(CubeError::internal(detail.into())),
+        PlanError::upstream(
+            CubeError::internal(detail.into()),
+            &Query::default(),
+            "planning"
+        ),
         PlanError::Internal(detail.into())
     );
 }

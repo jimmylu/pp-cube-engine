@@ -1,92 +1,59 @@
 # Session notes
 
-## 2026-11-21: next PR planned
+## Current state
 
-PR #28 merged as main 0673ee4b7eece4f453e6df17d32e68f13b8d96ce. Started
-change/add-classified-compile-errors from that exact base with a clean tree.
-Implementer/planner: Codex / OpenAI GPT-6.
+PR: https://github.com/jimmylu/pp-cube-engine/pull/29
+Branch: change/add-classified-compile-errors
+Implementer: Codex / OpenAI GPT-6. Reviewer: omp / DeepSeek V4 Pro.
+All five implementation tasks are complete. Final accepted exact-head evidence
+and cross-vendor review remain pending at this checkpoint. PR remains Draft;
+owner approval and merge follow Ready. T1/T2 not run.
 
-Prepared proposal, design, spec delta and five bounded implementation tasks.
-Transferred the complete Classified errors / B0-RESULT-002 requirement verbatim
-from the seed; its now-empty compile-result delta was deleted as specified by
-seed design's transfer policy. Main specs are unchanged; no implementation,
-archive, new dependency, vendor or harness change has occurred.
+## Implemented behavior
 
-Observed: typed facade has only Model/Query/Internal; PlanError has User/Internal.
-Joins::check detects direct and dependency-derived multi-owner measure requests,
-but reports a user error. Public compile validates the whole model first.
-Existing Query decoding rejects unknown fields before compile; raw parse/error
-APIs remain outside this PR. Existing tests cover multi-owner rejection as Query
-and must change only for recognized same-source out-of-B0 requests.
+The facade and adapter distinguish Unsupported from invalid-query failures at
+the existing dependency-aware multi-owner measure check. Model validation, query
+validation, data-source and join-path faults retain precedence. Security-only
+measure dependencies and formulas participate. Success snapshots, fingerprints,
+dependencies, vendor and harness are unchanged.
 
-Selected typed error propagation rather than matching upstream message text or
-duplicating dependency analysis in the facade. Physical schema/SQL must stay out
-of caller messages; internal diagnostic details remain operator-only. No owner
-question or extra scope is currently required.
+Public errors carry no raw planner SQL or physical source identifiers. Upstream
+user failures receive logical selected members and the failing planner stage;
+local checks retain their logical diagnostics. Adapter Internal retains operator
+diagnostics, while the facade replaces raw detail with a safe summary. Tests use
+physical schema/column/SQL sentinels at the real conversion seams. No injection API.
 
-Open: all five implementation tasks, their tests, safe-message audit, full CI,
-archive and exact-head final delivery. Proposal status is not implemented support.
-The Draft PR remains the single vehicle for planning, implementation and archive.
-No final acceptance or T1/T2 execution is claimed. Verification/publication results
-are recorded below as available and in SHA-bound PR evidence after checkpoint.
+## Review repairs and verification
 
-Planning verification: `openspec validate add-classified-compile-errors --strict`
-passed; `openspec validate --all --strict` passed 9 items; `git diff --check`
-passed. Checkpoint runs fast before commit. Full CI and cross-vendor product
-review are not run at the planning checkpoint because implementation is pending.
+0d1be73 review: scrubbed facade Internal.detail, supplied member/stage context for
+upstream user errors, and removed the original exact-message-equality mechanism.
+The first typed local callback rejection now wins, and finish() checks it after
+every upstream stage including successful returns. Adapter/facade tests passed.
+Full local CI and remote t0 passed at b32c6a7; its review remained failing.
 
+b32c6a7 review: removed the unused From<CubeError> implementation completely,
+including its generic-message path. Future fallible CubeError calls must now
+explicitly select local or context-aware upstream conversion to compile.
 
-## Implementation checkpoint
+The callback-state tradeoff is intentional: pinned upstream bridge trait methods
+return Result<_, CubeError>, so returning PlanError explicitly through them would
+require a forbidden vendor/interface change. Joins is allocated once per plan(),
+shared synchronously with that invocation's planner, and discarded afterward.
+Its first local validation rejection is fatal even when upstream wraps or
+suppresses it; later errors cannot make that request valid. finish() consumes the
+rejection at each stage, independently of upstream cause/message. Existing tests
+exercise actual bridge rejection followed by wrapped failure and success. This
+retains typed provenance without parsing messages or maintaining global state.
 
-Tasks 1.1–2.2 implemented. Added Unsupported at the dependency-aware join check
-and facade conversion; join/data-source faults precede unsupported classification.
-Local entry-point checks retain logical diagnostics. Unknown upstream user errors
-receive a safe rule-only message; internal detail is operator-only. Audited join
-callback failures are retained in a per-compilation receipt, and forwarded only
-when the planner propagates the exact original failure. This does not infer a
-failure class from a message substring or trust arbitrary upstream diagnostics.
+Archive timing is required by docs/agents/workflow.md, Lifecycle / Archive:
+"Before final review in the same Draft PR". The Classified errors requirement
+and B0-RESULT-002 were transferred verbatim from the seed and synced to the
+existing compile-result spec; Complete compile result and Purpose are preserved.
+The branch id and scripts/dev status identify this archived in-flight change.
+It must not be moved back to active merely because the owner has not merged.
 
-B0-RESULT-002 tests cover all four classes, physical SQL/schema markers, invalid
-model/query/security precedence, multi-source and disconnected/ambiguous cases,
-security-only multi-owner measures and existing formula dependencies. Internal
-mapping is tested at the actual adapter and facade conversion seams, with no
-public injection API. Existing golden SQL/parameter snapshots are unchanged.
-
-Red: new Unsupported assertion failed to compile against the former enum.
-Green: `cargo test -p pp-cube-adapter -p pp-cube-compile --locked` passed.
-Full CI, archive and final exact-head acceptance remain pending. No new dependency,
-vendor or harness edits. Scope remains one classified-error behavior.
-
-
-## Pre-review completion
-
-All five implementation tasks complete. Full CI passed:
-`check ci: PASSED — 15 steps, 0 skipped, 98s @ ed90a0f+dirty`.
-This describes the pre-publication working tree, not accepted final-head evidence.
-Strict validation passed 9 items. Source/test changes stay inside the stated
-adapter/facade scope; existing golden snapshots, Cargo.lock, vendor and harness
-are unchanged. Size reviewed: retain this one classified-error behavior together.
-
-The completed requirement is synced into the existing compile-result main spec
-without changing its successful-result requirement or Purpose, and this folder
-is archived before final review. Final exact-head CI, cross-vendor review and
-remote t0 remain pending; their results belong in PR comments/artifacts. Owner
-reviews and merges after Ready. T1/T2 not run. No known implementation blocker.
-
-
-## First review repair
-
-Review on 0d1be73 requested three corrections, now implemented:
-- Facade Internal.detail no longer retains raw planner SQL or physical identifiers;
-  both Debug and Display are covered by the sentinel assertion. Adapter errors
-  remain internal diagnostics. This tightens implementation to the unchanged spec.
-- Upstream user mapping includes logical selected measures/dimensions and the
-  failing planner stage, without disclosing the untrusted upstream text.
-- Replaced text-equality receipts with the first typed local callback failure,
-  checked at every planner stage even if upstream wraps/suppresses its error.
-  A real join-bridge rejection test covers both wrapped failure and success.
-
-`cargo test -p pp-cube-adapter -p pp-cube-compile --locked` passed after repairs.
-Final-head CI/review/t0 remain pending. No spec weakening, dependency, harness,
-vendor or golden snapshot edits. Original checkpoint descriptions above are
-historical; this section supersedes their diagnostic-retention mechanism.
+Scope was reviewed above 400 lines: keep this independently testable classified
+error behavior together. No new owner decision or implementation blocker exists.
+The next step is checkpoint, exact-head CI, cross-vendor reassessment and remote
+t0. Evidence belongs in PR comments/artifacts, avoiding an unreviewed evidence
+commit. A successful checkpoint is not a claim of final accepted CI/review.

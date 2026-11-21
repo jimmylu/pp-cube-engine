@@ -50,6 +50,9 @@ pub(crate) struct Joins {
     /// The cube of the query's measures, if it has any. Every tree that
     /// holds this cube starts from it.
     measure_cube: Option<usize>,
+    // Upstream bridge traits can return only CubeError. Keep the first fatal
+    // local validation error typed until finish(), without parsing upstream text.
+    // This cell belongs to one synchronous plan() call, never a shared model.
     local_failure: RefCell<Option<PlanError>>,
 }
 
