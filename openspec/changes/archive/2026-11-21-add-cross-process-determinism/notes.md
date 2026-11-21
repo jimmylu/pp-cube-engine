@@ -28,3 +28,38 @@ and Purpose. Archive before final review is required by docs/agents/workflow.md
 Lifecycle / Archive. Final accepted exact-head CI, cross-vendor review and remote
 t0 remain pending, recorded in PR comments/artifacts rather than another commit.
 Owner reviews and merges after Ready. T1/T2 not run; no known blocker.
+
+
+## Review evidence: baseline enum and approved transfer policy
+
+Review at c6430ea reported a speculative E0004 and a transfer-scope concern.
+The exact base e6836b81e980f8de30c81a398fe0ee710282d4a4 contains this entire
+public enum in crates/pp-cube-dialect/src/lib.rs:
+
+```rust
+pub enum DialectId {
+    Presto,
+}
+```
+
+Doris/Druid are roadmap targets, not variants of the current typed API. The
+single-arm match is intentionally exhaustive so adding a future dialect forces
+this test transport to be updated. Production fingerprint.rs uses the same
+exhaustive Presto match. This PR compiled locally and on remote t0 at c6430ea:
+`check ci: PASSED — 15 steps, 0 skipped, 68s @ c6430ea`.
+Do not add a wildcard that hides future variants to fix a nonexistent E0004.
+
+seed-baseline-specs/design.md explicitly defines the authorized transfer rule:
+"Transfer: before an implementing change adopts a requirement, it moves that
+complete requirement and its ids out of this seed in the same reviewed update.
+Its proposal names the seed spec file in its scope, so deleting the moved text
+is inside that change. Never keep duplicate ADDED requirements in both changes."
+
+This proposal's Impact names that exact seed path, and the complete Repeatable
+results / B0-DET-001 block moved verbatim. This is one implementing change's
+stated scope, not implementation of an unrelated change. No other seed behavior
+is changed. docs/agents/workflow.md requires final archive in the same PR before
+final review. Neither rule requires moving the artifacts back or weakening gates.
+
+The first review remains failing pending fresh cross-vendor reassessment of this
+evidence. This checkpoint is documentation only; final-head acceptance is pending.
