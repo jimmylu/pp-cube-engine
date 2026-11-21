@@ -19,9 +19,8 @@ implementation and meaningful tests are complete.
 ## Goals / Non-Goals
 
 Provide all four failure classes promised by B0-RESULT-002 while preserving the
-successful-result contract. Cover public Display messages and existing model
-issues; Internal.detail and derived Debug remain operator diagnostics, not a
-safe response format. Do not change the model issue API or implement B1.
+successful-result contract. Cover public Display messages, returned Internal.detail and existing model
+issues. Raw diagnostics remain inside the adapter, outside the facade error. Do not change the model issue API or implement B1.
 
 ## Decisions
 
@@ -53,12 +52,15 @@ Preserve messages authored by local checks when they contain member names and
 rules only. Audit upstream-origin User messages: do not forward arbitrary SQL or
 physical identifiers to the facade. Use a safe rule-level fallback for those
 messages unless their structured provenance guarantees safety; do not attempt
-SQL redaction with a regular expression. Keep original internal details only in
-the existing operator-only Internal.detail field. Unsupported messages name the
+SQL redaction with a regular expression. Discard raw internal details at the facade boundary; Internal.detail carries
+a safe rule-level summary. The adapter error remains an operator diagnostic. Unsupported messages name the
 baseline restriction and logical members/cubes, not physical sources.
 
-Retain Model issue paths/rule ids and the generic Model Display message. Retain
-the generic Internal Display message. Do not make Debug a public response format.
+Retain Model issue paths/rule ids and the generic Model/Internal Display messages.
+Upstream user errors receive logical selected-member context and the failing
+planner stage, without forwarding its raw diagnostic. Local join callback errors
+are retained as typed failures: the first failure wins and is checked after every
+planner stage, including successful returns. No message equality is used.
 Model validation still precedes query/security checks and unsupported detection.
 Compilation failure carries no successful SQL/result fields.
 

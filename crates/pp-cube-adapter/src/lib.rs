@@ -72,6 +72,16 @@ impl From<CubeError> for PlanError {
 }
 
 impl PlanError {
+    fn upstream(error: CubeError, query: &Query, stage: &str) -> Self {
+        match error.cause {
+            CubeErrorCauseType::User => Self::User(format!(
+                "Members {:?} / {:?} must satisfy planner {stage} rules",
+                query.measures, query.dimensions
+            )),
+            _ => Self::Internal(error.message),
+        }
+    }
+
     // Only for audited local checks whose diagnostics name logical members/rules.
     fn local(error: CubeError) -> Self {
         match error.cause {
@@ -113,26 +123,40 @@ pub fn plan(
         joins.clone(),
         security_context.clone(),
     ));
-    let state = State::try_new(
-        evaluator,
-        security_context,
-        tools,
-        joins.clone(),
-        None,
-        false,
-        false,
-        None,
-        None,
-        None,
-        QueryModelContext::new(Rc::new(ModelContext::new()), None, false),
-        RequestOptions::default(),
+    let state = joins.finish(
+        State::try_new(
+            evaluator,
+            security_context,
+            tools,
+            joins.clone(),
+            None,
+            false,
+            false,
+            None,
+            None,
+            None,
+            QueryModelContext::new(Rc::new(ModelContext::new()), None, false),
+            RequestOptions::default(),
+        ),
+        query,
+        "initialization",
     )?;
-    let request = QueryPropertiesCompiler::new(state.clone()).build(options)?;
-    let (raw_sql, _) = TopLevelPlanner::new(request.clone(), state.clone())
-        .plan()
-        .map_err(|error| joins.planner_error(error))?;
-    let templates = state.plan_sql_templates(false)?;
-    let (sql, values) = state.build_sql_and_params(&raw_sql, &templates)?;
+    let request = joins.finish(
+        QueryPropertiesCompiler::new(state.clone()).build(options),
+        query,
+        "query validation",
+    )?;
+    let (raw_sql, _) = joins.finish(
+        TopLevelPlanner::new(request.clone(), state.clone()).plan(),
+        query,
+        "planning",
+    )?;
+    let templates = joins.finish(state.plan_sql_templates(false), query, "template rendering")?;
+    let (sql, values) = joins.finish(
+        state.build_sql_and_params(&raw_sql, &templates),
+        query,
+        "parameter binding",
+    )?;
     let parameters = values
         .into_iter()
         .map(|value| match value {
@@ -163,4 +187,24 @@ fn upstream_messages_are_not_public_and_internal_causes_survive() {
         PlanError::from(CubeError::internal(detail.into())),
         PlanError::Internal(detail.into())
     );
+}
+
+// scenario: B0-RESULT-002
+#[test]
+fn upstream_user_conversion_names_logical_members_and_stage_without_raw_sql() {
+    let query = Query {
+        measures: vec!["sales.amount".into()],
+        ..Query::default()
+    };
+    let error = PlanError::upstream(
+        CubeError::user("SELECT hidden_column FROM hidden_table".into()),
+        &query,
+        "query validation",
+    );
+    let PlanError::User(message) = error else {
+        panic!("expected user error")
+    };
+    assert!(message.contains("sales.amount"));
+    assert!(message.contains("query validation"));
+    assert!(!message.contains("hidden_"));
 }

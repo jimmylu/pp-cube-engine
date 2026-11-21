@@ -40,7 +40,7 @@ pub struct Compiled {
     pub parameters: Vec<Parameter>,
 }
 
-/// Display is caller-safe; Debug and Internal.detail are operator diagnostics.
+/// Caller-facing errors contain no planner SQL or physical source diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompileError {
     /// The bundle is invalid; issues match the public model validator report.
@@ -49,8 +49,7 @@ pub enum CompileError {
     Query(String),
     /// A recognized request requires features beyond B0.
     Unsupported(String),
-    /// The kernel or the planner failed. `detail` is for the operator's log;
-    /// it can name internals and is not part of the message.
+    /// The kernel or planner failed; detail is a safe rule-level summary.
     Internal { detail: String },
 }
 
@@ -119,7 +118,9 @@ impl From<PlanError> for CompileError {
         match error {
             PlanError::User(message) => Self::Query(message),
             PlanError::Unsupported(message) => Self::Unsupported(message),
-            PlanError::Internal(detail) => Self::Internal { detail },
+            PlanError::Internal(_) => Self::Internal {
+                detail: "The planner could not compile the query".into(),
+            },
         }
     }
 }
@@ -130,10 +131,11 @@ fn internal_mapping_keeps_operator_detail_out_of_display() {
     let detail = "SELECT hidden_column FROM hidden_schema.hidden_table";
     let error = CompileError::from(PlanError::Internal(detail.into()));
     assert_eq!(error.to_string(), "the query could not be compiled");
+    assert!(!format!("{error:?}").contains("hidden_"));
     assert_eq!(
         error,
         CompileError::Internal {
-            detail: detail.into()
+            detail: "The planner could not compile the query".into()
         }
     );
     assert_eq!(

@@ -72,3 +72,21 @@ without changing its successful-result requirement or Purpose, and this folder
 is archived before final review. Final exact-head CI, cross-vendor review and
 remote t0 remain pending; their results belong in PR comments/artifacts. Owner
 reviews and merges after Ready. T1/T2 not run. No known implementation blocker.
+
+
+## First review repair
+
+Review on 0d1be73 requested three corrections, now implemented:
+- Facade Internal.detail no longer retains raw planner SQL or physical identifiers;
+  both Debug and Display are covered by the sentinel assertion. Adapter errors
+  remain internal diagnostics. This tightens implementation to the unchanged spec.
+- Upstream user mapping includes logical selected measures/dimensions and the
+  failing planner stage, without disclosing the untrusted upstream text.
+- Replaced text-equality receipts with the first typed local callback failure,
+  checked at every planner stage even if upstream wraps/suppresses its error.
+  A real join-bridge rejection test covers both wrapped failure and success.
+
+`cargo test -p pp-cube-adapter -p pp-cube-compile --locked` passed after repairs.
+Final-head CI/review/t0 remain pending. No spec weakening, dependency, harness,
+vendor or golden snapshot edits. Original checkpoint descriptions above are
+historical; this section supersedes their diagnostic-retention mechanism.

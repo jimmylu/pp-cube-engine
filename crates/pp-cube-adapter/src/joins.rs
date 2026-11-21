@@ -50,7 +50,7 @@ pub(crate) struct Joins {
     /// The cube of the query's measures, if it has any. Every tree that
     /// holds this cube starts from it.
     measure_cube: Option<usize>,
-    local_failure: RefCell<Option<String>>,
+    local_failure: RefCell<Option<PlanError>>,
 }
 
 /// What a query reads, found by following member expressions.
@@ -425,18 +425,31 @@ impl Joins {
         self.build(&self.named(hints)?)
     }
 
-    pub(crate) fn planner_error(&self, error: CubeError) -> PlanError {
-        if self.local_failure.borrow().as_deref() == Some(error.message.as_str()) {
-            PlanError::local(error)
-        } else {
-            error.into()
+    pub(crate) fn finish<T>(
+        &self,
+        result: Result<T, CubeError>,
+        query: &Query,
+        stage: &str,
+    ) -> Result<T, PlanError> {
+        // Local bridge validation is fatal even if upstream wraps or swallows it.
+        if let Some(error) = self.local_failure.borrow_mut().take() {
+            return Err(error);
         }
+        result.map_err(|error| PlanError::upstream(error, query, stage))
     }
 
     fn build(&self, cubes: &[usize]) -> Result<Option<Rc<dyn JoinDefinition>>, CubeError> {
         let result = self.build_checked(cubes);
         if let Err(error) = &result {
-            *self.local_failure.borrow_mut() = Some(error.message.clone());
+            let mut failure = self.local_failure.borrow_mut();
+            if failure.is_none() {
+                *failure = Some(match error.cause {
+                    cubenativeutils::CubeErrorCauseType::User => {
+                        PlanError::User(error.message.clone())
+                    }
+                    _ => PlanError::Internal(error.message.clone()),
+                });
+            }
         }
         result
     }
@@ -539,5 +552,37 @@ impl JoinItem for Item {
 
     fn as_any(self: Rc<Self>) -> Rc<dyn Any> {
         self
+    }
+}
+
+// scenario: B0-RESULT-002
+#[test]
+fn local_failure_survives_upstream_wrapping_and_success() {
+    let model = Arc::new(
+        pp_cube_model::load_yaml(include_str!(
+            "../../pp-cube-compile/tests/fixtures/retail.yaml"
+        ))
+        .unwrap(),
+    );
+    let query = Query {
+        measures: vec!["receipts.tax".into()],
+        ..Query::default()
+    };
+    // Use the real bridge rejection, not a fabricated receipt.
+    let joins = Joins::new(model, &query).unwrap();
+    let sales = joins.position("sales").unwrap();
+    let receipts = joins.position("receipts").unwrap();
+    let mut joins = joins;
+    joins.measure_cube = Some(receipts);
+    for upstream_success in [false, true] {
+        let _ = joins.build(&[sales, receipts]);
+        let result = if upstream_success {
+            Ok(())
+        } else {
+            Err(CubeError::internal("wrapped failure".into()))
+        };
+        assert!(
+            matches!(joins.finish(result, &query, "planning"), Err(PlanError::User(message)) if message.contains("receipts"))
+        );
     }
 }
