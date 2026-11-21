@@ -28,6 +28,28 @@ Final-head fast/CI, cross-vendor review and remote t0 are next; their SHA-bound
 results belong in PR evidence. T1/T2 were not run. No owner-only design decision
 or vendor/harness edit is required.
 
+## Baseline and scope evidence for the resumed review
+
+The review on 3ea01c5 raised two conditional findings. Neither requires a product
+change or an expanded scope:
+
+- `retail.yaml` predates this PR. `git ls-tree
+  8e85004bdd40dc6ffc724b0af61557f576a79a71
+  crates/pp-cube-compile/tests/fixtures/retail.yaml` returns mode 100644 and blob
+  `2cfdfdb80a6a48ed9f2843bf0ddba4f4ad2e328b`. The new test reuses that tracked
+  baseline fixture; it does not need to add it again. Full local CI and remote t0
+  passed on 3ea01c5, including compilation of this include_str! expression.
+- This approved change's proposal explicitly lists transfer of the entire
+  Complete compile result / Fingerprint identity requirements from the seed,
+  and its Impact includes the two seed deltas. Removing those same requirements
+  from seed after syncing them to main specs prevents duplicate ownership; no
+  other seed behavior is implemented or edited. This is bookkeeping within
+  add-complete-compile-result's stated scope, not implementation of another
+  change. Classified errors and all-golden repeatability remain in the seed.
+
+The fixture and scope evidence is supplied for cross-vendor reassessment; the
+3ea01c5 review remains a failed gate until a fresh accepted report is published.
+
 ## Implemented behavior
 
 The facade adds ordered output columns, used cubes/physical sources and a SHA-256
