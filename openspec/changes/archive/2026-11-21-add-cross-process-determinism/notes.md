@@ -76,3 +76,29 @@ snapshots changed. Local CI passed on ecb996d:
 This is the second review repair; final-head acceptance remains pending in PR #34.
 If the gate still fails after this repair, stop and record the blocker rather
 than starting an unbounded repair loop. Final evidence stays in PR comments.
+
+## Delivery stopped after two repairs
+
+Final reassessment of 55d06662c6b8a56b554a5db7fb618f2381b483ac still
+reports findings. Stop condition reached after two different review repairs.
+PR #34 remains Draft; do not bypass review or mark Ready. No production defect
+has been demonstrated. Implementation and archive are complete; acceptance is open.
+Latest exact reviewed-head local evidence:
+`check ci: PASSED — 15 steps, 0 skipped, 80s @ 55d0666`.
+Remote t0 also passed on that head. T1/T2 were not run.
+
+The final P1 infers from Git rename similarity that the seed determinism file
+also contained Fingerprint identity / B0-DET-002. Reading that entire file at
+base e6836b81e980f8de30c81a398fe0ee710282d4a4 proves it contains only
+Purpose, ADDED Requirements, and Repeatable results / B0-DET-001.
+B0-DET-002 is already in main specs and remains there. Similarity is not evidence
+of another deleted requirement. The P2 claims a one-test-one-scenario convention;
+AGENTS.md rule 4 requires a test naming each implemented scenario, without that
+restriction. scripts/traceability.sh compares sets of ids and imposes no such
+restriction; docs/agents/verification.md describes the same set comparison.
+
+Record these review-context limitations in existing deferred issue #33 rather
+than modifying harness code in this product PR. Resume only when the review
+context/gate concern can be addressed within a separately scoped effort or an
+owner decision. This handoff-only commit changes no tests or behavior; its check
+evidence is recorded separately in the PR, bound to the resulting SHA.
