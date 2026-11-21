@@ -1,5 +1,3 @@
-## Purpose
-Give callers executable SQL and the metadata needed to interpret its output.
 ## ADDED Requirements
 ### Requirement: Classified errors
 The facade SHALL distinguish model, query, unsupported and internal failures. Error messages SHALL expose member names and rules without physical table structure.

@@ -35,6 +35,13 @@ fn failure_with(model: &str, query: &str) -> String {
     }
 }
 
+fn unsupported_with(model: &str, query: &str) -> String {
+    match compile_with(model, query) {
+        Err(CompileError::Unsupported(message)) => message,
+        other => panic!("expected Unsupported, got {other:?}"),
+    }
+}
+
 fn query_failure(query: &str) -> String {
     failure_with(include_str!("fixtures/retail.yaml"), query)
 }
@@ -167,7 +174,8 @@ fn measure_of_a_joined_cube_is_refused_under_either_relationship() {
     );
     let one_to_one =
         query_failure(r#"{"measures": ["receipts.tax"], "dimensions": ["sales.channel_cd"]}"#);
-    let in_a_filter = query_failure(
+    let in_a_filter = unsupported_with(
+        include_str!("fixtures/retail.yaml"),
         r#"{"measures": ["sales.amount"],
             "filters": [{"member": "stores.store_count", "operator": "gt", "values": ["1"]}]}"#,
     );
@@ -212,7 +220,7 @@ cubes:
         model,
         r#"{"measures": ["receipts.tax"], "dimensions": ["receipts.channel"]}"#,
     );
-    let through_a_formula = failure_with(model, r#"{"measures": ["receipts.tax_share"]}"#);
+    let through_a_formula = unsupported_with(model, r#"{"measures": ["receipts.tax_share"]}"#);
 
     assert_eq!(
         [through_a_dimension, through_a_formula],
