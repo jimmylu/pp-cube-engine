@@ -40,12 +40,15 @@ pub struct Compiled {
     pub parameters: Vec<Parameter>,
 }
 
+/// Display is caller-safe; Debug and Internal.detail are operator diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompileError {
     /// The bundle is invalid; issues match the public model validator report.
     Model(Vec<ValidationIssue>),
     /// The caller can correct it; the message names the member or the rule.
     Query(String),
+    /// A recognized request requires features beyond B0.
+    Unsupported(String),
     /// The kernel or the planner failed. `detail` is for the operator's log;
     /// it can name internals and is not part of the message.
     Internal { detail: String },
@@ -55,7 +58,7 @@ impl fmt::Display for CompileError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Model(_) => f.write_str("the model could not be validated"),
-            Self::Query(message) => f.write_str(message),
+            Self::Query(message) | Self::Unsupported(message) => f.write_str(message),
             Self::Internal { .. } => f.write_str("the query could not be compiled"),
         }
     }
@@ -93,8 +96,7 @@ pub fn compile(
             sql: planned.sql,
             parameters: planned.parameters,
         }),
-        Err(PlanError::User(message)) => Err(CompileError::Query(message)),
-        Err(PlanError::Internal(detail)) => Err(CompileError::Internal { detail }),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -110,4 +112,32 @@ fn check_security_filter(filter: &Filter) -> Result<(), CompileError> {
         }
     }
     Ok(())
+}
+
+impl From<PlanError> for CompileError {
+    fn from(error: PlanError) -> Self {
+        match error {
+            PlanError::User(message) => Self::Query(message),
+            PlanError::Unsupported(message) => Self::Unsupported(message),
+            PlanError::Internal(detail) => Self::Internal { detail },
+        }
+    }
+}
+
+// scenario: B0-RESULT-002
+#[test]
+fn internal_mapping_keeps_operator_detail_out_of_display() {
+    let detail = "SELECT hidden_column FROM hidden_schema.hidden_table";
+    let error = CompileError::from(PlanError::Internal(detail.into()));
+    assert_eq!(error.to_string(), "the query could not be compiled");
+    assert_eq!(
+        error,
+        CompileError::Internal {
+            detail: detail.into()
+        }
+    );
+    assert_eq!(
+        CompileError::from(PlanError::User("planner rule".into())),
+        CompileError::Query("planner rule".into())
+    );
 }

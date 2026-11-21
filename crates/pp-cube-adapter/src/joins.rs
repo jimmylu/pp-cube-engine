@@ -5,6 +5,7 @@
 //! that one would choose.
 
 use std::any::Any;
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -18,6 +19,7 @@ use cubesqlplanner::cube_bridge::join_item_definition::JoinItemDefinition;
 use pp_cube_model::{Cube, Filter, Model, Query, Relationship, Target};
 
 use crate::schema::JoinDef;
+use crate::PlanError;
 
 /// A join of the model: the cube that declares it and its place among that
 /// cube's joins.
@@ -48,6 +50,7 @@ pub(crate) struct Joins {
     /// The cube of the query's measures, if it has any. Every tree that
     /// holds this cube starts from it.
     measure_cube: Option<usize>,
+    local_failure: RefCell<Option<String>>,
 }
 
 /// What a query reads, found by following member expressions.
@@ -87,7 +90,7 @@ impl Joins {
     /// baseline does not join; see `check`.
     ///
     /// Call it after the members `query` names are known to be in the model.
-    pub(crate) fn new(model: Arc<Model>, query: &Query) -> Result<Self, CubeError> {
+    pub(crate) fn new(model: Arc<Model>, query: &Query) -> Result<Self, PlanError> {
         let position = |name: &str| model.cubes.iter().position(|cube| cube.name == name);
         let edges = model
             .cubes
@@ -107,11 +110,13 @@ impl Joins {
                     })
                     .collect()
             })
-            .collect::<Result<_, CubeError>>()?;
+            .collect::<Result<_, CubeError>>()
+            .map_err(PlanError::local)?;
         let mut joins = Self {
             model,
             edges,
             measure_cube: None,
+            local_failure: RefCell::new(None),
         };
         joins.measure_cube = joins.check(query)?;
         Ok(joins)
@@ -181,7 +186,7 @@ impl Joins {
     /// expressions refer to, in any cube. The planner can join further cubes
     /// on its own account, for the primary key a count counts for one; `build`
     /// holds those to the same rule.
-    fn check(&self, query: &Query) -> Result<Option<usize>, CubeError> {
+    fn check(&self, query: &Query) -> Result<Option<usize>, PlanError> {
         let mut named: Vec<&str> = Vec::new();
         named.extend(query.measures.iter().map(String::as_str));
         named.extend(query.dimensions.iter().map(String::as_str));
@@ -198,23 +203,23 @@ impl Joins {
                 }
             }
         }
-        self.follow(&mut read)?;
+        self.follow(&mut read).map_err(PlanError::local)?;
+        let Some(tree) = self.tree(&read.cubes).map_err(PlanError::local)? else {
+            return Err(PlanError::local(self.unconnected(&read.cubes)));
+        };
 
         let mut owners: Vec<usize> = read.measures.iter().map(|(cube, _)| *cube).collect();
         owners.sort_unstable();
         owners.dedup();
         if owners.len() > 1 {
-            return Err(CubeError::user(format!(
+            return Err(PlanError::Unsupported(format!(
                 "Measures of more than one cube ({}) are outside the baseline",
                 self.names(&owners)
             )));
         }
-        let Some(tree) = self.tree(&read.cubes)? else {
-            return Err(self.unconnected(&read.cubes));
-        };
         match read.measures.iter().find(|(cube, _)| *cube != tree.root) {
             None => Ok(owners.first().copied()),
-            Some((cube, measure)) => Err(CubeError::user(format!(
+            Some((cube, measure)) => Err(PlanError::User(format!(
                 "Measure `{owner}.{measure}` belongs to `{owner}`, which this query reaches \
                  through a join from `{}`; measures are taken from the cube the joins start from",
                 self.cube(tree.root).name,
@@ -420,7 +425,23 @@ impl Joins {
         self.build(&self.named(hints)?)
     }
 
+    pub(crate) fn planner_error(&self, error: CubeError) -> PlanError {
+        if self.local_failure.borrow().as_deref() == Some(error.message.as_str()) {
+            PlanError::local(error)
+        } else {
+            error.into()
+        }
+    }
+
     fn build(&self, cubes: &[usize]) -> Result<Option<Rc<dyn JoinDefinition>>, CubeError> {
+        let result = self.build_checked(cubes);
+        if let Err(error) = &result {
+            *self.local_failure.borrow_mut() = Some(error.message.clone());
+        }
+        result
+    }
+
+    fn build_checked(&self, cubes: &[usize]) -> Result<Option<Rc<dyn JoinDefinition>>, CubeError> {
         let Some(tree) = self.tree(cubes)? else {
             return Ok(None);
         };

@@ -54,12 +54,26 @@ pub struct Planned {
 pub enum PlanError {
     /// The query or the model is at fault; the message names the member or rule.
     User(String),
-    /// The kernel or the planner is at fault.
+    /// A recognized request requires features beyond B0.
+    Unsupported(String),
+    /// Operator diagnostic; not a caller-safe message.
     Internal(String),
 }
 
 impl From<CubeError> for PlanError {
     fn from(error: CubeError) -> Self {
+        match error.cause {
+            CubeErrorCauseType::User => {
+                Self::User("The query does not satisfy the planner rules".into())
+            }
+            _ => Self::Internal(error.message),
+        }
+    }
+}
+
+impl PlanError {
+    // Only for audited local checks whose diagnostics name logical members/rules.
+    fn local(error: CubeError) -> Self {
         match error.cause {
             CubeErrorCauseType::User => Self::User(error.message),
             _ => Self::Internal(error.message),
@@ -87,7 +101,7 @@ pub fn plan(
         .parse()
         .map_err(|_| PlanError::User(format!("Timezone `{timezone}` is not known")))?;
     let evaluator = Rc::new(Evaluator::new(model.clone()));
-    evaluator.check(query)?;
+    evaluator.check(query).map_err(PlanError::local)?;
     let joins = Rc::new(Joins::new(model.clone(), query)?);
     let tools = Rc::new(Tools::new(evaluator.clone(), dialect, zone, joins.clone()));
     let security_context = Rc::new(Opaque);
@@ -103,7 +117,7 @@ pub fn plan(
         evaluator,
         security_context,
         tools,
-        joins,
+        joins.clone(),
         None,
         false,
         false,
@@ -114,7 +128,9 @@ pub fn plan(
         RequestOptions::default(),
     )?;
     let request = QueryPropertiesCompiler::new(state.clone()).build(options)?;
-    let (raw_sql, _) = TopLevelPlanner::new(request.clone(), state.clone()).plan()?;
+    let (raw_sql, _) = TopLevelPlanner::new(request.clone(), state.clone())
+        .plan()
+        .map_err(|error| joins.planner_error(error))?;
     let templates = state.plan_sql_templates(false)?;
     let (sql, values) = state.build_sql_and_params(&raw_sql, &templates)?;
     let parameters = values
@@ -133,4 +149,18 @@ pub fn plan(
         columns,
         used_cubes,
     })
+}
+
+// scenario: B0-RESULT-002
+#[test]
+fn upstream_messages_are_not_public_and_internal_causes_survive() {
+    let detail = "SELECT hidden_column FROM hidden_schema.hidden_table";
+    assert_eq!(
+        PlanError::from(CubeError::user(detail.into())),
+        PlanError::User("The query does not satisfy the planner rules".into())
+    );
+    assert_eq!(
+        PlanError::from(CubeError::internal(detail.into())),
+        PlanError::Internal(detail.into())
+    );
 }
