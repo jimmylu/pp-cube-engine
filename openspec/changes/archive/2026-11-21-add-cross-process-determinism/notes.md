@@ -63,3 +63,16 @@ final review. Neither rule requires moving the artifacts back or weakening gates
 
 The first review remains failing pending fresh cross-vendor reassessment of this
 evidence. This checkpoint is documentation only; final-head acceptance is pending.
+
+## Review follow-up: direct scenario traceability
+
+The ecb996d reassessment no longer reports the enum or transfer findings. Its
+remaining P2 asks for B0-DET-001 on the golden tests themselves rather than only
+on shared support. Added the scenario comment directly to all 28 successful
+golden-suite tests, preserving existing scenario ids. This includes the time-order
+regression with both a successful compile and a refused query. No behavior or
+snapshots changed. Local CI passed on ecb996d:
+`check ci: PASSED — 15 steps, 0 skipped, 72s @ ecb996d`; remote t0 also passed.
+This is the second review repair; final-head acceptance remains pending in PR #34.
+If the gate still fails after this repair, stop and record the blocker rather
+than starting an unbounded repair loop. Final evidence stays in PR comments.

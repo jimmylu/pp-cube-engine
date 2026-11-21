@@ -50,6 +50,7 @@ fn query_failure(query: &str) -> String {
 }
 
 // scenario: B0-JOIN-001
+// scenario: B0-DET-001
 #[test]
 fn sales_grouped_and_filtered_by_a_store_dimension() {
     insta::assert_snapshot!(compiled(
@@ -61,6 +62,7 @@ fn sales_grouped_and_filtered_by_a_store_dimension() {
     ));
 }
 
+// scenario: B0-DET-001
 #[test]
 fn dimension_two_joins_away_is_reached_through_the_cube_between() {
     insta::assert_snapshot!(compiled(

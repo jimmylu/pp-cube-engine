@@ -8,6 +8,7 @@ Each task is bounded to two hours.
 
 ## 2. Verification
 - [x] 2.1 Run compile tests, strict specs and CI; confirm no production/dependency/vendor/harness or snapshot changes and record scope/results in notes.md.
+- [x] 2.2 Attach B0-DET-001 directly to all 28 successful golden-suite tests that exercise process replay, including the mixed success/error time-order regression.
 
 ## Workflow follow-up
 - Sync/archive only implemented requirements before final review in the same PR.

@@ -43,12 +43,14 @@ fn compiled(cube: &str, measures: &[&str]) -> String {
     format!("{}\n-- parameters: {:?}", compiled.sql, compiled.parameters)
 }
 
+// scenario: B0-DET-001
 #[test]
 fn one_sum_grouped_by_one_dimension() {
     insta::assert_snapshot!(compiled("sales", &["amount"]));
 }
 
 // scenario: B0-AGG-001
+// scenario: B0-DET-001
 #[test]
 fn six_aggregate_types_grouped_by_a_dimension() {
     insta::assert_snapshot!(compiled(
@@ -65,16 +67,19 @@ fn six_aggregate_types_grouped_by_a_dimension() {
 }
 
 // scenario: B0-AGG-002
+// scenario: B0-DET-001
 #[test]
 fn filtered_sum_and_ratio_of_aggregates() {
     insta::assert_snapshot!(compiled("sales", &["toy_amount", "amount_per_order"]));
 }
 
+// scenario: B0-DET-001
 #[test]
 fn cube_defined_by_sql_is_selected_as_a_subquery() {
     insta::assert_snapshot!(compiled("valid_sales", &["amount"]));
 }
 
+// scenario: B0-DET-001
 #[test]
 fn boolean_dimension_groups_by_its_condition() {
     let compiled =
@@ -83,11 +88,13 @@ fn boolean_dimension_groups_by_its_condition() {
     insta::assert_snapshot!(compiled.sql);
 }
 
+// scenario: B0-DET-001
 #[test]
 fn count_over_a_cube_with_one_primary_key() {
     insta::assert_snapshot!(compiled("orders", &["row_count"]));
 }
 
+// scenario: B0-DET-001
 #[test]
 fn count_over_a_cube_with_a_composite_primary_key() {
     insta::assert_snapshot!(compiled("order_lines", &["row_count"]));
