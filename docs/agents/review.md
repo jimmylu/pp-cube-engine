@@ -1,0 +1,66 @@
+# Evidence-grounded review
+
+## Scope and design
+
+Harness issue #33: reviewers previously received AGENTS.md and a diff, but not
+complete archived artifacts, deleted base content or relevant public types.
+Inference from roadmap language and rename similarity produced unsupported
+findings. This change improves the supplied evidence and review continuity;
+it cannot prove the semantic correctness of a model's conclusion.
+
+Keep the reviewer without tools. Supply a packet from the exact PR base/head Git
+objects: complete changed files on both sides, agent workflow/verification
+contracts, active or archived change artifacts, seed transfer policy, traceability
+script and public crate roots. Include the pinned diff. Deleted files exist only
+on the base side. Preserve whitespace for line citations. Vendor source remains
+excluded. Packets above 500 KB fail explicitly rather than silently truncating.
+An omitted implementation dependency can still require context clarification.
+
+The other choices were changing the reviewer alone (leaves missing evidence) or
+granting repository tools (widens permissions and makes inputs less reproducible).
+The selected design keeps the existing read-only boundary and delivery gates.
+
+## Review contract
+
+- Findings describe introduced defects and consequences, with exact citations:
+  `evidence: [{revision: "base" | "head", path, line, quote}]`.
+- Each finding location must itself have a citation. The controller checks the
+  quote against that line of a supplied pinned file. This verifies provenance,
+  not whether the text logically supports the claim. A matching quote alone is
+  insufficient for a sound review.
+- Missing context goes into `questions`, an array of strings. Any question blocks
+  delivery without invoking code repair or consuming its repair rounds.
+- Every previous finding has a zero-based `reassessments` entry with `index`,
+  `status` (`resolved`, `withdrawn`, `remaining`) and a concrete `reason`.
+  Remaining defects must also be reported in findings. New defects are allowed.
+- History is retained only for the same repository, PR, branch and base, and an
+  ancestor head. It is evidence to reassess, never authority to accept a claim.
+- Protocol or reviewer-command changes invalidate the cached result. New reports
+  remain bound to exact base/head/model; stale or malformed responses cannot pass.
+
+The local review-packet.json preserves supplied file evidence. The PR comment
+preserves the structured report. Both are outside tracked files, so recording
+successful checks does not invalidate their SHA. Findings and context questions
+both keep the PR Draft. Local CI, cross-vendor review, remote t0 and owner merge
+remain required; no gate or approval rule changes.
+
+## Model selection and verification
+
+Default working arrangement for this effort: Codex / OpenAI GPT-6 implements;
+omp / Anthropic Claude Opus 5.5 reviews with explicit model selection and
+`--print --no-tools`. Configure per worktree; no credentials belong in Git.
+Selecting Opus does not establish greater accuracy without comparative evidence.
+
+Offline regressions exercise actual Git objects for archived/deleted context,
+exact citations, prior-finding reassessment and questions blocking repair.
+Run `python3 -m unittest discover -s scripts/tests`, then the standard fast/ci
+checks. Real model and GitHub delivery evidence belongs in the PR at its SHA.
+
+## Handoff
+
+Implemented on harness/review-evidence, based on main after PR #29. Product PR #34
+remains separate and Draft; do not merge or modify it as part of this effort.
+Offline implementation and verification are complete before checkpoint. Real
+Opus review and exact-head CI/t0 acceptance are pending publication; their results
+and any bounded repairs are recorded in this PR rather than evidence-only commits.
+Owner performs final review and merge. No production, vendor or OpenSpec changes.
