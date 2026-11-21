@@ -22,3 +22,7 @@ behavior; no new successful SQL snapshots are authorized.
 - Sync/archive the implemented Classified errors requirement before final review in this same Draft PR; main specs must retain Complete compile result.
 - Checkpoint/push verified increments. Publish exact-head CI evidence and obtain cross-vendor review plus remote t0 before Ready. Evidence lives in PR comments/artifacts, outside tracked task progress.
 - Owner performs final approval and merge. Do not archive or mark Ready while implementation tasks remain open.
+
+Final acceptance status: stopped after bounded review repair on 325adbf.
+Local CI and remote t0 passed there; cross-vendor review did not pass.
+See notes.md for unresolved findings. Completed task boxes do not assert Ready.

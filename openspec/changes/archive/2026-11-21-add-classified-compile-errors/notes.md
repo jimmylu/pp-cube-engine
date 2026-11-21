@@ -1,6 +1,6 @@
 # Session notes
 
-## Current state
+## Current state: stopped after bounded review repair
 
 PR: https://github.com/jimmylu/pp-cube-engine/pull/29
 Branch: change/add-classified-compile-errors
@@ -53,7 +53,7 @@ The branch id and scripts/dev status identify this archived in-flight change.
 It must not be moved back to active merely because the owner has not merged.
 
 Scope was reviewed above 400 lines: keep this independently testable classified
-error behavior together. No new owner decision or implementation blocker exists.
+error behavior together. No owner-only design decision has been identified; final delivery remains gated by review.
 The next step is checkpoint, exact-head CI, cross-vendor reassessment and remote
 t0. Evidence belongs in PR comments/artifacts, avoiding an unreviewed evidence
 commit. A successful checkpoint is not a claim of final accepted CI/review.
@@ -70,3 +70,38 @@ physical identifiers. Debug frames require a bounded 32 MiB test thread stack.
 The existing facade Internal.detail field is retained for source compatibility
 and documented as a safe category rather than a diagnostic record.
 Final CI, cross-vendor review and Ready evidence remain pending at checkpoint.
+
+
+## Bounded review stop after 325adbf
+
+Stopped under AGENTS.md after the review gate remained failing following two
+distinct repair attempts (49e502a and 325adbf). No more product edits are made in
+this handoff. PR #29 remains Draft; Ready and owner review have not been requested.
+
+Exact-head evidence on 325adbf12fb90271e1ebc6dab03b63dd3cd3509e:
+`check ci: PASSED — 15 steps, 0 skipped, 46s @ 325adbf`.
+Remote t0 passed on that same head. Cross-vendor review failed. This handoff only
+receives checkpoint fast unless a later full CI result explicitly says otherwise.
+T1/T2 were not run. No harness, vendor, dependency or existing golden edits.
+
+Remaining findings from the SHA-bound report:
+- P2: Reviewer again asks to confirm archive-before-final-review. This is explicitly
+  required by docs/agents/workflow.md Lifecycle / Archive and already quoted above.
+  Do not unarchive or change the harness to accommodate this misunderstanding;
+  supply the authoritative workflow evidence for reassessment.
+- P2: Verify the pinned planner does not recover from a speculative build() failure
+  before accepting the first typed local_failure latch as fatal. Trace all calls
+  to Joins::try_build/build_join through Tools and pinned planner callers; add a
+  regression or redesign provenance if recovery is possible. No unsupported claim
+  about upstream recovery behavior is established yet.
+- P3: The real dependency-depth failure test uses a 32 MiB thread stack. Review
+  questions portability to other toolchains/profiles. Find an equally meaningful
+  bounded trigger or justify the pinned-toolchain stack requirement; do not remove
+  all actual upstream-rule coverage or weaken the spec just to pass review.
+- P3: Public Internal.detail now carries a safe category instead of raw operator
+  diagnostics. Add that semantic compatibility change to proposal/PR BREAKING
+  notes, not only design and API comments.
+
+All implementation tasks have their exercised verification, but final acceptance
+is incomplete. Next authorized resume should address the findings in this same
+PR, checkpoint, and re-run final exact-head CI/review/t0 within a fresh bound.
