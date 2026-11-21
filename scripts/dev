@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Resumable local delivery controller; no model output is executed as shell code."""
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -271,13 +272,14 @@ def review():
     report['context_paths'] = context_paths
     report['command'] = cfg.get('reviewer_command')
     save(state / 'review.json', report)
+    digest = hashlib.sha256(json.dumps(report, sort_keys=True).encode()).hexdigest()[:12]
+    marker = '<!-- dev-review:' + bound['head'] + ':' + digest + ' -->'
     path = state / 'review.md'
-    path.write_text('<!-- dev-review:' + bound['head'] + ' -->\n'
+    path.write_text(marker + '\n'
                     + 'Reviewed by ' + cfg['reviewer'] + '\n\n```json\n'
                     + json.dumps(report, indent=2) + '\n```\n')
     comments = json.loads(run('gh', 'pr', 'view', str(bound['number']), '--repo', repo,
                               '--json', 'comments'))['comments']
-    marker = '<!-- dev-review:' + bound['head'] + ' -->'
     if not any(marker in c['body'] for c in comments):
         run('gh', 'pr', 'comment', str(bound['number']), '--repo', repo, '--body-file', str(path))
     return report

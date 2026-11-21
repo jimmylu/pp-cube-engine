@@ -82,3 +82,6 @@ in cache identity, so a changed selection triggers a fresh review on the same
 head. Supply the same flags when resuming. If new repository evidence is needed,
 commit it normally; a genuine owner-only decision follows the decision-issue rule.
 Do not delete acceptance evidence or edit cached reports to clear questions.
+Repeated reviews on the same SHA with different context produce distinct report
+comment markers, so the PR retains the new verdict instead of hiding it behind
+an earlier comment for that SHA.
