@@ -140,3 +140,10 @@ validation now share Git's LF-only line rule; Unicode separators, form feeds and
 CR bytes remain within their original line. A regression checks mixed separators,
 CRLF, final LF and empty input. All 30 offline regressions pass before checkpoint.
 Final exact-head CI/Opus/t0 evidence is pending in the PR.
+
+
+Opus confirmed LF numbering resolved and identified Git path quoting as the next
+boundary. Changed paths and trees now use NUL-separated output, with no whitespace
+stripping. Real Git coverage includes non-ASCII, quote, newline and leading-space
+names, including supplemental context lookup. The resumed two original findings
+and LF finding are resolved; path correction awaits final exact-head acceptance.

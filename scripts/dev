@@ -22,7 +22,7 @@ def run(*args, cwd=None, capture=True, input=None, strip=True):
 def git(*args):
     if args and args[0] == 'show':
         return subprocess.run(['git', *args], stdout=subprocess.PIPE, check=True).stdout
-    return run('git', *args)
+    return run('git', *args, strip='-z' not in args)
 
 
 def save(path, value):
@@ -140,7 +140,7 @@ def binding():
             'head': sha, 'branch': branch}
 
 
-REVIEW_PROTOCOL = 5
+REVIEW_PROTOCOL = 6
 context_paths = []
 
 
@@ -148,11 +148,11 @@ def review_packet(bound, read_git=None, extra_paths=()):
     """Pinned full files, including deletions and archived contracts; never truncate."""
     read_git = read_git or git
     revisions = {'base': read_git('merge-base', bound['base'], bound['head']), 'head': bound['head']}
-    changed = read_git('diff', '--no-renames', '--name-only',
-                       bound['base'] + '...' + bound['head']).splitlines()
+    changed = read_git('diff', '--no-renames', '--name-only', '-z',
+                       bound['base'] + '...' + bound['head']).split('\0')[:-1]
     files, binary_files = {}, {}
     for revision in ('base', 'head'):
-        paths = set(read_git('ls-tree', '-r', '--name-only', revisions[revision]).splitlines())
+        paths = set(read_git('ls-tree', '-r', '--name-only', '-z', revisions[revision]).split('\0')[:-1])
         selected = set(changed) | set(extra_paths)
         selected.update(p for p in paths if p.startswith('docs/agents/') and p.endswith('.md'))
         selected.update({'AGENTS.md', 'scripts/traceability.sh',

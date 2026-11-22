@@ -172,3 +172,30 @@ class ReviewContextTests(unittest.TestCase):
             'first\fstill first\u2028same line\r', 'second\x85same second', 'last'])
         self.assertEqual(dev.source_lines('one\n'), ['one'])
         self.assertEqual(dev.source_lines(''), [])
+
+    def test_quoted_and_multiline_paths_are_read_without_git_quoting(self):
+        import os
+        with tempfile.TemporaryDirectory() as directory:
+            def git(*args):
+                return subprocess.check_output(['git', '-C', directory, *args], text=True).strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Test')
+            git('config', 'user.email', 'test@example.com')
+            (Path(directory) / 'normal.txt').write_text('base\n')
+            git('add', '.')
+            git('commit', '-qm', 'base')
+            base = git('rev-parse', 'HEAD')
+            names = ['中文.md', 'a"b.txt', 'line\nbreak.txt', ' leading space.txt']
+            for name in names:
+                (Path(directory) / name).write_text('content\n')
+            git('add', '.')
+            git('commit', '-qm', 'paths')
+            bound = dict(base=base, head=git('rev-parse', 'HEAD'), branch='harness/x')
+            previous_cwd = os.getcwd()
+            try:
+                os.chdir(directory)
+                packet = dev.review_packet(bound, extra_paths=[names[0]])
+            finally:
+                os.chdir(previous_cwd)
+            for name in names:
+                self.assertEqual(packet['files']['head:' + name], 'content\n')
