@@ -143,7 +143,7 @@ class ReviewContextTests(unittest.TestCase):
             git('add', '.')
             git('commit', '-qm', 'base')
             base = git('rev-parse', 'HEAD')
-            blobs = {'image.bin': b'\x00\xff\x80', 'legacy.txt': b'caf\xe9\n'}
+            blobs = {'image.bin': b'\x00\xff\x80', 'legacy.txt': b'text\xe9\n'}
             for name, value in blobs.items():
                 (Path(directory) / name).write_bytes(value)
             git('add', '.')
