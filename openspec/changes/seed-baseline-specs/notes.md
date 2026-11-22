@@ -125,3 +125,6 @@ The complete immutable model bundle requirement and B0-MODEL-003 move to add-ver
 
 ## Service core transfer
 B0-API-001/002/003 move to add-versioned-service-api. Network transport and worker dispatch remain proposed as B0-API-004; no gRPC acceptance is claimed.
+
+## Network transfer
+Complete Network service transport and B0-API-004 move to add-grpc-service. The emptied service-api seed delta is deleted.

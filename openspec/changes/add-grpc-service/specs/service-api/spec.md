@@ -1,5 +1,3 @@
-## Purpose
-Expose the compile-only kernel through a versioned network service boundary.
 ## ADDED Requirements
 ### Requirement: Network service transport
 The service SHALL expose Compile, ValidateModel and GetMeta through gRPC, with compilation dispatched to a fixed-size worker pool outside async runtime threads.
