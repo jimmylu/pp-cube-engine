@@ -17,6 +17,8 @@ wall-clock bound. HTTP pagination, 503 retries, a total request deadline,
 query errors, cancellation and result mismatches have offline HTTP regressions.
 Review repairs cover slow-body wall deadlines, sanitized HTTP protocol failures,
 cancellation preserving the original error, and redirects with Location headers.
+The slow-body test streams bytes within the socket timeout so it tests the total
+deadline rather than racing the socket timeout on Python 3.9.
 Redirects and cross-origin continuation URLs fail. Session-mutating SQL and
 authenticated endpoints are outside this small client's scope.
 

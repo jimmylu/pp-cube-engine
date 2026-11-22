@@ -111,13 +111,14 @@ class ProtocolTests(unittest.TestCase):
 
             def do_POST(self):
                 self.send_response(200)
-                self.send_header('Content-Length', '2')
+                payload = b'{"padding":"' + b'x' * 50 + b'"}'
+                self.send_header('Content-Length', str(len(payload)))
                 self.end_headers()
-                self.wfile.write(b'{')
-                self.wfile.flush()
-                time.sleep(0.3)
                 try:
-                    self.wfile.write(b'}')
+                    for byte in payload:
+                        self.wfile.write(bytes([byte]))
+                        self.wfile.flush()
+                        time.sleep(0.02)
                 except OSError:
                     pass
 
@@ -126,9 +127,9 @@ class ProtocolTests(unittest.TestCase):
         thread.start()
         try:
             started = time.monotonic()
-            with self.assertRaises(TimeoutError):
-                presto.execute('http://127.0.0.1:' + str(httpd.server_port), 'SELECT 1', 0.05)
-            self.assertLess(time.monotonic() - started, 0.25)
+            with self.assertRaisesRegex(TimeoutError, 'Presto query deadline'):
+                presto.execute('http://127.0.0.1:' + str(httpd.server_port), 'SELECT 1', 0.2)
+            self.assertLess(time.monotonic() - started, 0.8)
         finally:
             httpd.shutdown()
             thread.join()
