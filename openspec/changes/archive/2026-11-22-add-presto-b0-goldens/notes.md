@@ -35,3 +35,10 @@ OpenSpec verification: completeness 5/5 tasks; correctness covers the complete B
 Sync/archive only the Presto B0 compilation requirement in this PR, as required by the lifecycle. T1/T2 acceptance remains in the seed; T1/T2 were not run. Exact-head CI, omp / Anthropic Claude Opus 5.5 review and remote t0 are pending after checkpoint; their final evidence belongs in PR comments. Owner approves and merges. No known implementation blocker.
 
 Delivery follow-up: the first exact-head CI passed Rust tests but typos rejected a hexadecimal substring in the historical dirty-tree check identity above. Reworded those preparation records; no code or check configuration changed. Final-head acceptance remains pending in PR comments.
+
+
+## Review follow-up: complete scenario coverage
+
+Opus identified that the seed policy requires each test claiming a matrix scenario to exercise its whole member list. The initial collective-tag design violated that policy. Split B0-PRESTO-001 as the seed explicitly allows: retain 001 for all five non-UTC granularities in one loop test; allocate 004 through 016 to the thirteen existing matrix tests. Keep 002/003 reserved in the seed for T1/T2. The compilation requirement text and overall feature coverage are unchanged; five snapshots retain their SQL and parameters. Earlier notes describing collective tags and verbatim scenario transfer are superseded by this correction.
+
+Provide the seed and implemented compile-b0 specs as supplemental review context to answer the separate context question. No runtime or harness scope is added. Final-head verification and review remain pending.

@@ -50,7 +50,7 @@ fn equals_on_a_string_dimension() {
 
 // scenario: B0-QUERY-006
 // scenario: B0-DET-001
-// scenario: B0-PRESTO-001
+// scenario: B0-PRESTO-007
 #[test]
 fn equality_and_presence_operators() {
     insta::assert_snapshot!(compiled(
@@ -66,7 +66,7 @@ fn equality_and_presence_operators() {
 
 // scenario: B0-QUERY-006
 // scenario: B0-DET-001
-// scenario: B0-PRESTO-001
+// scenario: B0-PRESTO-008
 #[test]
 fn string_operators_escape_the_pattern_characters_of_their_values() {
     insta::assert_snapshot!(compiled(
@@ -83,7 +83,7 @@ fn string_operators_escape_the_pattern_characters_of_their_values() {
 
 // scenario: B0-QUERY-006
 // scenario: B0-DET-001
-// scenario: B0-PRESTO-001
+// scenario: B0-PRESTO-009
 #[test]
 fn comparison_operators_on_a_number_dimension() {
     insta::assert_snapshot!(compiled(
@@ -98,7 +98,7 @@ fn comparison_operators_on_a_number_dimension() {
 
 // scenario: B0-QUERY-006
 // scenario: B0-DET-001
-// scenario: B0-PRESTO-001
+// scenario: B0-PRESTO-010
 #[test]
 fn filters_on_measures_restrict_groups() {
     insta::assert_snapshot!(compiled(
@@ -112,7 +112,7 @@ fn filters_on_measures_restrict_groups() {
 
 // scenario: B0-QUERY-005
 // scenario: B0-DET-001
-// scenario: B0-PRESTO-001
+// scenario: B0-PRESTO-011
 #[test]
 fn top_level_filters_are_joined_with_and_and_groups_keep_their_nesting() {
     insta::assert_snapshot!(compiled(
@@ -131,7 +131,7 @@ fn top_level_filters_are_joined_with_and_and_groups_keep_their_nesting() {
 
 // scenario: B0-QUERY-007
 // scenario: B0-DET-001
-// scenario: B0-PRESTO-001
+// scenario: B0-PRESTO-012
 #[test]
 fn segment_order_limit_and_offset() {
     insta::assert_snapshot!(compiled(

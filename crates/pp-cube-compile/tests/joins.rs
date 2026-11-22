@@ -51,7 +51,7 @@ fn query_failure(query: &str) -> String {
 
 // scenario: B0-JOIN-001
 // scenario: B0-DET-001
-// scenario: B0-PRESTO-001
+// scenario: B0-PRESTO-006
 #[test]
 fn sales_grouped_and_filtered_by_a_store_dimension() {
     insta::assert_snapshot!(compiled(

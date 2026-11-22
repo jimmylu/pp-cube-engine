@@ -5,8 +5,8 @@ Each task is bounded to two hours. All implementation and verification tasks are
 ## 1. Matrix coverage
 
 - [x] 1.1 Synchronize main after the owner merges PR #34; verify its shared replay helper and accepted worker fix are present without duplicating the prior PR's diff.
-- [x] 1.2 Mark the existing golden cases listed in design.md with B0-PRESTO-001, preserving current ids; verify all twenty operators and every other matrix member have executable snapshot coverage, then run aggregation, filters and joins integration suites.
-- [x] 1.3 Add the five non-UTC granularity inputs in time.rs with B0-PRESTO-001 and B0-DET-001; review their five new SQL/parameter snapshots with cargo insta review, then run the time suite with INSTA_UPDATE=no. Verify existing snapshots are unchanged and update the coverage table with actual new case names.
+- [x] 1.2 Mark the existing golden cases listed in design.md with B0-PRESTO-004 through B0-PRESTO-016 in table order, preserving current feature ids; verify all twenty operators and every other matrix member have executable snapshot coverage, then run aggregation, filters and joins integration suites.
+- [x] 1.3 Add the five non-UTC granularity inputs in one loop test in time.rs with B0-PRESTO-001 and B0-DET-001; review their five new SQL/parameter snapshots with cargo insta review, then run the time suite with INSTA_UPDATE=no. Verify existing snapshots are unchanged and update the coverage table with actual new case names.
 
 ## 2. Integration verification
 

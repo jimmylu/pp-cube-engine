@@ -14,7 +14,7 @@ Use existing executable cases as the Presto matrix, fill the non-UTC granularity
 
 ### Reuse feature suites
 
-The following existing tests supply the matrix; names below are in `crates/pp-cube-compile/tests/`. Mark these golden tests directly with B0-PRESTO-001, retaining their current scenario tags. The combined cases cover the matrix collectively; no single tag proves the whole matrix.
+The following existing tests supply the matrix; names below are in `crates/pp-cube-compile/tests/`. Split the matrix under the seed policy: B0-PRESTO-001 retains the five non-UTC granularities, covered together by one test. B0-PRESTO-004 through B0-PRESTO-016 cover the rows below in order, each in one complete test. B0-PRESTO-002/003 stay reserved for execution tiers. Retain existing feature scenario tags.
 
 | Matrix members | Suite and test |
 | --- | --- |
@@ -31,13 +31,13 @@ The following existing tests supply the matrix; names below are in `crates/pp-cu
 | Absolute closed range | time: october_is_closed_at_its_first_and_its_last_millisecond |
 | Five granularities in UTC | time: each_granularity_truncates_the_time_dimension_in_the_timezone |
 | Context timezone and query precedence | time: query_timezone_wins_over_the_one_of_the_context |
-| Five granularities outside UTC | time: day_granularity_in_tokyo, week_granularity_in_tokyo, month_granularity_in_tokyo, quarter_granularity_in_tokyo, year_granularity_in_tokyo |
+| Five granularities outside UTC | time: all_granularities_in_tokyo (five independent inputs and snapshots) |
 
 Duplicating the matrix in a standalone integration binary would duplicate fixtures and lose automatic coverage when feature tests evolve. Building T1/T2 now would require separate infrastructure and harness scope. Keep the existing tests and add only the missing inputs.
 
 ### Add independent non-UTC inputs
 
-For each of day, week, month, quarter and year, compile sales.amount grouped by sales.sold_at with context timezone Asia/Tokyo and absolute range 2026-10-01 through 2026-10-31. Use the existing `compile_in`/`compiled` helpers in time.rs and five explicitly named snapshots. The new tests name B0-PRESTO-001 and B0-DET-001.
+For each of day, week, month, quarter and year, compile sales.amount grouped by sales.sold_at with context timezone Asia/Tokyo and absolute range 2026-10-01 through 2026-10-31. Use the existing `compile_in`/`compiled` helpers in time.rs and five explicitly named snapshots. One loop test names B0-PRESTO-001 and B0-DET-001 and exercises all five inputs.
 
 Snapshot SQL and ordered parameters as the suites already do. PR #34's wrapper compares every Compiled field over four fresh child processes for each successful input. Preserve the existing UTC snapshot and timezone-precedence cases. Review all five new snapshots with cargo insta review; none of the pre-existing snapshots is expected to change.
 
@@ -45,7 +45,7 @@ No production error behavior changes. Load/compile failures, nonzero worker exit
 
 ### Transfer only the implemented tier
 
-Move the complete Presto B0 compilation requirement and its id verbatim out of the seed. Keep Presto B0 acceptance / B0-PRESTO-002 and B0-PRESTO-003 there until their execution tiers exist and pass. Archive this change only after the entire table has passing reviewed goldens.
+Move the complete Presto B0 compilation requirement out of the seed, preserving its text. Split its matrix scenario under the seed policy; keep the original id with non-UTC granularities and allocate new ids starting at 004. Keep Presto B0 acceptance / B0-PRESTO-002 and B0-PRESTO-003 there until their execution tiers exist and pass. Archive this change only after the entire table has passing reviewed goldens.
 
 ## Risks / Trade-offs
 

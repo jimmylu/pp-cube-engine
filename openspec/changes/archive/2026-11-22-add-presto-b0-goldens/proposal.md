@@ -6,7 +6,7 @@ Presto already has B0 golden suites, but its proposed acceptance requirement has
 
 ## What Changes
 
-- Adopt Presto B0 compilation and B0-PRESTO-001 from the seed, preserving their text and id.
+- Adopt Presto B0 compilation and B0-PRESTO-001 from the seed, preserving the requirement text and retaining its original scenario id with the non-UTC granularity part; split the remaining matrix into complete testable scenarios under the seed policy.
 - Map every B0 matrix member to existing golden tests and add non-UTC golden cases for day, week, month, quarter and year.
 - Reuse PR #34's successful-compile wrapper so new cases also compare complete results across fresh processes.
 - Add reviewed snapshots for new inputs only. Existing SQL, snapshots and public APIs are expected to stay unchanged.
