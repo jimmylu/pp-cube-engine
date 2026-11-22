@@ -24,7 +24,7 @@ FILTER_SNAPSHOT = ROOT / 'crates/pp-cube-compile/tests/snapshots/filters__equals
 # Only locally authored, fixed messages may enter public failure evidence.
 SAFE_FAILURES = frozenset({
     'invalid golden header', 'only explicitly empty parameters are supported',
-    'expected a SELECT golden', 'HTTP redirects are not supported',
+    'expected one text snapshot parameter', 'expected a SELECT golden', 'HTTP redirects are not supported',
     'endpoint must be an HTTP(S) origin without credentials', 'invalid query response',
     'nextUri must remain on the configured origin', 'Presto returned a query error',
     'result columns changed between pages', 'unexpected result size',

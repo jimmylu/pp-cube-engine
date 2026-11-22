@@ -81,8 +81,10 @@ class ProtocolTests(unittest.TestCase):
 
     def test_unsupported_parameter_shapes_fail_before_http(self):
         for value in ('[]', '[Int(1)]', '[Text("a"), Text("b")]', '[Text(bad)]'):
-            with self.subTest(value=value), self.assertRaises(ValueError):
+            with self.subTest(value=value), self.assertRaises(ValueError) as failure:
                 presto.text_filter_snapshot('---\nsource: test\n---\nSELECT ?\n-- parameters: ' + value)
+            self.assertEqual(presto.failure_category(failure.exception),
+                             'expected one text snapshot parameter')
 
     def test_text_binding_uses_prepared_header_without_replacing_placeholders(self):
         sql = "SELECT ? AS value"

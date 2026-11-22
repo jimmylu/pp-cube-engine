@@ -63,9 +63,9 @@ there and cannot count as T2 evidence.
 The prepared-engine command was introduced in #41. At that point the local Docker
 daemon was unavailable, so real local execution was not run. The container entry
 point below now provisions the engine, and local real execution has passed. Final
-head-bound CI, engine and review evidence belongs in PR comments. One smoke case
-does not establish full T1/T2 acceptance. Parameterized and temporal execution
-cases remain separately scoped work. Owner reviews and merges.
+head-bound CI, engine and review evidence belongs in PR comments. Two smoke cases
+do not establish full T1/T2 acceptance. Additional parameter types and temporal
+execution cases remain separately scoped work. Owner reviews and merges.
 
 ## Sources
 

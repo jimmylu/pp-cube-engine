@@ -33,5 +33,11 @@ snapshot shape and reject other types/counts/escapes. No full B0/T2 acceptance c
 
 Offline Presto tests passed (20 tests). Binding protocol test first failed because
 the client had no parameters argument; the implementation made it pass. Real local
-Docker verification is running. Evidence binds to the eventual SHA in PR comments;
+Docker verification passed both goldens. Initial full CI also passed (52 offline
+tests); the final candidate must repeat those checks after review repairs. Evidence binds to the eventual SHA in PR comments;
 do not create evidence-only commits. Owner approves and merges.
+
+The first Opus report found two P3 issues: historical scope wording still deferred
+all parameters, and the new fixed unsupported-shape error was missing from the safe
+failure allowlist. Both are repaired; regressions now also assert the public fixed
+failure category. Re-run delivery with both snapshot files as review context.
