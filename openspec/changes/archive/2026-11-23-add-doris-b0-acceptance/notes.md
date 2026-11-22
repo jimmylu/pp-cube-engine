@@ -34,3 +34,16 @@ Learned: OpenSpec treats a scenario title as its identity, so a MODIFIED
 requirement must keep existing titles; only the steps can change. Every Doris
 parameter in the matrix is text, including numbers and booleans, which the SQL
 casts; the number and bool manifest types are still unused.
+
+## 2026-11-23: delivery blocked by review packet size, scope split
+
+`scripts/dev deliver` passed local CI, Presto Docker and Doris Docker (39 cases)
+at 14deb81 and then stopped: `Review context exceeds 500 KB; split scope before
+review`. The packet embeds every changed file at base and head; `Cargo.lock`
+(changed only by the new `insta` dev-dependency edge) is about 157 KB of it, and
+the encoded packet is about 525 KB even without extra review context.
+
+Split: the `insta` dev-dependency and the golden test travel first in
+`add-execution-case-goldens` with the thirteen existing cases. After it merges,
+merge main into this branch; this change then no longer touches `Cargo.lock`
+and only grows the snapshot. No review has run on this branch yet.
