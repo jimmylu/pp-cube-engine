@@ -1206,6 +1206,11 @@ dependencies = [
 [[package]]
 name = "pp-cube-conformance"
 version = "0.0.0"
+dependencies = [
+ "pp-cube-compile",
+ "pp-cube-model",
+ "serde_json",
+]
 
 [[package]]
 name = "pp-cube-dialect"

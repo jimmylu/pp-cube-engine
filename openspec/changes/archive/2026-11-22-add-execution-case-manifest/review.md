@@ -25,7 +25,7 @@ live-compiled Doris temporal cases through an explicit opt-in command.
 ## Structural findings
 
 1. Execution tiers parse stored snapshots and Debug text. Doris: this change and
-   issue #59. Presto: a cross-change harness dependency that needs its own issue.
+   issue #59. Presto: a cross-change harness dependency tracked in issue #61.
 2. No independent semantic oracle exists until T1; goldens show stable output.
    Covered by B0-PRESTO-002 and B0-DRUID-003, so no separate issue.
 3. Druid, part of the largest stated unknown, is untouched. Covered by
