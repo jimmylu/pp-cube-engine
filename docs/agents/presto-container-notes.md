@@ -2,8 +2,8 @@
 
 PR #42, branch `harness/presto-container`. Product, vendor, golden snapshots and
 Cargo dependencies are unchanged. Design and usage are in engines.md. The owner
-requested this next harness slice after merging #41; the implementation is not yet
-accepted; delivery must obtain passing real-engine evidence before Ready.
+requested this next harness slice after merging #41. Real engine execution now
+passes; final cross-vendor delivery gates remain required before Ready.
 
 ## Implemented
 
@@ -41,6 +41,20 @@ wrong-version regressions confirm fixture setup is skipped and cleanup still run
 Discovery documentation includes engines-container. Fixed stage and allowlisted
 failure messages preserve public-safe diagnostics.
 
-Remaining: obtain a passing real engine run, run final CI, obtain the cross-vendor
-report and deliver through Ready. Evidence belongs in PR comments or CI artifacts,
+Run 44992155944 passed on head 2530c5a after the build-identity fix:
+https://github.com/jimmylu/pp-cube-engine/actions/runs/44992155944
+The success line confirms one grouped-sum golden, not full T2 acceptance.
+
+## Operator handoff
+
+For readiness-version failures, compare the observed build identity with the pinned
+manifest; do not drop the suffix check or replace the digest with a mutable tag.
+For golden-verification failures, use the fixed error category to separate an
+origin violation, query error or result mismatch. Do not print raw responses or
+rewrite snapshots to make execution pass. Reproduce with
+`scripts/check.sh engines-container` on a Docker host; offline tests alone cannot
+establish engine correctness. SIGKILL still requires manual cleanup of the unique
+container; ordinary failures attempt bounded cleanup automatically.
+
+Remaining: run final CI, obtain the cross-vendor report and deliver through Ready. Evidence belongs in PR comments or CI artifacts,
 not an evidence-only commit. Owner approval and merge remain required.
