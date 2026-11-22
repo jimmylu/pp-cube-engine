@@ -20,6 +20,9 @@ pub struct Query {
     /// Top-level filters all hold together.
     #[serde(default)]
     pub filters: Vec<Filter>,
+    /// Cube's detail-query switch. B0 accepts the field but not `true`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ungrouped: Option<bool>,
     /// In the sequence it was written, whichever of Cube's two forms was used.
     /// Absent means the planner's default order; written empty means no order.
     #[serde(
@@ -44,17 +47,49 @@ pub struct TimeDimension {
     pub dimension: String,
     pub granularity: Option<Granularity>,
     pub date_range: Option<DateRange>,
+    /// Cube's API-layer comparison ranges. B0 does not compile comparisons.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compare_date_range: Option<Vec<DateRange>>,
 }
 
 /// The granularities of the baseline. Cube also has the ones below a day.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Granularity {
+    Second,
+    Minute,
+    Hour,
     Day,
     Week,
     Month,
     Quarter,
     Year,
+}
+
+impl Query {
+    /// Names recognized Cube features that are intentionally outside B0.
+    pub fn unsupported_b0_features(&self) -> Vec<&'static str> {
+        let mut features = Vec::new();
+        if self.ungrouped == Some(true) {
+            features.push("ungrouped detail output");
+        }
+        if self
+            .time_dimensions
+            .iter()
+            .any(|time| time.compare_date_range.is_some())
+        {
+            features.push("compareDateRange");
+        }
+        if self.time_dimensions.iter().any(|time| {
+            matches!(
+                time.granularity,
+                Some(Granularity::Second | Granularity::Minute | Granularity::Hour)
+            )
+        }) {
+            features.push("sub-day granularity");
+        }
+        features
+    }
 }
 
 /// A closed range: both ends belong to it. Written as a list of two.

@@ -140,6 +140,22 @@ fn fingerprint_covers_model_query_context_but_not_request_id() {
             .fingerprint
     );
 }
+
+// scenario: B0-QUERY-011
+// scenario: B0-RESULT-001
+#[test]
+fn explicit_grouped_false_preserves_sql_and_absent_fields_stay_absent() {
+    let model = Arc::new(load_yaml(include_str!("fixtures/sales.yaml")).unwrap());
+    let absent = load_query(r#"{"measures":["sales.amount"]}"#).unwrap();
+    let explicit = load_query(r#"{"measures":["sales.amount"],"ungrouped":false}"#).unwrap();
+    let absent_json = serde_json::to_string(&absent).unwrap();
+    assert!(!absent_json.contains("ungrouped"));
+    assert!(!absent_json.contains("compareDateRange"));
+    let first = compile(&model, &absent, &context()).unwrap();
+    let second = compile(&model, &explicit, &context()).unwrap();
+    assert_eq!(first.sql, second.sql);
+    assert_eq!(first.parameters, second.parameters);
+}
 // scenario: B0-DET-002
 #[test]
 fn fingerprint_child() {

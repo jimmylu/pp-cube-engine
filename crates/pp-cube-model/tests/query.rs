@@ -54,6 +54,7 @@ fn query_loads_from_cube_query_json() {
         measures: vec!["sales.amount".into()],
         dimensions: vec!["sales.channel_cd".into()],
         segments: vec!["sales.valid".into()],
+        ungrouped: None,
         filters: vec![
             condition("sales.channel_cd", Operator::Equals, &["C1", "C2"]),
             Filter::Or(vec![
@@ -75,6 +76,7 @@ fn query_loads_from_cube_query_json() {
                 dimension: "sales.sold_at".into(),
                 granularity: Some(Granularity::Month),
                 date_range: None,
+                compare_date_range: None,
             },
             TimeDimension {
                 dimension: "sales.sold_at".into(),
@@ -83,6 +85,7 @@ fn query_loads_from_cube_query_json() {
                     from: date("2026-10-01"),
                     to: date("2026-10-31T12:30:00.500"),
                 }),
+                compare_date_range: None,
             },
         ],
         timezone: Some("Asia/Tokyo".into()),
@@ -190,35 +193,68 @@ fn filter_that_is_neither_a_condition_nor_one_group_is_rejected() {
     }
 }
 
+// scenario: B0-QUERY-011
 #[test]
-fn query_field_the_kernel_does_not_compile_is_rejected() {
-    let text = r#"{"measures": ["sales.amount"], "ungrouped": true}"#;
+fn recognized_boundary_features_load_and_round_trip() {
+    let text = r#"{
+        "ungrouped": false,
+        "timeDimensions": [{
+            "dimension": "sales.sold_at",
+            "granularity": "hour",
+            "compareDateRange": [["2025-10-01", "2025-10-31"]]
+        }]
+    }"#;
+    let query = load_query(text).expect("recognized boundary fields load");
+    assert_eq!(query.ungrouped, Some(false));
+    assert_eq!(
+        query.time_dimensions[0].granularity,
+        Some(Granularity::Hour)
+    );
+    assert_eq!(
+        query.time_dimensions[0]
+            .compare_date_range
+            .as_ref()
+            .unwrap()
+            .len(),
+        1
+    );
+    let written = serde_json::to_string(&query).expect("query serializes");
+    let round_trip = load_query(&written).expect("round trip loads");
+    assert_eq!(round_trip, query);
+}
 
-    let error = load_query(text).expect_err("detail queries are outside the baseline");
-
-    assert!(error.message.contains("ungrouped"), "{}", error.message);
+// scenario: B0-QUERY-011
+#[test]
+fn malformed_boundary_fields_and_unknown_names_are_rejected() {
+    for text in [
+        r#"{"ungrouped":"true"}"#,
+        r#"{"timeDimensions":[{"dimension":"sales.sold_at","granularity":"fortnight"}]}"#,
+        r#"{"timeDimensions":[{"dimension":"sales.sold_at","compareDateRange":["2025-10-01"]}]}"#,
+        r#"{"unknownBoundary":true}"#,
+    ] {
+        load_query(text).expect_err("malformed or unknown boundary input");
+    }
 }
 
 #[test]
 fn granularity_outside_the_five_is_rejected_where_it_is_written() {
-    for granularity in ["hour", "fortnight"] {
-        let text = format!(
-            "{{\"timeDimensions\": [\n  {{\"dimension\": \"sales.sold_at\", \"granularity\": \"{granularity}\"}}\n]}}"
-        );
+    let granularity = "fortnight";
+    let text = format!(
+        "{{\"timeDimensions\": [\n  {{\"dimension\": \"sales.sold_at\", \"granularity\": \"{granularity}\"}}\n]}}"
+    );
 
-        let error = load_query(&text).expect_err("the granularity is outside the baseline");
+    let error = load_query(&text).expect_err("the granularity is outside the baseline");
 
-        assert_eq!(
-            (
-                error.position.map(|at| at.line),
-                error.message.contains(granularity),
-                error.message.contains("`quarter`"),
-            ),
-            (Some(2), true, true),
-            "{granularity}: {}",
-            error.message
-        );
-    }
+    assert_eq!(
+        (
+            error.position.map(|at| at.line),
+            error.message.contains(granularity),
+            error.message.contains("`quarter`"),
+        ),
+        (Some(2), true, true),
+        "{granularity}: {}",
+        error.message
+    );
 }
 
 #[test]

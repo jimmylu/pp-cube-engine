@@ -77,6 +77,11 @@ pub fn compile(
     if !issues.is_empty() {
         return Err(CompileError::Model(issues));
     }
+    if let Some(feature) = query.unsupported_b0_features().first() {
+        return Err(CompileError::Unsupported(format!(
+            "The recognized Cube feature `{feature}` is outside B0"
+        )));
+    }
     for filter in &context.security_filters {
         check_security_filter(filter)?;
     }
