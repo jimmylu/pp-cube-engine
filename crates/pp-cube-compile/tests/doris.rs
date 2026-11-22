@@ -42,7 +42,7 @@ fn unsupported_doris_features_fail_closed() {
     for text in [
         r#"{"measures":["sales.total"],"offset":2}"#,
         r#"{"measures":["sales.total"],"timeDimensions":[{"dimension":"sales.region","granularity":"day"}]}"#,
-        r#"{"measures":["sales.total"],"filters":[{"member":"sales.region","operator":"contains","values":["n"]}]}"#,
+        r#"{"measures":["sales.total"],"filters":[{"member":"sales.region","operator":"beforeDate","values":["2026-01-01"]}]}"#,
     ] {
         assert!(matches!(
             compile(
@@ -68,7 +68,7 @@ fn unsupported_doris_features_fail_closed() {
     ));
     let mut ctx = context();
     ctx.security_filters = pp_cube_model::load_query(
-        r#"{"filters":[{"or":[{"member":"sales.region","operator":"contains","values":["n"]}]}]}"#,
+        r#"{"filters":[{"or":[{"member":"sales.region","operator":"beforeDate","values":["2026-01-01"]}]}]}"#,
     )
     .unwrap()
     .filters;
@@ -169,4 +169,48 @@ fn doris_retains_join_boundaries() {
         compile(&retail(), &query, &join_context()),
         Err(CompileError::Unsupported(_))
     ));
+}
+
+// scenario: B0-DORIS-007
+#[test]
+fn doris_literal_patterns() {
+    let mut snapshots = Vec::new();
+    for operator in [
+        "contains",
+        "notContains",
+        "startsWith",
+        "notStartsWith",
+        "endsWith",
+        "notEndsWith",
+    ] {
+        let text = format!(
+            r#"{{"measures":["sales.total"],"filters":[{{"member":"sales.region","operator":"{operator}","values":["A%_\\B"]}}]}}"#
+        );
+        let query = pp_cube_model::load_query(&text).unwrap();
+        let result = support::compile(&model(), &query, &context()).unwrap();
+        let mut presto = context();
+        presto.dialect = DialectId::Presto;
+        let expected = compile(&model(), &query, &presto).unwrap();
+        assert_eq!(result.parameters, expected.parameters);
+        assert_eq!(result.columns, expected.columns);
+        assert_eq!(result.used_cubes, expected.used_cubes);
+        snapshots.push(format!(
+            "{operator}:\n{}\n{:?}",
+            result.sql, result.parameters
+        ));
+    }
+    insta::assert_snapshot!(snapshots.join("\n\n"));
+}
+// scenario: B0-DORIS-008
+#[test]
+fn doris_security_pattern_conjoins_user_or() {
+    let mut ctx = context();
+    ctx.security_filters = pp_cube_model::load_query(
+        r#"{"filters":[{"member":"sales.region","operator":"startsWith","values":["north_"]}]}"#,
+    )
+    .unwrap()
+    .filters;
+    let query = pp_cube_model::load_query(r#"{"measures":["sales.total"],"filters":[{"or":[{"member":"sales.region","operator":"contains","values":["central%"]},{"member":"sales.region","operator":"endsWith","values":["west"]}]}]}"#).unwrap();
+    let result = support::compile(&model(), &query, &ctx).unwrap();
+    insta::assert_snapshot!(format!("{}\n{:?}", result.sql, result.parameters));
 }

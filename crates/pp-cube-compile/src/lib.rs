@@ -161,7 +161,13 @@ fn check_doris(model: &Model, query: &Query, ctx: &CompileContext) -> Result<(),
             Filter::And(fs) | Filter::Or(fs) => fs.iter().all(supported),
             Filter::Condition(c) => matches!(
                 c.operator,
-                Operator::Equals
+                Operator::Contains
+                    | Operator::NotContains
+                    | Operator::StartsWith
+                    | Operator::NotStartsWith
+                    | Operator::EndsWith
+                    | Operator::NotEndsWith
+                    | Operator::Equals
                     | Operator::NotEquals
                     | Operator::Gt
                     | Operator::Gte
@@ -184,7 +190,7 @@ fn check_doris(model: &Model, query: &Query, ctx: &CompileContext) -> Result<(),
             .chain(&ctx.security_filters)
             .all(supported)
     {
-        return Err(CompileError::Unsupported("Doris compilation currently requires models without time dimensions, scalar comparison filters and a limit when offset is present".into()));
+        return Err(CompileError::Unsupported("Doris compilation currently requires models without time dimensions, scalar/pattern filters and a limit when offset is present".into()));
     }
     Ok(())
 }

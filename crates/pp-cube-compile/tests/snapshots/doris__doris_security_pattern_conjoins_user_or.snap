@@ -1,0 +1,8 @@
+---
+source: crates/pp-cube-compile/tests/doris.rs
+expression: "format!(\"{}\\n{:?}\", result.sql, result.parameters)"
+---
+SELECT sum(`sales`.amount) `sales__total`  
+FROM  dw.sales  AS `sales`
+WHERE (((LOWER(`sales`.region) LIKE CONCAT('%', LOWER(?), '%'))) OR ((LOWER(`sales`.region) LIKE CONCAT('%', LOWER(?), '')))) AND ((LOWER(`sales`.region) LIKE CONCAT('', LOWER(?), '%')))
+[Text("central\\%"), Text("west"), Text("north\\_")]

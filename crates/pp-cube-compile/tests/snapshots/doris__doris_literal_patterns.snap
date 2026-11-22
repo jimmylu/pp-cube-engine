@@ -1,0 +1,39 @@
+---
+source: crates/pp-cube-compile/tests/doris.rs
+expression: "snapshots.join(\"\\n\\n\")"
+---
+contains:
+SELECT sum(`sales`.amount) `sales__total`  
+FROM  dw.sales  AS `sales`
+WHERE ((LOWER(`sales`.region) LIKE CONCAT('%', LOWER(?), '%'))) AND (`sales`.region = ?)
+[Text("A\\%\\_\\\\B"), Text("north")]
+
+notContains:
+SELECT sum(`sales`.amount) `sales__total`  
+FROM  dw.sales  AS `sales`
+WHERE ((LOWER(`sales`.region) NOT LIKE CONCAT('%', LOWER(?), '%')) OR `sales`.region IS NULL) AND (`sales`.region = ?)
+[Text("A\\%\\_\\\\B"), Text("north")]
+
+startsWith:
+SELECT sum(`sales`.amount) `sales__total`  
+FROM  dw.sales  AS `sales`
+WHERE ((LOWER(`sales`.region) LIKE CONCAT('', LOWER(?), '%'))) AND (`sales`.region = ?)
+[Text("A\\%\\_\\\\B"), Text("north")]
+
+notStartsWith:
+SELECT sum(`sales`.amount) `sales__total`  
+FROM  dw.sales  AS `sales`
+WHERE ((LOWER(`sales`.region) NOT LIKE CONCAT('', LOWER(?), '%')) OR `sales`.region IS NULL) AND (`sales`.region = ?)
+[Text("A\\%\\_\\\\B"), Text("north")]
+
+endsWith:
+SELECT sum(`sales`.amount) `sales__total`  
+FROM  dw.sales  AS `sales`
+WHERE ((LOWER(`sales`.region) LIKE CONCAT('%', LOWER(?), ''))) AND (`sales`.region = ?)
+[Text("A\\%\\_\\\\B"), Text("north")]
+
+notEndsWith:
+SELECT sum(`sales`.amount) `sales__total`  
+FROM  dw.sales  AS `sales`
+WHERE ((LOWER(`sales`.region) NOT LIKE CONCAT('%', LOWER(?), '')) OR `sales`.region IS NULL) AND (`sales`.region = ?)
+[Text("A\\%\\_\\\\B"), Text("north")]

@@ -1,0 +1,4 @@
+# Session notes
+Owner authorized next PR after #55 merged. Using add-doris-pattern-filters. Only extend Doris B0 string filtering; no harness/vendor edits. Doris execution/full matrix remain proposed. Owner merges.
+
+Implemented Doris LIKE templates and recursive six-operator admission. Focused suite passes 10 tests; six-operator literal wildcard/backslash and mandatory security conjunction snapshots reviewed with cargo insta review. Pattern cases replay across four fresh processes, with binding/metadata parity against Presto. Existing unsupported pattern tests now exercise unsupported date filters instead. No Presto golden changes. Full CI, local Docker Presto smoke and cross-vendor review are pending delivery gates, recorded externally against the final pushed SHA. Doris engine execution is not run and full B0-DORIS-001/002 remain proposed in the seed.
