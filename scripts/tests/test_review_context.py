@@ -103,3 +103,61 @@ class ReviewContextTests(unittest.TestCase):
                 self.assertFalse(dev.review()['questions'])
                 model.assert_called_once()
                 packet.assert_called_once_with(bound, extra_paths=['source.rs'])
+
+    def test_diverged_main_uses_diff_preimage_not_main_tip(self):
+        with tempfile.TemporaryDirectory() as directory:
+            from unittest.mock import patch
+            def git(*args):
+                output = subprocess.check_output(['git', '-C', directory, *args])
+                return output if args[0] == 'show' else output.decode().strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Test')
+            git('config', 'user.email', 'test@example.com')
+            source = Path(directory) / 'source.txt'
+            source.write_text('original\n')
+            git('add', '.')
+            git('commit', '-qm', 'common')
+            common = git('rev-parse', 'HEAD')
+            source.write_text('branch change\n')
+            git('commit', '-qam', 'branch')
+            head = git('rev-parse', 'HEAD')
+            git('checkout', '-q', '--detach', common)
+            source.write_text('main only\n')
+            git('commit', '-qam', 'main advanced')
+            bound = dict(base=git('rev-parse', 'HEAD'), head=head, branch='harness/x')
+            packet = dev.review_packet(bound, git)
+            self.assertEqual(packet['revisions']['base'], common)
+            self.assertEqual(packet['files']['base:source.txt'], 'original\n')
+            self.assertNotIn('main only', packet['diff'])
+
+    def test_binary_and_non_utf8_content_is_preserved(self):
+        import base64
+        with tempfile.TemporaryDirectory() as directory:
+            def git(*args):
+                output = subprocess.check_output(['git', '-C', directory, *args])
+                return output if args[0] == 'show' else output.decode(errors='backslashreplace').strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Test')
+            git('config', 'user.email', 'test@example.com')
+            (Path(directory) / 'normal.txt').write_text('base\n')
+            git('add', '.')
+            git('commit', '-qm', 'base')
+            base = git('rev-parse', 'HEAD')
+            blobs = {'image.bin': b'\x00\xff\x80', 'legacy.txt': b'caf\xe9\n'}
+            for name, value in blobs.items():
+                (Path(directory) / name).write_bytes(value)
+            git('add', '.')
+            git('commit', '-qm', 'nontext')
+            import os
+            bound = dict(base=base, head=git('rev-parse', 'HEAD'), branch='harness/x')
+            previous_cwd = os.getcwd()
+            try:
+                os.chdir(directory)
+                packet = dev.review_packet(bound)
+            finally:
+                os.chdir(previous_cwd)
+            for name, value in blobs.items():
+                encoded = packet['binary_files']['head:' + name]
+                self.assertEqual(base64.b64decode(encoded['base64']), value)
+                self.assertEqual(encoded['size'], len(value))
+                self.assertNotIn('head:' + name, packet['files'])

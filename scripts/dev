@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Resumable local delivery controller; no model output is executed as shell code."""
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -13,13 +14,15 @@ import time
 
 
 def run(*args, cwd=None, capture=True, input=None, strip=True):
-    p = subprocess.run(args, cwd=cwd, text=True, input=input,
+    p = subprocess.run(args, cwd=cwd, text=True, encoding='utf-8', errors='backslashreplace', input=input,
                        stdout=subprocess.PIPE if capture else None, check=True)
     return (p.stdout.strip() if strip else p.stdout) if capture else ''
 
 
 def git(*args):
-    return run('git', *args, strip=not (args and args[0] == 'show'))
+    if args and args[0] == 'show':
+        return subprocess.run(['git', *args], stdout=subprocess.PIPE, check=True).stdout
+    return run('git', *args)
 
 
 def save(path, value):
@@ -137,18 +140,19 @@ def binding():
             'head': sha, 'branch': branch}
 
 
-REVIEW_PROTOCOL = 3
+REVIEW_PROTOCOL = 4
 context_paths = []
 
 
 def review_packet(bound, read_git=None, extra_paths=()):
     """Pinned full files, including deletions and archived contracts; never truncate."""
     read_git = read_git or git
+    revisions = {'base': read_git('merge-base', bound['base'], bound['head']), 'head': bound['head']}
     changed = read_git('diff', '--no-renames', '--name-only',
                        bound['base'] + '...' + bound['head']).splitlines()
-    files = {}
+    files, binary_files = {}, {}
     for revision in ('base', 'head'):
-        paths = set(read_git('ls-tree', '-r', '--name-only', bound[revision]).splitlines())
+        paths = set(read_git('ls-tree', '-r', '--name-only', revisions[revision]).splitlines())
         selected = set(changed) | set(extra_paths)
         selected.update(p for p in paths if p.startswith('docs/agents/') and p.endswith('.md'))
         selected.update({'AGENTS.md', 'scripts/traceability.sh',
@@ -162,11 +166,23 @@ def review_packet(bound, read_git=None, extra_paths=()):
         for path in sorted(selected & paths):
             if path.startswith('vendor/'):
                 continue
-            files[revision + ':' + path] = read_git('show', bound[revision] + ':' + path)
+            blob = read_git('show', revisions[revision] + ':' + path)
+            if isinstance(blob, str):
+                blob = blob.encode('utf-8')
+            try:
+                text = blob.decode('utf-8')
+                if '\x00' in text:
+                    raise UnicodeError('NUL marks binary content')
+            except UnicodeError:
+                binary_files[revision + ':' + path] = {
+                    'sha256': hashlib.sha256(blob).hexdigest(), 'size': len(blob),
+                    'base64': base64.b64encode(blob).decode('ascii')}
+            else:
+                files[revision + ':' + path] = text
     for path in extra_paths:
-        if path.startswith('vendor/') or not any(r + ':' + path in files for r in ('base', 'head')):
+        if path.startswith('vendor/') or not any(r + ':' + path in files or r + ':' + path in binary_files for r in ('base', 'head')):
             raise ValueError('Extra context must be a tracked non-vendor file: ' + path)
-    packet = {'binding': bound, 'files': files,
+    packet = {'binding': bound, 'revisions': revisions, 'files': files, 'binary_files': binary_files,
               'diff': read_git('diff', '--no-ext-diff', bound['base'] + '...' + bound['head'])}
     if len(json.dumps(packet).encode()) > 500_000:
         raise ValueError('Review context exceeds 500 KB; split scope before review (no truncation)')
@@ -249,7 +265,10 @@ def review():
               '"message":"concrete defect and consequence","evidence":[{"revision":"head",'
               '"path":"file","line":1,"quote":"exact text on that line"}]}],'
               '"questions":[],"reassessments":[{"index":0,"status":"resolved","reason":"evidence"}]}. '
-              'Use empty arrays when appropriate. Evidence revision is base or head.\n')
+              'Use empty arrays when appropriate. Evidence revision is base (diff merge-base preimage) or head. '
+              'binary_files contains lossless base64 bytes and SHA-256, not source lines. '
+              'Do not cite binary blobs as text lines; if you cannot assess their changes, ask a question. '
+              'Diff byte escapes are display-only; binary_files is the authoritative non-text content.\n')
     numbered = dict(packet, files={path: [{'line': n, 'text': text}
                                          for n, text in enumerate(source.splitlines(), 1)]
                                    for path, source in packet['files'].items()})

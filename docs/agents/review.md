@@ -8,8 +8,8 @@ Inference from roadmap language and rename similarity produced unsupported
 findings. This change improves the supplied evidence and review continuity;
 it cannot prove the semantic correctness of a model's conclusion.
 
-Keep the reviewer without tools. Supply a packet from the exact PR base/head Git
-objects: complete changed files on both sides, agent workflow/verification
+Keep the reviewer without tools. Supply a packet pinned to the PR binding, with base text from the merge-base
+(the diff pre-image) and head text from the reviewed head: complete changed files on both sides, agent workflow/verification
 contracts, active or archived change artifacts, seed transfer policy, traceability
 script and public crate roots. Include the pinned diff. Deleted files exist only
 on the base side. Preserve whitespace for line citations. Vendor source remains
@@ -86,7 +86,7 @@ Repeated reviews on the same SHA with different context produce distinct report
 comment markers, so the PR retains the new verdict instead of hiding it behind
 an earlier comment for that SHA.
 
-## Bounded delivery stop
+## Earlier bounded delivery stop
 
 Stopped after two different review repairs. At cf1036b, Opus returned valid
 citations and explicitly marked all three prior findings resolved. It reported
@@ -108,3 +108,27 @@ receive its own CI evidence in PR comments; it is not a reviewed/accepted head.
 The original automatic Opus route failed a service preflight; the explicitly
 selected alternative Opus 5.5 route returned real reports. No credentials or
 service configuration changes were needed.
+
+
+## Resumed correction
+
+The owner authorized continuation of the two remaining defects. The packet now
+records `binding.base` as the PR base tip and `revisions.base` as the merge-base
+used by the three-dot diff. All base file selection and line citations use that
+pre-image; head files use `revisions.head`. A real diverged-history regression
+checks that main-only edits never appear as PR deletions.
+
+Git blobs are read as bytes. Valid UTF-8 without NUL remains source text with
+unchanged line numbering. Other content goes in `binary_files`, with lossless
+base64 bytes, byte length and SHA-256. This content is never silently dropped or
+replaced with fabricated text lines. Git diff is display-only, with undecodable
+bytes escaped; the blob is authoritative. Binary content has no source-line
+citations. Reviewers must ask a blocking question if they cannot assess it;
+encoding transport alone does not establish a successful semantic review.
+Both representations count toward the context limit. Existing supplemental
+context and no-tools restrictions still apply.
+
+Completed: diverged-base fix, byte-preserving blob transport, binary/non-UTF-8
+and real Git regressions. All 29 offline regressions pass. This correction is
+ready for checkpoint and exact-head CI/Opus/t0 acceptance; final status belongs
+in PR comments to avoid invalidating the reviewed head. Product PR #34 is unchanged.
