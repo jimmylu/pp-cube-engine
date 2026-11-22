@@ -76,3 +76,36 @@ Protocol and memory setup follow the pinned Presto 0.293 official documentation:
 
 - https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphinx/develop/client-protocol.rst
 - https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphinx/connector/memory.rst
+
+## Reproducible container entry point
+
+`harness/presto-container` adds `scripts/check.sh engines-container`. On a Docker
+host it pulls the Presto 0.293 linux/amd64 manifest pinned by digest, creates one
+uniquely named container with a loopback-only ephemeral port and 2 GiB memory,
+installs the memory catalog before startup, checks `SELECT version()`, loads the
+existing fixture and calls the existing golden verifier. It always attempts to
+remove its own container after creation, including on readiness, setup or assertion
+failure. It never removes a pre-existing container. Docker commands have explicit
+timeouts; the readiness loop is bounded. Ordinary Python exceptions are sanitized
+at the CLI boundary. SIGKILL or machine shutdown can prevent cleanup; abandoned
+containers can be identified by their `cube-presto-` prefix.
+
+The separate `presto-engine` workflow runs this command for relevant pull requests
+and manual dispatches, with read-only repository permissions and no credentials
+passed to the engine. The Actions job log and summary record the SHA and final
+smoke line. A pull-request run tests GitHub's merge commit; use its recorded SHA
+alongside the PR head and t0 evidence. It does not replace t0 or expand the smoke
+case into full T2 acceptance. No kernel, snapshot or dependency change is included.
+
+Design choice: one standard-library lifecycle runner reuses the HTTP verifier;
+manual setup remains available, while multi-engine Compose orchestration is deferred.
+The fixed amd64 manifest also runs on arm hosts only when Docker emulation is
+available. Source for image layout, CLI path and memory sizing:
+https://github.com/prestodb/presto/tree/0.293/docker
+
+Container tasks are implemented: pinned image provisioning, readiness/version
+check, fixture setup, verifier reuse, owned-container cleanup, offline lifecycle
+regressions and a separate real-engine CI job. Real execution on this workstation
+remains NOT RUN because Docker's daemon is unavailable. Remote engine results and
+exact-head delivery evidence belong in PR comments and Actions, without a new
+commit solely to record them. Owner reviews and merges.
