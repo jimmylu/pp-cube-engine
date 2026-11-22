@@ -218,5 +218,17 @@ class DeliveryTests(unittest.TestCase):
             model.assert_not_called()
 
 
+
+class ReviewQuestionTests(unittest.TestCase):
+    def test_context_questions_block_without_code_repair(self):
+        with patch.object(dev, 'publish'), patch.object(dev, 'binding', return_value={'head': 'a'}), \
+             patch.object(dev, 'check'), \
+             patch.object(dev, 'review', return_value={'findings': [], 'questions': ['Need full type']}), \
+             patch.object(dev, 'model') as model:
+            with self.assertRaisesRegex(ValueError, 'context clarification'):
+                dev.deliver(2)
+            model.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()
