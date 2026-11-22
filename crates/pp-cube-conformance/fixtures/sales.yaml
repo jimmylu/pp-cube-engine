@@ -1,0 +1,8 @@
+cubes:
+  - name: sales
+    sql_table: dw.sales_dtl
+    data_source: warehouse
+    dimensions:
+      - { name: sold_at, sql: "{CUBE}.sold_at", type: time }
+    measures:
+      - { name: amount, type: sum, sql: "{CUBE}.amount" }
