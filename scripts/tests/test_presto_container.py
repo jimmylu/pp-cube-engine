@@ -65,6 +65,26 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(endpoints, [])
         self.assertFalse(any('input' in kwargs for _, kwargs in calls))
 
+    def test_memory_worker_readiness_precedes_fixture_and_retries_only_no_nodes(self):
+        calls = []
+
+        def command(*args, **kwargs):
+            calls.append(args)
+            if args[0] == 'inspect':
+                return '{"8080/tcp":[{"HostPort":"12345"}]}'
+            if 'SELECT DISTINCT node_version FROM system.runtime.nodes' in args:
+                return '"0.293-2f48ff6"'
+            if any('cube_readiness_0 AS SELECT' in arg for arg in args):
+                raise subprocess.CalledProcessError(1, 'docker', stderr='No nodes available')
+            return ''
+
+        runner.run(command, lambda _: None, lambda _: None)
+        probes = [args for args in calls if any(' AS SELECT 1' in arg for arg in args)]
+        self.assertEqual(len(probes), 2)
+        fixture = next(i for i, args in enumerate(calls) if '--file' in args)
+        self.assertLess(calls.index(probes[-1]), fixture)
+        self.assertEqual(calls[-1][0], 'rm')
+
     def test_failure_diagnostics_are_fixed_and_preserve_cleanup(self):
         output = io.StringIO()
         with contextlib.redirect_stderr(output):

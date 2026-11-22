@@ -131,3 +131,12 @@ show image pull, startup, readiness, fixture, SQL execution and cleanup without 
 server output. The ordinary `ci` command remains Docker-free for the separate T0 job.
 This is the same real-engine integration smoke (one stored golden), not a new
 model-to-execution end-to-end suite.
+
+Memory readiness must exercise execution: the version query can pass before worker
+nodes are advertised. Before loading the fixture, the runner performs a bounded
+Memory CTAS probe (`SELECT 1`), retrying only the fixed no-nodes errors. Every attempt
+uses a different probe table to isolate partial CTAS outcomes; the successful probe
+is dropped and all remaining state disappears with the disposable container.
+Other errors and timeouts fail immediately. This preserves the fixture and golden
+assertions. Source for Memory creation and worker lookup:
+https://github.com/prestodb/presto/blob/0.293/presto-memory/src/main/java/com/facebook/presto/plugin/memory/MemoryMetadata.java

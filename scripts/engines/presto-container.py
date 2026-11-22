@@ -82,6 +82,24 @@ def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
                     print('engine error classes: ' + ','.join(classes), file=sys.stderr)
                     raise TimeoutError('Presto readiness failed')
                 pause(1)
+        stage = 'memory-readiness'
+        print('Presto container: waiting for Memory worker execution', flush=True)
+        for attempt in range(60):
+            # A version query can pass before connector workers are advertised.
+            # Unique probe tables also isolate partial CTAS failures per attempt.
+            table = 'memory.default.cube_readiness_' + str(attempt)
+            try:
+                command('exec', name, '/opt/presto-cli', '--execute',
+                        'CREATE TABLE ' + table + ' AS SELECT 1 AS value', timeout=5)
+                break
+            except subprocess.CalledProcessError as error:
+                raw = (error.stdout or '') + (error.stderr or '')
+                if not any(phrase in raw for phrase in ('No nodes available', 'No Memory nodes available')):
+                    raise
+                if attempt == 59:
+                    raise TimeoutError('Memory workers did not become ready') from None
+                pause(1)
+        command('exec', name, '/opt/presto-cli', '--execute', 'DROP TABLE ' + table, timeout=5)
         stage = 'fixture'
         print('Presto container: loading memory fixture', flush=True)
         try:

@@ -74,3 +74,10 @@ at a031ab9. No owned container remained after cleanup. The first renewed Opus
 review found only a stale statement in engines.md claiming Docker was unavailable;
 that statement is now corrected. Repeat final delivery for the new head. A remote
 fixture failure at a031ab9 is being rechecked; do not substitute prior-head results.
+
+Remote diagnostics on a71ae2d identified `No nodes available` during fixture CTAS,
+while local execution passed. Version readiness alone races worker discovery.
+Added a bounded real Memory CTAS probe before fixture setup, retrying only known
+no-nodes errors and using distinct per-attempt tables. Regression failed before the
+fix and now verifies worker probing precedes fixture loading. Other failures remain
+fatal. Repeat full local CI, local engine and review on the resulting final head.
