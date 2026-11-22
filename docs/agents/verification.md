@@ -44,3 +44,17 @@ Golden SQL is stored as `insta` snapshots. The check runs with `INSTA_UPDATE=no`
 ## Scenario ids
 
 A scenario title in a spec starts with its id: `#### Scenario: B0-AGG-003 Sum over one cube`. A test covers it with `// scenario: B0-AGG-003`. `scripts/traceability.sh` compares the two sets.
+
+## Dependency license decision #50
+
+The owner approved adding Zlib to the explicit SPDX license allowlist for the
+gRPC code-generation dependency chain: tonic-prost-build -> prost-build ->
+petgraph -> hashbrown -> foldhash 0.1.5. This permits the declared license,
+not an unreviewed dependency or an advisory exception. Attribution and license
+notices remain the distributor's responsibility. Other licenses still need an
+explicit policy decision; do not automatically allow every new dependency.
+
+This isolated harness change edits only the license policy and this record.
+Product PR #51 keeps its own dependencies, implementation and acceptance gates.
+After this prerequisite merges, resume its checks and cross-vendor review on
+the final product head. SHA-bound validation evidence belongs in PR comments.
