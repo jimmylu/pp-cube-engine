@@ -137,6 +137,11 @@ pub fn plan(
     dialect: &'static Dialect,
     timezone: &str,
 ) -> Result<Planned, PlanError> {
+    if let Some(feature) = query.unsupported_b0_features().first() {
+        return Err(PlanError::Unsupported(format!(
+            "The recognized Cube feature `{feature}` is outside B0"
+        )));
+    }
     let timezone = query.timezone.as_deref().unwrap_or(timezone);
     let zone: Tz = timezone
         .parse()
@@ -238,4 +243,32 @@ fn upstream_user_conversion_names_logical_members_and_stage_without_raw_sql() {
     assert!(message.contains("sales.amount"));
     assert!(message.contains("query validation"));
     assert!(!message.contains("hidden_"));
+}
+
+// scenario: B0-AGG-003
+#[test]
+fn direct_planning_rejects_recognized_boundary_features_before_building_options() {
+    let model = Arc::new(
+        pp_cube_model::load_yaml(include_str!(
+            "../../pp-cube-compile/tests/fixtures/retail.yaml"
+        ))
+        .unwrap(),
+    );
+    let dialect = pp_cube_dialect::dialect(pp_cube_dialect::DialectId::Presto).unwrap();
+    for text in [
+        r#"{"ungrouped":true}"#,
+        r#"{"timeDimensions":[{"dimension":"sales.sold_at","compareDateRange":[]}]}"#,
+        r#"{"timeDimensions":[{"dimension":"sales.sold_at","granularity":"second"}]}"#,
+        r#"{"timeDimensions":[{"dimension":"sales.sold_at","granularity":"minute"}]}"#,
+        r#"{"timeDimensions":[{"dimension":"sales.sold_at","granularity":"hour"}]}"#,
+    ] {
+        let query = pp_cube_model::load_query(text).unwrap();
+        assert!(
+            matches!(
+                plan(&model, &query, dialect, "UTC"),
+                Err(PlanError::Unsupported(_))
+            ),
+            "{text}"
+        );
+    }
 }

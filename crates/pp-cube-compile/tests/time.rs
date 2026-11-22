@@ -190,17 +190,34 @@ fn relative_range_is_refused_instead_of_being_resolved_from_the_clock() {
 
 // scenario: B0-QUERY-008
 #[test]
-fn granularity_outside_the_baseline_is_refused_naming_the_five() {
-    for granularity in ["hour", "fortnight"] {
-        let message = load_failure(&format!(
-            r#"{{"dimension": "sales.sold_at", "granularity": "{granularity}"}}"#
-        ));
+fn unknown_granularity_is_refused_naming_the_five_b0_units() {
+    let granularity = "fortnight";
+    let message = load_failure(&format!(
+        r#"{{"dimension": "sales.sold_at", "granularity": "{granularity}"}}"#
+    ));
 
-        assert!(
-            message.contains(granularity)
-                && message.contains("`day`, `week`, `month`, `quarter`, `year`"),
-            "{message}"
-        );
+    assert!(
+        message.contains(granularity)
+            && message.contains("B0 granularities are `day`, `week`, `month`, `quarter`, `year`")
+            && ["`second`", "`minute`", "`hour`"]
+                .iter()
+                .all(|name| !message.contains(name)),
+        "{message}"
+    );
+}
+
+// scenario: B0-QUERY-009
+#[test]
+fn recognized_subday_granularities_are_unsupported() {
+    for granularity in ["second", "minute", "hour"] {
+        let error = compile_in(
+            "UTC",
+            &format!(
+                r#""timeDimensions": [{{"dimension": "sales.sold_at", "granularity": "{granularity}"}}]"#
+            ),
+        )
+        .expect_err("sub-day granularity is outside B0");
+        assert!(matches!(error, CompileError::Unsupported(_)), "{error:?}");
     }
 }
 

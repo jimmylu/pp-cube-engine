@@ -13,6 +13,7 @@ fn context() -> CompileContext {
 }
 
 // scenario: B0-RESULT-002
+// scenario: B0-AGG-003
 #[test]
 fn multi_fact_is_unsupported_and_invalid_inputs_keep_precedence() {
     let base = load_yaml(include_str!("fixtures/retail.yaml")).unwrap();
@@ -48,6 +49,44 @@ fn multi_fact_is_unsupported_and_invalid_inputs_keep_precedence() {
         compile(&Arc::new(model), &query, &context()),
         Err(CompileError::Query(_))
     ));
+}
+
+// scenario: B0-QUERY-009
+// scenario: B0-AGG-003
+#[test]
+fn recognized_out_of_b0_features_are_unsupported_after_model_validation() {
+    let model = load_yaml(include_str!("fixtures/retail.yaml")).unwrap();
+    let boundary_queries = [
+        r#"{"ungrouped":true}"#,
+        r#"{"timeDimensions":[{"dimension":"sales.sold_at","compareDateRange":[["2025-10-01","2025-10-31"]]}]}"#,
+        r#"{"timeDimensions":[{"dimension":"sales.sold_at","granularity":"second"}]}"#,
+        r#"{"timeDimensions":[{"dimension":"sales.sold_at","granularity":"minute"}]}"#,
+        r#"{"timeDimensions":[{"dimension":"sales.sold_at","granularity":"hour"}]}"#,
+    ];
+    for text in boundary_queries {
+        let query = load_query(text).expect("recognized feature loads");
+        let error = compile(&Arc::new(model.clone()), &query, &context()).unwrap_err();
+        assert!(
+            matches!(error, CompileError::Unsupported(_)),
+            "{text}: {error:?}"
+        );
+    }
+
+    let mut invalid = model.clone();
+    invalid.cubes[0].sql_table = None;
+    for text in boundary_queries {
+        let query = load_query(text).unwrap();
+        assert!(
+            matches!(
+                compile(&Arc::new(invalid.clone()), &query, &context()),
+                Err(CompileError::Model(_))
+            ),
+            "{text}"
+        );
+    }
+
+    let grouped = load_query(r#"{"ungrouped":false,"measures":["sales.amount"]}"#).unwrap();
+    assert!(compile(&Arc::new(model), &grouped, &context()).is_ok());
 }
 
 // scenario: B0-RESULT-002

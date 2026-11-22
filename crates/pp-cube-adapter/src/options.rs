@@ -99,6 +99,9 @@ fn time_dimension(time_dimension: &TimeDimension) -> base_query_options::TimeDim
     let granularity = time_dimension
         .granularity
         .map(|granularity| match granularity {
+            Granularity::Second => "second",
+            Granularity::Minute => "minute",
+            Granularity::Hour => "hour",
             Granularity::Day => "day",
             Granularity::Week => "week",
             Granularity::Month => "month",
