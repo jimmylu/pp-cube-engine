@@ -113,3 +113,6 @@ impl CubeService {
             .collect())
     }
 }
+
+mod workers;
+pub use workers::{CompilePool, CompileTask, PoolError};

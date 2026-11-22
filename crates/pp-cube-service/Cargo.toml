@@ -13,3 +13,7 @@ workspace = true
 [dependencies]
 pp-cube-model = { path = "../pp-cube-model" }
 pp-cube-compile = { path = "../pp-cube-compile" }
+tokio = { version = "1.54.1", default-features = false, features = ["sync"] }
+
+[dev-dependencies]
+tokio = { version = "1.54.1", features = ["rt"] }
