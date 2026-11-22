@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Disposable Doris execution of existing compiler goldens, not full T2 acceptance."""
+"""Disposable Doris execution of stored goldens and the live-compiled manifest; not full T2."""
+import datetime
 import importlib.util
 import json
 from pathlib import Path
@@ -16,6 +17,9 @@ SPEC = importlib.util.spec_from_file_location('presto_container', ROOT / 'script
 PRESTO = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PRESTO)
 docker = PRESTO.docker
+EMITTER = ('cargo', 'run', '-q', '--locked', '-p', 'pp-cube-conformance',
+           '--bin', 'execution-cases', '--', 'doris')
+CASE_KEYS = {'name', 'scenario', 'fixture', 'sql', 'params', 'columns', 'rows'}
 
 
 def golden(name):
@@ -75,7 +79,63 @@ def suite(connection):
         cursor.close()
 
 
-def run(command=docker, pause=time.sleep):
+def compiled_cases(emit=subprocess.run):
+    """Compiles the conformance cases now; the kernel itself never executes them."""
+    output = emit(EMITTER, cwd=ROOT, text=True, stdout=subprocess.PIPE, timeout=900, check=True)
+    manifest = json.loads(output.stdout)
+    cases = manifest.get('cases')
+    if manifest.get('schema') != 1 or manifest.get('dialect') != 'doris' or not cases:
+        raise ValueError('unsupported execution manifest')
+    if any(set(case) != CASE_KEYS or not case['fixture'] for case in cases):
+        raise ValueError('malformed execution case')
+    return cases
+
+
+def parameter(item):
+    kind = item.get('type')
+    if kind == 'null' and set(item) == {'type'}:
+        return None
+    expected = {'text': str, 'number': (int, float), 'bool': bool}.get(kind)
+    value = item.get('value')
+    if expected is None or not isinstance(value, expected) or (kind == 'number' and isinstance(value, bool)):
+        raise ValueError('unsupported manifest parameter')
+    return value
+
+
+def cell(value):
+    if isinstance(value, dict):
+        if list(value) != ['timestamp']:
+            raise ValueError('unsupported expected cell')
+        return datetime.datetime.fromisoformat(value['timestamp'])
+    if isinstance(value, list):
+        raise ValueError('unsupported expected cell')
+    return value
+
+
+def manifest_suite(connection, cases):
+    """Runs every live-compiled case on the engine the stored goldens just used."""
+    cursor = connection.cursor()
+    # Case fixtures create their tables only when absent; remove the stored-golden schema first.
+    cursor.execute('DROP DATABASE IF EXISTS dw FORCE')
+    cursor.close()
+    loaded = None
+    for case in cases:
+        if case['fixture'] != loaded:
+            cursor = connection.cursor()
+            for statement in case['fixture']:
+                cursor.execute(statement)
+            cursor.close()
+            loaded = case['fixture']
+        # Parameters travel separately through the native prepared protocol.
+        cursor = connection.cursor(prepared=True)
+        try:
+            verify(cursor, case['sql'], tuple(parameter(item) for item in case['params']),
+                   case['columns'], [tuple(cell(value) for value in row) for row in case['rows']])
+        finally:
+            cursor.close()
+
+
+def run(command=docker, pause=time.sleep, cases=None):
     import mysql.connector
     command('info', '--format', '{{.ServerVersion}}', timeout=15)
     print('Doris container: pulling pinned amd64 4.1.3 image', flush=True)
@@ -120,6 +180,9 @@ def run(command=docker, pause=time.sleep):
                 raise ValueError('unexpected Doris runtime version')
             print('Doris container: loading fixture and executing goldens', flush=True)
             suite(connection)
+            if cases is not None:
+                print('Doris container: executing live-compiled manifest', flush=True)
+                manifest_suite(connection, cases)
         finally:
             connection.close()
     finally:
@@ -129,12 +192,16 @@ def run(command=docker, pause=time.sleep):
 
 def main():
     try:
-        run()
+        # Compile before provisioning, so a compiler failure never starts an engine.
+        print('Doris container: compiling execution manifest', flush=True)
+        cases = compiled_cases()
+        run(cases=cases)
     except Exception as error:
         # Never publish endpoints, driver/server responses or business input.
         print('check doris-container: FAILED — ' + type(error).__name__, file=sys.stderr)
         return 1
-    print('check doris-container: PASSED — Doris 4.1.3, 19 aggregate/join/pattern/security assertions; not full T2 acceptance')
+    print('check doris-container: PASSED — Doris 4.1.3, 19 stored-golden assertions and %d live-compiled manifest cases; '
+          'not full T2 acceptance' % len(cases))
     return 0
 
 
