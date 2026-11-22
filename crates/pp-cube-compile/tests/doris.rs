@@ -65,13 +65,7 @@ fn formulas_segments_and_presence_filters_compile_without_limit() {
 }
 
 fn retail() -> Arc<pp_cube_model::Model> {
-    let mut model = pp_cube_model::load_yaml(include_str!("fixtures/retail.yaml")).unwrap();
-    // Time-typed models remain outside the Doris envelope in this change.
-    for cube in &mut model.cubes {
-        cube.dimensions
-            .retain(|d| d.dimension_type != pp_cube_model::DimensionType::Time);
-    }
-    Arc::new(model)
+    Arc::new(pp_cube_model::load_yaml(include_str!("fixtures/retail.yaml")).unwrap())
 }
 fn join_context() -> CompileContext {
     let mut ctx = context();
