@@ -9,3 +9,7 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+pp-cube-model = { path = "../pp-cube-model" }
+pp-cube-compile = { path = "../pp-cube-compile" }

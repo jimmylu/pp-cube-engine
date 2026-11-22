@@ -1074,6 +1074,10 @@ dependencies = [
 [[package]]
 name = "pp-cube-service"
 version = "0.0.0"
+dependencies = [
+ "pp-cube-compile",
+ "pp-cube-model",
+]
 
 [[package]]
 name = "prettyplease"
