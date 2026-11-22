@@ -63,12 +63,12 @@ there and cannot count as T2 evidence.
 - [x] Keep missing engine configuration visibly NOT RUN.
 - [ ] Establish exact-head local CI, cross-vendor review and remote t0 via delivery.
 
-Implementation is ready for checkpoint; delivery evidence belongs in PR comments,
-without evidence-only commits. Docker CLI is installed in this workspace but the
-daemon is unavailable, so real Presto execution is NOT RUN. No T1/T2 acceptance is
-claimed. Owner reviews and merges; no product change or baseline expansion is needed.
-Next: run this smoke case on a prepared engine, then add parameterized and temporal
-cases and reproducible engine provisioning in separately scoped changes.
+The prepared-engine command was introduced in #41. At that point the local Docker
+daemon was unavailable, so real local execution was not run. The container entry
+point below now provisions the engine, and local real execution has passed. Final
+head-bound CI, engine and review evidence belongs in PR comments. One smoke case
+does not establish full T1/T2 acceptance. Parameterized and temporal execution
+cases remain separately scoped work. Owner reviews and merges.
 
 ## Sources
 
@@ -76,3 +76,67 @@ Protocol and memory setup follow the pinned Presto 0.293 official documentation:
 
 - https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphinx/develop/client-protocol.rst
 - https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphinx/connector/memory.rst
+
+## Reproducible container entry point
+
+`harness/presto-container` adds `scripts/check.sh engines-container`. On a Docker
+host it pulls the Presto 0.293 linux/amd64 manifest pinned by digest, creates one
+uniquely named container with a loopback-only ephemeral port and 2 GiB memory,
+installs the memory catalog before startup, checks `SELECT DISTINCT node_version FROM system.runtime.nodes`, loads the
+existing fixture and calls the existing golden verifier. It always attempts to
+remove its unique container after a creation attempt, including on readiness, setup or assertion
+failure. It never removes a pre-existing container. Docker commands have explicit
+timeouts; the readiness loop is bounded. Ordinary Python exceptions are sanitized
+at the CLI boundary. SIGKILL or machine shutdown can prevent cleanup; abandoned
+containers can be identified by their `cube-presto-` prefix.
+
+The separate `presto-engine` workflow runs this command for relevant pull requests
+and manual dispatches, with read-only repository permissions and no credentials
+passed to the engine. The Actions job log and summary record the SHA and final
+smoke line. A pull-request run tests GitHub's merge commit; use its recorded SHA
+alongside the PR head and t0 evidence. It does not replace t0 or expand the smoke
+case into full T2 acceptance. No kernel, snapshot or dependency change is included.
+
+Design choice: one standard-library lifecycle runner reuses the HTTP verifier;
+manual setup remains available, while multi-engine Compose orchestration is deferred.
+The fixed amd64 manifest also runs on arm hosts only when Docker emulation is
+available. Source for image layout, CLI path and memory sizing:
+https://github.com/prestodb/presto/tree/0.293/docker
+
+Container tasks are implemented: pinned provisioning, readiness/version check,
+fixture setup, golden verification, cleanup, offline regressions and CI. Local and remote
+real engine execution have both passed. The local Docker daemon is now available;
+the first local run completed fixture loading, golden verification and cleanup.
+Current delivery evidence binds to the head SHA in PR comments and Actions.
+
+Two readiness defects were diagnosed with controlled remote evidence: this engine
+rejects `version()` as unregistered, so the probe reads `node_version` from
+`system.runtime.nodes`; the pinned manifest reports `0.293-2f48ff6`, not `0.293`.
+The runner now requires that exact build identity. A lifecycle regression reproduces
+the real version string and rejects other versions before fixture setup. Fixed
+stage and allowlisted error diagnostics distinguish subsequent execution failures.
+Sources: https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphinx/connector/system.rst
+
+See [presto-container-notes.md](presto-container-notes.md) for the repair handoff.
+Owner reviews and merges after final evidence and cross-vendor delivery.
+
+## Local delivery prerequisite
+
+The owner requires local Docker execution before review and merge. The delivery
+controller runs `ci`, then `engines-container`, then cross-vendor review and the
+remote t0 gate. Every repair round repeats both local checks. Docker unavailability
+or a failing engine smoke stops delivery; remote success cannot replace local proof.
+Run `scripts/check.sh engines-container` directly to reproduce. Fixed progress lines
+show image pull, startup, readiness, fixture, SQL execution and cleanup without raw
+server output. The ordinary `ci` command remains Docker-free for the separate T0 job.
+This is the same real-engine integration smoke (one stored golden), not a new
+model-to-execution end-to-end suite.
+
+Memory readiness must exercise execution: the version query can pass before worker
+nodes are advertised. Before loading the fixture, the runner performs a bounded
+Memory CTAS probe (`SELECT 1`), retrying only the fixed no-nodes errors. Every attempt
+uses a different probe table to isolate partial CTAS outcomes; the successful probe
+is dropped and all remaining state disappears with the disposable container.
+Other errors and timeouts fail immediately. This preserves the fixture and golden
+assertions. Source for Memory creation and worker lookup:
+https://github.com/prestodb/presto/blob/0.293/presto-memory/src/main/java/com/facebook/presto/plugin/memory/MemoryMetadata.java

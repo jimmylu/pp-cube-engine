@@ -6,6 +6,7 @@
 #   scripts/check.sh ci            before a pull request; this is the t0 check
 #   scripts/check.sh conformance   comparison with Cube Core (not built yet)
 #   scripts/check.sh engines       Presto smoke case on a prepared engine
+#   scripts/check.sh engines-container  disposable pinned Presto smoke case
 #
 # BASE_REF (default origin/main) is the branch a change is compared against.
 
@@ -225,6 +226,10 @@ case "$MODE" in
     check_traceability
     check_harness_only
     ;;
+  engines-container)
+    python3 scripts/engines/presto-container.py
+    exit $?
+    ;;
   engines)
     python3 scripts/engines/presto.py
     exit $?
@@ -234,7 +239,7 @@ case "$MODE" in
     exit 2
     ;;
   *)
-    echo "usage: scripts/check.sh fast|ci|conformance|engines" >&2
+    echo "usage: scripts/check.sh fast|ci|conformance|engines|engines-container" >&2
     exit 64
     ;;
 esac

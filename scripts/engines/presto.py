@@ -19,6 +19,22 @@ EXPECTED_COLUMNS = ['sales__channel_cd', 'sales__amount']
 EXPECTED_ROWS = [['web', 30], ['store', 7]]
 
 
+# Only locally authored, fixed messages may enter public failure evidence.
+SAFE_FAILURES = frozenset({
+    'invalid golden header', 'only explicitly empty parameters are supported',
+    'expected a SELECT golden', 'HTTP redirects are not supported',
+    'endpoint must be an HTTP(S) origin without credentials', 'invalid query response',
+    'nextUri must remain on the configured origin', 'Presto returned a query error',
+    'result columns changed between pages', 'unexpected result size',
+    'result differs from the prepared fixture expectation', 'unexpected engine version',
+})
+
+
+def failure_category(error):
+    message = str(error)
+    return message if type(error) is ValueError and message in SAFE_FAILURES else type(error).__name__
+
+
 def snapshot_sql(text):
     sections = text.split('---\n', 2)
     if len(sections) != 3 or sections[0]:
@@ -144,7 +160,7 @@ def main():
         verify(args.endpoint)
     except (OSError, ValueError, KeyError, TypeError, http.client.HTTPException) as error:
         # Do not publish endpoint names, SQL, or server-provided messages.
-        print('check engines: FAILED — ' + type(error).__name__, file=sys.stderr)
+        print('check engines: FAILED — ' + failure_category(error), file=sys.stderr)
         return 1
     print('check engines: PASSED — Presto grouped sum golden, 1 case; not full T2 acceptance')
     return 0
