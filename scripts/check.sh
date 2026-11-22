@@ -5,7 +5,7 @@
 #   scripts/check.sh fast          before every commit
 #   scripts/check.sh ci            before a pull request; this is the t0 check
 #   scripts/check.sh conformance   comparison with Cube Core (not built yet)
-#   scripts/check.sh engines       SQL on engine containers (not built yet)
+#   scripts/check.sh engines       Presto smoke case on a prepared engine
 #
 # BASE_REF (default origin/main) is the branch a change is compared against.
 
@@ -225,7 +225,11 @@ case "$MODE" in
     check_traceability
     check_harness_only
     ;;
-  conformance|engines)
+  engines)
+    python3 scripts/engines/presto.py
+    exit $?
+    ;;
+  conformance)
     echo "check $MODE: not built yet (it arrives with the first conformance work)." >&2
     exit 2
     ;;
