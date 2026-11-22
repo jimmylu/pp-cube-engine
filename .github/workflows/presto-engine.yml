@@ -31,5 +31,9 @@ jobs:
         run: |
           set -o pipefail
           echo "SHA: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
-          scripts/check.sh engines-container | tee /tmp/presto-evidence.txt
+          set +e
+          scripts/check.sh engines-container > /tmp/presto-evidence.txt 2>&1
+          result=$?
+          cat /tmp/presto-evidence.txt
           cat /tmp/presto-evidence.txt >> "$GITHUB_STEP_SUMMARY"
+          exit "$result"

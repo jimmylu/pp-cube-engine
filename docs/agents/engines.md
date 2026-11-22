@@ -84,7 +84,7 @@ host it pulls the Presto 0.293 linux/amd64 manifest pinned by digest, creates on
 uniquely named container with a loopback-only ephemeral port and 2 GiB memory,
 installs the memory catalog before startup, checks `SELECT version()`, loads the
 existing fixture and calls the existing golden verifier. It always attempts to
-remove its own container after creation, including on readiness, setup or assertion
+remove its unique container after a creation attempt, including on readiness, setup or assertion
 failure. It never removes a pre-existing container. Docker commands have explicit
 timeouts; the readiness loop is bounded. Ordinary Python exceptions are sanitized
 at the CLI boundary. SIGKILL or machine shutdown can prevent cleanup; abandoned
@@ -106,6 +106,8 @@ https://github.com/prestodb/presto/tree/0.293/docker
 Container tasks are implemented: pinned image provisioning, readiness/version
 check, fixture setup, verifier reuse, owned-container cleanup, offline lifecycle
 regressions and a separate real-engine CI job. Real execution on this workstation
-remains NOT RUN because Docker's daemon is unavailable. Remote engine results and
+remains NOT RUN because Docker's daemon is unavailable. The first remote run timed out waiting for readiness; controlled state and
+exception-class diagnostics are included for investigation. Review repairs ensure
+create-timeout cleanup and preserve failure summaries. Remote engine results and
 exact-head delivery evidence belong in PR comments and Actions, without a new
 commit solely to record them. Owner reviews and merges.

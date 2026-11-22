@@ -2,6 +2,7 @@
 """Provision one disposable, pinned Presto engine and execute the smoke golden."""
 import importlib.util
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -18,8 +19,9 @@ SPEC.loader.exec_module(SMOKE)
 
 
 def docker(*args, input=None, timeout=60):
-    return subprocess.run(['docker', *args], input=input, text=True, capture_output=True,
-                          timeout=timeout, check=True).stdout.strip()
+    result = subprocess.run(['docker', *args], input=input, text=True, capture_output=True,
+                            timeout=timeout, check=True)
+    return (result.stdout + (result.stderr if args[0] == 'logs' else '')).strip()
 
 
 def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
@@ -29,9 +31,9 @@ def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
     name = 'cube-presto-' + uuid.uuid4().hex
     owned = False
     try:
+        owned = True
         command('create', '--name', name, '--platform', 'linux/amd64',
                 '--publish', '127.0.0.1::8080', '--memory', '2g', IMAGE)
-        owned = True
         with tempfile.TemporaryDirectory() as directory:
             catalog = Path(directory) / 'memory.properties'
             catalog.write_text('connector.name=memory\n')
@@ -50,6 +52,14 @@ def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
                 break
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                 if attempt == 59:
+                    state = json.loads(command('inspect', '--format', '{{json .State}}', name))
+                    print('engine state: ' + str(state.get('Status')) +
+                          '; exit=' + str(state.get('ExitCode')) +
+                          '; oom=' + str(state.get('OOMKilled')), file=sys.stderr)
+                    logs = command('logs', name)
+                    # Only exception class names; never hostnames or raw server messages.
+                    classes = sorted(set(re.findall(r'\b[A-Za-z.]+(?:Exception|Error)\b', logs)))
+                    print('engine error classes: ' + ','.join(classes), file=sys.stderr)
                     raise TimeoutError('Presto readiness failed')
                 pause(1)
         command('exec', '-i', name, 'presto-cli', '--file', '/dev/stdin',

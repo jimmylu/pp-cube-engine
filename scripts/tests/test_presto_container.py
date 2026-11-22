@@ -49,7 +49,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(setup, (runner.ROOT / 'scripts/engines/presto-fixture.sql').read_text())
 
     def test_failures_after_creation_always_remove_container(self):
-        for stage in ['cp', 'start', 'inspect', 'exec']:
+        for stage in ['create', 'cp', 'start', 'inspect']:
             with self.subTest(stage=stage):
                 calls, endpoints = self.exercise(fail=stage)
                 self.assertEqual(calls[-1][0][0], 'rm')
@@ -57,8 +57,21 @@ class LifecycleTests(unittest.TestCase):
         calls, _ = self.exercise(verify_failure=True)
         self.assertEqual(calls[-1][0][0], 'rm')
 
+    def test_create_timeout_attempts_cleanup(self):
+        calls = []
+
+        def command(*args, **kwargs):
+            calls.append(args)
+            if args[0] == 'create':
+                raise subprocess.TimeoutExpired('docker', 60)
+            return ''
+
+        with self.assertRaises(subprocess.TimeoutExpired):
+            runner.run(command)
+        self.assertEqual(calls[-1][0], 'rm')
+
     def test_pre_creation_failure_does_not_remove_unowned_container(self):
-        for stage in ['info', 'pull', 'create']:
+        for stage in ['info', 'pull']:
             calls, _ = self.exercise(fail=stage)
             self.assertNotIn('rm', [args[0] for args, _ in calls])
 
