@@ -50,6 +50,9 @@ def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
                 version = command('exec', name, '/opt/presto-cli', '--execute', 'SELECT DISTINCT node_version FROM system.runtime.nodes',
                                   '--output-format', 'CSV', timeout=5)
                 if version != '"0.293"':
+                    # Permit only version-shaped output, never arbitrary CLI text.
+                    reported = version if re.fullmatch(r'"[0-9]+(?:[.][0-9]+)*(?:-[A-Za-z0-9]+)*"', version) else 'unrecognized-format'
+                    print('engine reported version: ' + reported, file=sys.stderr)
                     raise ValueError('unexpected engine version')
                 break
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as probe_error:
