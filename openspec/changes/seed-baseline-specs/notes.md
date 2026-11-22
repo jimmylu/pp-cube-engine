@@ -119,3 +119,6 @@ By Claude (Anthropic) through omp; GitHub writes used the implementer token.
 Open: gate 1 for both; then `add-contract-model`, drafted on a local branch.
 Learned: on both pull requests, a push made after the gate reached the approval wait
 left the new gate run queued behind the old one. Finish every commit before opening.
+
+## Bundle requirement transfer
+The complete immutable model bundle requirement and B0-MODEL-003 move to add-versioned-model-bundles. This empties the contract-model delta, which is removed; existing main model requirements are unaffected.
