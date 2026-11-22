@@ -1,5 +1,8 @@
 //! Contract types, model loading and baseline validation.
 
+mod bundle;
+pub use bundle::{BundleError, ModelBundle, ModelCatalog};
+
 mod load;
 mod meta;
 mod model;
