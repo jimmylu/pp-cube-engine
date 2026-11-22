@@ -1,4 +1,6 @@
 """Lifecycle regressions; simulated Docker is not real T2 evidence."""
+import contextlib
+import io
 import importlib.util
 from pathlib import Path
 import subprocess
@@ -56,6 +58,16 @@ class LifecycleTests(unittest.TestCase):
                 self.assertEqual(endpoints, [])
         calls, _ = self.exercise(verify_failure=True)
         self.assertEqual(calls[-1][0][0], 'rm')
+
+    def test_failure_diagnostics_are_fixed_and_preserve_cleanup(self):
+        output = io.StringIO()
+        with contextlib.redirect_stderr(output):
+            calls, _ = self.exercise(verify_failure=True)
+        self.assertIn('engine failure stage: golden-verification', output.getvalue())
+        self.assertEqual(calls[-1][0][0], 'rm')
+        safe = 'nextUri must remain on the configured origin'
+        self.assertEqual(runner.SMOKE.failure_category(ValueError(safe)), safe)
+        self.assertEqual(runner.SMOKE.failure_category(ValueError('private endpoint')), 'ValueError')
 
     def test_create_timeout_attempts_cleanup(self):
         calls = []

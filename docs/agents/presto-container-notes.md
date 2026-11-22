@@ -1,4 +1,4 @@
-# Presto container delivery stop
+# Presto container delivery handoff
 
 PR #42, branch `harness/presto-container`. Product, vendor, golden snapshots and
 Cargo dependencies are unchanged. Design and usage are in engines.md. The owner
@@ -44,3 +44,10 @@ engine run before final delivery. Use the existing supplemental review context:
 This handoff changes documentation only. Its own full CI and cross-vendor review
 are not claimed; check and review evidence must bind to the eventual final SHA.
 Owner approval and merge remain required.
+
+## Resumed repair
+
+Owner authorized resuming the bounded repair. Fixed stage and allowlisted local
+error categories now distinguish readiness, fixture and golden failures without
+printing server messages. Discovery documentation includes engines-container.
+Real engine validation and final cross-vendor delivery remain pending.

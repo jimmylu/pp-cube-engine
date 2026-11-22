@@ -30,6 +30,7 @@ def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
     command('pull', '--platform', 'linux/amd64', IMAGE, timeout=300)
     name = 'cube-presto-' + uuid.uuid4().hex
     owned = False
+    stage = 'create'
     try:
         owned = True
         command('create', '--name', name, '--platform', 'linux/amd64',
@@ -42,6 +43,7 @@ def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
         ports = json.loads(command('inspect', '--format', '{{json .NetworkSettings.Ports}}', name))
         port = ports['8080/tcp'][0]['HostPort']
         endpoint = 'http://127.0.0.1:' + str(int(port))
+        stage = 'readiness-version'
         # The CLI probes the actual query service, not merely an open HTTP port.
         for attempt in range(60):
             try:
@@ -72,9 +74,14 @@ def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
                     print('engine error classes: ' + ','.join(classes), file=sys.stderr)
                     raise TimeoutError('Presto readiness failed')
                 pause(1)
+        stage = 'fixture'
         command('exec', '-i', name, '/opt/presto-cli', '--file', '/dev/stdin',
                 input=(ROOT / 'scripts/engines/presto-fixture.sql').read_text(), timeout=30)
+        stage = 'golden-verification'
         verify(endpoint)
+    except Exception:
+        print('engine failure stage: ' + stage, file=sys.stderr)
+        raise
     finally:
         if owned:
             # Cleanup failure is itself a failed run, never a passing evidence line.
@@ -86,7 +93,7 @@ def main():
         run()
     except (OSError, ValueError, KeyError, TypeError, IndexError,
             subprocess.SubprocessError, SMOKE.http.client.HTTPException) as error:
-        print('check engines-container: FAILED — ' + type(error).__name__, file=sys.stderr)
+        print('check engines-container: FAILED — ' + SMOKE.failure_category(error), file=sys.stderr)
         return 1
     print('check engines-container: PASSED — Presto 0.293, grouped sum golden, 1 case; not full T2 acceptance')
     return 0
