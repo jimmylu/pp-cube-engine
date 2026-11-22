@@ -106,7 +106,9 @@ https://github.com/prestodb/presto/tree/0.293/docker
 Container tasks are implemented: pinned image provisioning, readiness/version
 check, fixture setup, verifier reuse, owned-container cleanup, offline lifecycle
 regressions and a separate real-engine CI job. Real execution on this workstation
-remains NOT RUN because Docker's daemon is unavailable. The first remote run timed out waiting for readiness; controlled state and
+remains NOT RUN because Docker's daemon is unavailable. Two remote runs timed out waiting for readiness; the second confirmed a running
+container without OOM or logged exception classes. The probe now invokes the
+image-provided CLI by absolute path and records fixed diagnostic categories; controlled state and
 exception-class diagnostics are included for investigation. Review repairs ensure
 create-timeout cleanup and preserve failure summaries. Remote engine results and
 exact-head delivery evidence belong in PR comments and Actions, without a new

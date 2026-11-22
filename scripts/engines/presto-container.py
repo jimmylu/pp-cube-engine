@@ -45,13 +45,23 @@ def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
         # The CLI probes the actual query service, not merely an open HTTP port.
         for attempt in range(60):
             try:
-                version = command('exec', name, 'presto-cli', '--execute', 'SELECT version()',
+                version = command('exec', name, '/opt/presto-cli', '--execute', 'SELECT version()',
                                   '--output-format', 'CSV', timeout=5)
                 if version != '"0.293"':
                     raise ValueError('unexpected engine version')
                 break
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as probe_error:
                 if attempt == 59:
+                    raw = str(getattr(probe_error, 'stderr', '') or '')
+                    # Probe SQL and this disposable engine contain no business input.
+                    # Retain only known fixed diagnostic phrases, never raw messages.
+                    phrases = ['Connection refused', 'not registered', 'not found',
+                               'No such file', 'Exec format error', 'Permission denied',
+                               'UnsupportedClassVersionError', 'Server starting',
+                               'Initializing', 'Unable to access', 'Unknown option',
+                               'Catalog must be specified', 'Schema must be specified']
+                    print('probe categories: ' + ','.join(p for p in phrases if p.lower() in raw.lower()) +
+                          '; status=' + str(getattr(probe_error, 'returncode', 'timeout')), file=sys.stderr)
                     state = json.loads(command('inspect', '--format', '{{json .State}}', name))
                     print('engine state: ' + str(state.get('Status')) +
                           '; exit=' + str(state.get('ExitCode')) +
@@ -62,7 +72,7 @@ def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
                     print('engine error classes: ' + ','.join(classes), file=sys.stderr)
                     raise TimeoutError('Presto readiness failed')
                 pause(1)
-        command('exec', '-i', name, 'presto-cli', '--file', '/dev/stdin',
+        command('exec', '-i', name, '/opt/presto-cli', '--file', '/dev/stdin',
                 input=(ROOT / 'scripts/engines/presto-fixture.sql').read_text(), timeout=30)
         verify(endpoint)
     finally:
