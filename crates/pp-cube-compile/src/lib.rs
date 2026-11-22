@@ -47,7 +47,7 @@ pub enum CompileError {
     Model(Vec<ValidationIssue>),
     /// The caller can correct it; the message names the member or the rule.
     Query(String),
-    /// A recognized request requires features beyond B0.
+    /// A recognized request exceeds B0 or the selected dialect's implemented envelope.
     Unsupported(String),
     /// The kernel or planner failed. The existing detail field is retained for
     /// source compatibility and carries a safe category, never raw diagnostics.

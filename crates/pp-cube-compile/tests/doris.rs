@@ -2,7 +2,7 @@ mod support;
 use pp_cube_compile::{compile, CompileContext, CompileError, DialectId};
 use std::sync::Arc;
 fn model() -> Arc<pp_cube_model::Model> {
-    Arc::new(pp_cube_model::load_yaml("cubes:\n- name: sales\n  data_source: warehouse\n  sql_table: dw.sales\n  measures:\n  - {name: count, type: count}\n  - {name: total, type: sum, sql: '{CUBE}.amount'}\n  - {name: average, type: avg, sql: '{CUBE}.amount'}\n  - {name: minimum, type: min, sql: '{CUBE}.amount'}\n  - {name: maximum, type: max, sql: '{CUBE}.amount'}\n  - {name: unique, type: count_distinct, sql: '{CUBE}.amount'}\n  dimensions:\n  - {name: region, type: string, sql: '{CUBE}.region'}\n").unwrap())
+    Arc::new(pp_cube_model::load_yaml("cubes:\n- name: sales\n  data_source: warehouse\n  sql_table: dw.sales\n  measures:\n  - {name: count, type: count}\n  - {name: total, type: sum, sql: '{CUBE}.amount'}\n  - {name: average, type: avg, sql: '{CUBE}.amount'}\n  - {name: minimum, type: min, sql: '{CUBE}.amount'}\n  - {name: maximum, type: max, sql: '{CUBE}.amount'}\n  - {name: unique, type: count_distinct, sql: '{CUBE}.amount'}\n  - {name: restricted, type: sum, sql: '{CUBE}.amount', filters: [{sql: \"{CUBE}.region = 'north'\"}]}\n  - {name: ratio, type: number, sql: '{sales.total} / NULLIF({sales.count}, 0)'}\n  segments:\n  - {name: positive, sql: '{CUBE}.amount > 0'}\n  dimensions:\n  - {name: region, type: string, sql: '{CUBE}.region'}\n").unwrap())
 }
 fn context() -> CompileContext {
     CompileContext {
@@ -88,4 +88,16 @@ fn unsupported_doris_features_fail_closed() {
         ),
         Err(CompileError::Unsupported(_))
     ));
+}
+
+// scenario: B0-DORIS-003
+#[test]
+fn formulas_segments_and_presence_filters_compile_without_limit() {
+    let query = pp_cube_model::load_query(r#"{"measures":["sales.restricted","sales.ratio"],"segments":["sales.positive"],"filters":[{"or":[{"member":"sales.region","operator":"set"},{"member":"sales.region","operator":"notSet"}]}],"order":[]}"#).unwrap();
+    let result = support::compile(&model(), &query, &context()).unwrap();
+    insta::assert_snapshot!(result.sql);
+    assert_eq!(
+        result.parameters,
+        vec![pp_cube_compile::Parameter::Text("north".into())]
+    );
 }
