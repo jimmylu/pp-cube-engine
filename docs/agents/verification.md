@@ -9,7 +9,7 @@
 | T2 | `scripts/check.sh engines` (prepared Presto) or `scripts/check.sh engines-container` (disposable Docker Presto) | On demand | Milestone |
 | T3 | Generated SQL on real clusters, run by a person | Outside this repository | Milestone acceptance |
 
-T1 is not built yet and exits 2. T2 has one Presto grouped-sum smoke case; see
+T1 is not built yet and exits 2. T2 has two Presto smoke cases (grouped sum and one text equality binding); see
 [engines.md](engines.md) for fixture setup and limits. It exits 2 without PRESTO_URL,
 not a passing or complete T2 result. The container mode requires a Docker daemon,
 provisions its own fixture and needs no PRESTO_URL. Doris and Druid execution are not built.

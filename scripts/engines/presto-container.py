@@ -26,7 +26,7 @@ def docker(*args, input=None, timeout=60):
     return (result.stdout + (result.stderr if args[0] == 'logs' else '')).strip()
 
 
-def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
+def run(command=docker, verify=SMOKE.verify_suite, pause=time.sleep):
     """Only remove the uniquely named container created by this invocation."""
     command('info', '--format', '{{.ServerVersion}}', timeout=15)
     print('Presto container: pulling pinned amd64 image', flush=True)
@@ -115,7 +115,7 @@ def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
                   file=sys.stderr)
             raise
         stage = 'golden-verification'
-        print('Presto container: executing grouped-sum golden over HTTP', flush=True)
+        print('Presto container: executing aggregate and text-binding goldens over HTTP', flush=True)
         verify(endpoint)
     except Exception:
         print('engine failure stage: ' + stage, file=sys.stderr)
@@ -134,7 +134,7 @@ def main():
             subprocess.SubprocessError, SMOKE.http.client.HTTPException) as error:
         print('check engines-container: FAILED — ' + SMOKE.failure_category(error), file=sys.stderr)
         return 1
-    print('check engines-container: PASSED — Presto 0.293, grouped sum golden, 1 case; not full T2 acceptance')
+    print('check engines-container: PASSED — Presto 0.293, grouped sum and text binding goldens, 2 cases; not full T2 acceptance')
     return 0
 
 
