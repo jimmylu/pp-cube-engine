@@ -39,25 +39,9 @@ fn basic_doris_sql_and_identity() {
 // scenario: B0-DORIS-004
 #[test]
 fn unsupported_doris_features_fail_closed() {
-    for text in [
-        r#"{"measures":["sales.total"],"offset":2}"#,
-        r#"{"measures":["sales.total"],"timeDimensions":[{"dimension":"sales.region","granularity":"day"}]}"#,
-        r#"{"measures":["sales.total"],"filters":[{"member":"sales.region","operator":"beforeDate","values":["2026-01-01"]}]}"#,
-    ] {
-        assert!(matches!(
-            compile(
-                &model(),
-                &pp_cube_model::load_query(text).unwrap(),
-                &context()
-            ),
-            Err(CompileError::Unsupported(_))
-        ));
-    }
-    let query = pp_cube_model::load_query(r#"{"measures":["sales.total"]}"#).unwrap();
-    let mut time_model = (*model()).clone();
-    time_model.cubes[0].dimensions[0].dimension_type = pp_cube_model::DimensionType::Time;
+    let query = pp_cube_model::load_query(r#"{"measures":["sales.total"],"offset":2}"#).unwrap();
     assert!(matches!(
-        compile(&Arc::new(time_model), &query, &context()),
+        compile(&model(), &query, &context()),
         Err(CompileError::Unsupported(_))
     ));
     let mut invalid = (*model()).clone();
@@ -65,20 +49,6 @@ fn unsupported_doris_features_fail_closed() {
     assert!(matches!(
         compile(&Arc::new(invalid), &query, &context()),
         Err(CompileError::Model(_))
-    ));
-    let mut ctx = context();
-    ctx.security_filters = pp_cube_model::load_query(
-        r#"{"filters":[{"or":[{"member":"sales.region","operator":"beforeDate","values":["2026-01-01"]}]}]}"#,
-    )
-    .unwrap()
-    .filters;
-    assert!(matches!(
-        compile(
-            &model(),
-            &pp_cube_model::load_query(r#"{"measures":["sales.total"]}"#).unwrap(),
-            &ctx
-        ),
-        Err(CompileError::Unsupported(_))
     ));
 }
 

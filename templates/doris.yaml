@@ -103,3 +103,18 @@ templates:
   tesseract/ilike:
     source: MysqlQuery.ts
     text: "LOWER({{ expr }}) {% if negated %}NOT {% endif %}LIKE {{ pattern }}"
+  filters/time_range_filter:
+    source: BaseQuery.ts
+    text: "{{ column }} >= {{ from_timestamp }} AND {{ column }} <= {{ to_timestamp }}"
+  filters/time_not_in_range_filter:
+    source: BaseQuery.ts
+    text: "{{ column }} < {{ from_timestamp }} OR {{ column }} > {{ to_timestamp }}"
+  driver/time_stamp_cast:
+    source: Doris DATETIMEV2
+    text: "CAST(LEFT(REPLACE({{ value }}, 'T', ' '), 23) AS DATETIMEV2(3))"
+  driver/time_grouped_column:
+    source: Doris DATE_TRUNC
+    text: "DATE_TRUNC({{ dimension }}, '{{ granularity }}')"
+  driver/convert_tz:
+    source: Doris CONVERT_TZ
+    text: "CONVERT_TZ({{ field }}, 'UTC', '{{ timezone }}')"
