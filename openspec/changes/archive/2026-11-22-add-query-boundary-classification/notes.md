@@ -2,122 +2,41 @@
 
 ## Current state
 
-Implementation is complete, the main specs are synced, and this change is archived
-at `archive/2026-11-22-add-query-boundary-classification`. The branch remains
-`change/add-query-boundary-classification` for review corrections. The implementation
-and earlier corrections are committed and published in PR #40. The final session
-below records the review repair request and its session-specific worktree-only
-constraint. A subsequent authorized delivery controller can check, commit
-and publish repairs under `docs/agents/delivery.md`; the earlier worktree-only
-requests are historical, not a continuing delivery prohibition. Owner approval
-and merge remain required.
+Implementation is complete and archived at
+`archive/2026-11-22-add-query-boundary-classification`. PR #40 contains the
+implementation and reviewed repairs. The final contract repair is committed in
+this branch and must receive exact-head review, remote t0 and owner approval;
+merge remains the owner's action.
 
-## 2026-11-22: overall review, implementation and archive
+## Delivered behavior
 
-User confirmed #39 merged and requested overall gap analysis followed by next-PR
-planning. Main assessment base: 7c20185. Planning was followed by implementation,
-spec sync and archive in this change.
+- `Query.ungrouped`, `TimeDimension.compare_date_range`, and recognized
+  second/minute/hour granularities load as typed values.
+- `Query::unsupported_b0_features` is shared by facade and adapter; model
+  validation remains first. Unknown or malformed input still fails loading.
+- Recognized detail/comparison/sub-day options return Unsupported without SQL;
+  explicit grouped false preserves SQL and parameters.
+- B0-AGG-003 now states that multi-cube Unsupported requires an otherwise valid
+  query with a unique usable join tree on one data source. Invalid members,
+  security filters, disconnected or ambiguous joins and differing data sources
+  retain Query precedence. Existing tests cover both classes.
+- Main `contract-query` and `compile-b0` specs are synced; the change is archived.
 
-Done:
-- Inspected implemented specs and remaining seed requirements, model/query,
-  facade and dialect APIs, service/conformance stubs and tier documentation.
-- Recorded concrete capability gaps, examples and a staged route in review.md.
-- Selected recognized-query boundary classification; documented alternatives,
-  error precedence, public source breaks and complete matrix acceptance.
-- Transferred whole seed requirements B0-QUERY-009 and B0-AGG-003; main specs
-  were subsequently synced with the implemented delta.
-- Created proposal, two deltas, design and bounded implementation tasks.
+## Verification
 
-Implementation:
-- Added typed `Query.ungrouped`, `TimeDimension.compare_date_range`, and
-  second/minute/hour granularities with strict unknown/malformed input handling.
-- Added one shared `Query::unsupported_b0_features` predicate used by the
-  facade and direct adapter entry point; model validation remains first.
-- Added boundary tests for load/round-trip, public and direct planning errors,
-  grouped-false SQL/parameter preservation, and the complete B0-AGG-003 matrix.
-- Updated the old hour test to assert compile-time Unsupported; fortnight
-  remains an input error.
+- `openspec validate --all --strict`: 10 passed, 0 failed after the final spec
+  repair.
+- Boundary model, compile, adapter and result tests pass; `errors.rs` has 5
+  passing tests for the multi-cube and recognized-boundary matrix.
+- `scripts/check.sh ci`: passed at `defefd2` before the final documentation-only
+  repair; the repair checkpoint's fast check passed at `49b201c`. A later full CI
+  must bind to the final head. No T1/T2 execution evidence is claimed.
 
-Open:
-- Presto T1/T2 remain unbuilt and unrun. No execution evidence is claimed.
-- Delivery evidence must bind to the final corrected head; the historical local
-  checks below do not establish the current PR's Ready status.
+## Review history and learning
 
-Learned: the seed's task completion reports proposal preparation only. Main
-B0-QUERY-008 and remaining seed B0-AGG-003 disagree about hour classification;
-the delta explicitly resolves that contract conflict. Unknown or malformed JSON
-still fails before the typed compile entry point and is outside model-first
-precedence. No owner-only decision is needed for this bounded recommendation.
-
-Verification and publication:
-- `openspec validate --all --strict`: 11 passed, 0 failed, covering both active
-  changes and all main specs. Planning status: all four artifacts complete.
-- Implementation `scripts/check.sh ci`: PASSED — 15 steps, 0 skipped, 93s
-  @ f64a5b9+dirty. The first two attempts stopped at expected formatting and
-  stale hour-test/clippy issues; both were repaired before the passing run.
-- Main specs are synced and the change folder is archived. Archive status alone
-  does not establish exact-head delivery evidence or owner approval.
-
-## 2026-11-22: review corrections
-
-Done:
-- Reproduced the unknown-granularity diagnostic defect with a tightened
-  B0-QUERY-008 model test: the derived error advertised all eight enum variants.
-- Added a granularity reader that names the five B0 units for unknown names,
-  while preserving second/minute/hour loading and compile-time Unsupported.
-- Strengthened model and compile tests and corrected the query module and enum
-  documentation to describe the recognized unsupported carrier.
-- Reconciled tasks and notes with the implemented, synced and archived state.
-
-Verification at a1d38ee+dirty:
-- Focused model query and compile time suites: 13 and 16 tests passed.
-- `openspec validate --all --strict`: 10 passed, 0 failed.
-- `scripts/check.sh ci`: controller tests, vendor/upstream alignment, lockfile,
-  formatting, Clippy and all workspace tests passed before the deny step failed.
-  Last check line: `check ci: FAILED at "deny" — see the advisories, bans, licences or sources above`.
-  Cargo deny could not lock its advisory database on a read-only path. The full
-  command output is in `/tmp/pp-cube-review-corrections-ci.log` for this session.
-  Later CI steps were not run by that invocation; no CI pass is claimed.
-
-At the end of that session, CI still needed a rerun with a writable advisory
-database cache before delivery, followed by review and remote evidence for the
-final head. That session authorized no commit, push, merge, gate or snapshot
-change. Its worktree-only restriction was subsequently superseded for publication
-of those corrections in PR #40; the failed local run remains historical evidence.
-
-Learned: a supported-unit substring assertion also matched the misleading
-eight-variant error. Tests must identify the B0 rule explicitly.
-
-## 2026-11-22: contract and handoff review repairs
-
-Done:
-- Clarified B0-AGG-003 in both the main spec and archived delta: multi-cube
-  Unsupported requires an otherwise valid query with a unique usable join tree
-  on one data source. When multi-cube measures are the only feature outside B0,
-  query validation errors take precedence, including disconnected cubes,
-  ambiguous paths and cross-data-source cubes. The early guard for recognized
-  ungrouped, comparison and sub-day options retains its existing precedence.
-- Checked the contract against the existing error tests: sales/stores measures
-  return Unsupported, while sales/refunds and refunds/stores return Query;
-  invalid models, members, security filters and data sources retain their classes.
-- Replaced stale current-state publication restrictions with historical context
-  and the published PR #40 state. No runtime behavior or tests needed changing.
-
-Current session constraint: leave these repairs uncommitted in the worktree;
-do not push, merge, alter gates or remove failing tests. This applies to this
-repair session, not a later authorized delivery session.
-
-Verification at defefd2+dirty:
-- `OPENSPEC_TELEMETRY=0 openspec validate --all --strict`: 10 passed, 0 failed.
-- `cargo test -p pp-cube-compile --test errors --locked --offline`: 5 passed,
-  0 failed. Output: `/tmp/pp-cube-boundary-review-errors.log` for this session.
-- `git diff --check`: passed.
-- `scripts/check.sh fast` and `scripts/check.sh ci`: not run for this
-  documentation-only repair; no new full-check pass or delivery evidence claimed.
-
-Open: the delivery controller must establish checks, different-vendor review and
-remote t0 evidence against the final corrected head before owner review.
-
-Learned: multi-cube rejection follows join validation, whereas the newer typed
-boundary options are rejected immediately after model validation. A valid bundle
-alone therefore does not guarantee multi-cube Unsupported classification.
+An earlier reviewer found misleading unknown-granularity diagnostics and stale
+archive lifecycle notes; those were fixed and published. The next review found
+that B0-AGG-003 overlapped join errors; the spec now states precedence instead of
+promising Unsupported for invalid multi-cube requests. Packet-size reductions
+are documentation-only and preserve this record. After-baseline issues #22, #23,
+#30, #31, #32 and #36 remain deferred.
