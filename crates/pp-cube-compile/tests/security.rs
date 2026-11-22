@@ -1,7 +1,10 @@
 //! Caller restrictions through the public facade; no SQL is executed.
+mod support;
+use support::compile;
+
 use std::sync::Arc;
 
-use pp_cube_compile::{compile, CompileContext, CompileError, Compiled, DialectId, Parameter};
+use pp_cube_compile::{CompileContext, CompileError, Compiled, DialectId, Parameter};
 use pp_cube_model::{load_query, load_yaml, Filter};
 
 fn filters(json: &str) -> Vec<Filter> {
@@ -32,6 +35,7 @@ const RETAIL: &str = include_str!("fixtures/retail.yaml");
 const QUERY: &str = r#"{"measures":["sales.amount"]}"#;
 
 // scenario: B0-SEC-001
+// scenario: B0-DET-001
 #[test]
 fn restrictions_are_conjoined_without_mutating_inputs() {
     let model = Arc::new(load_yaml(SALES).unwrap());
@@ -82,6 +86,7 @@ fn empty_security_groups_fail_at_every_depth() {
 }
 
 // scenario: B0-SEC-004
+// scenario: B0-DET-001
 #[test]
 fn empty_context_preserves_the_original_query_output() {
     let plain = run(SALES, QUERY, "[]").unwrap();
@@ -93,6 +98,7 @@ fn empty_context_preserves_the_original_query_output() {
 }
 
 // scenario: B0-SEC-001
+// scenario: B0-DET-001
 #[test]
 fn user_or_cannot_bypass_region_restriction() {
     let result = run(
@@ -115,6 +121,7 @@ fn user_or_cannot_bypass_region_restriction() {
 }
 
 // scenario: B0-SEC-002
+// scenario: B0-DET-001
 #[test]
 fn mandatory_cube_predicate_survives_without_and_with_other_filters() {
     let mut outputs = Vec::new();
@@ -185,6 +192,7 @@ fn invalid_security_conditions_fail_without_sql() {
 }
 
 // scenario: B0-SEC-003
+// scenario: B0-DET-001
 #[test]
 fn security_only_dimension_adds_its_two_hop_join_path() {
     let result = run(

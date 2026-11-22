@@ -5,9 +5,12 @@
 //! templates, followed by the parameters in placeholder order. Nobody has
 //! executed them; execution belongs to tiers T1 and T2.
 
+mod support;
+use support::compile;
+
 use std::sync::Arc;
 
-use pp_cube_compile::{compile, CompileContext, CompileError, Compiled, DialectId, Parameter};
+use pp_cube_compile::{CompileContext, CompileError, Compiled, DialectId, Parameter};
 use pp_cube_model::{load_query, load_yaml};
 
 /// Compiles `sales.amount` with `rest` added to the query, with `timezone`
@@ -47,6 +50,7 @@ fn load_failure(time_dimension: &str) -> String {
 }
 
 // scenario: B0-QUERY-001
+// scenario: B0-DET-001
 #[test]
 fn each_granularity_truncates_the_time_dimension_in_the_timezone() {
     insta::assert_snapshot!(compiled(
@@ -62,6 +66,7 @@ fn each_granularity_truncates_the_time_dimension_in_the_timezone() {
 }
 
 // scenario: B0-QUERY-001
+// scenario: B0-DET-001
 #[test]
 fn each_date_operator_compares_with_the_bounds_of_its_dates() {
     insta::assert_snapshot!(compiled(
@@ -78,6 +83,7 @@ fn each_date_operator_compares_with_the_bounds_of_its_dates() {
 }
 
 // scenario: B0-QUERY-003
+// scenario: B0-DET-001
 #[test]
 fn october_is_closed_at_its_first_and_its_last_millisecond() {
     insta::assert_snapshot!(compiled(
@@ -90,6 +96,7 @@ fn october_is_closed_at_its_first_and_its_last_millisecond() {
 }
 
 // scenario: B0-QUERY-010
+// scenario: B0-DET-001
 #[test]
 fn query_timezone_wins_over_the_one_of_the_context() {
     let october_by_month = r#""timeDimensions": [{
@@ -108,6 +115,7 @@ fn query_timezone_wins_over_the_one_of_the_context() {
     ));
 }
 
+// scenario: B0-DET-001
 #[test]
 fn bounds_are_moved_to_utc_the_way_cube_moves_them() {
     let bounds = |timezone: &str, from: &str, to: &str| {
@@ -248,6 +256,7 @@ fn unknown_timezone_is_refused_wherever_it_is_named() {
     );
 }
 
+// scenario: B0-DET-001
 #[test]
 fn order_names_a_time_dimension_by_its_member_where_it_is_grouped_by() {
     let ordered = |time_dimension: &str| {
