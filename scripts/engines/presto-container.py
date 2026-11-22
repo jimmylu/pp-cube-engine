@@ -12,6 +12,8 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 # Presto 0.293 linux/amd64 manifest, not a mutable tag.
+# Runtime build identity observed for this exact manifest in real-engine CI.
+VERSION = '0.293-2f48ff6'
 IMAGE = 'prestodb/presto@sha256:6e7f7b4470522f5599a3b42e85036a526256d51b532fe8e6098d88ff8cf0aff0'
 SPEC = importlib.util.spec_from_file_location('presto_smoke', ROOT / 'scripts/engines/presto.py')
 SMOKE = importlib.util.module_from_spec(SPEC)
@@ -49,7 +51,7 @@ def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
             try:
                 version = command('exec', name, '/opt/presto-cli', '--execute', 'SELECT DISTINCT node_version FROM system.runtime.nodes',
                                   '--output-format', 'CSV', timeout=5)
-                if version != '"0.293"':
+                if version != json.dumps(VERSION):
                     # Permit only version-shaped output, never arbitrary CLI text.
                     reported = version if re.fullmatch(r'"[0-9]+(?:[.][0-9]+)*(?:-[A-Za-z0-9]+)*"', version) else 'unrecognized-format'
                     print('engine reported version: ' + reported, file=sys.stderr)

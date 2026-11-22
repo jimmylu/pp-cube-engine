@@ -13,7 +13,7 @@ SPEC.loader.exec_module(runner)
 
 
 class LifecycleTests(unittest.TestCase):
-    def exercise(self, fail=None, verify_failure=False):
+    def exercise(self, fail=None, verify_failure=False, version='"0.293-2f48ff6"'):
         calls, endpoints = [], []
 
         def command(*args, **kwargs):
@@ -23,7 +23,7 @@ class LifecycleTests(unittest.TestCase):
             if args[0] == 'inspect':
                 return '{"8080/tcp":[{"HostPort":"12345"}]}'
             if args[:1] == ('exec',) and 'SELECT DISTINCT node_version FROM system.runtime.nodes' in args:
-                return '"0.293"'
+                return version
             return ''
 
         def verify(endpoint):
@@ -31,7 +31,7 @@ class LifecycleTests(unittest.TestCase):
             if verify_failure:
                 raise ValueError('mismatch')
 
-        if fail or verify_failure:
+        if fail or verify_failure or version != '"0.293-2f48ff6"':
             with self.assertRaises((subprocess.SubprocessError, ValueError, TimeoutError)):
                 runner.run(command, verify, lambda _: None)
         else:
@@ -58,6 +58,12 @@ class LifecycleTests(unittest.TestCase):
                 self.assertEqual(endpoints, [])
         calls, _ = self.exercise(verify_failure=True)
         self.assertEqual(calls[-1][0][0], 'rm')
+
+    def test_unexpected_version_fails_before_fixture_and_cleans_up(self):
+        calls, endpoints = self.exercise(version='"0.294-other"')
+        self.assertEqual(calls[-1][0][0], 'rm')
+        self.assertEqual(endpoints, [])
+        self.assertFalse(any('input' in kwargs for _, kwargs in calls))
 
     def test_failure_diagnostics_are_fixed_and_preserve_cleanup(self):
         output = io.StringIO()

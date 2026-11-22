@@ -3,7 +3,7 @@
 PR #42, branch `harness/presto-container`. Product, vendor, golden snapshots and
 Cargo dependencies are unchanged. Design and usage are in engines.md. The owner
 requested this next harness slice after merging #41; the implementation is not yet
-accepted and must remain Draft.
+accepted; delivery must obtain passing real-engine evidence before Ready.
 
 ## Implemented
 
@@ -31,23 +31,16 @@ repairs address cleanup on uncertain create outcomes and failure step summaries.
   /opt/presto-cli, /opt/presto-server/etc/catalog, Java 11 and a 1 GiB JVM heap.
   The runner has a 2 GiB container limit. Registry inspection is not runtime proof.
 
-Stop after repeated failed engine checks and two probe adjustments under AGENTS.md.
-Do not mark Ready, bypass the engine failure, remove the new workflow or weaken
-result assertions. Continue only in a resumed repair session. First add a fixed
-stage indicator and distinguish the runner's own ValueError messages without
-printing endpoint names or raw server responses. Determine whether the failure is
-version comparison, HTTP continuation-origin validation, query execution or result
-comparison. Then write a regression at that boundary and obtain a real passing
-engine run before final delivery. Use the existing supplemental review context:
-`presto.py`, `presto-fixture.sql` and the grouped-sum golden snapshot.
-
-This handoff changes documentation only. Its own full CI and cross-vendor review
-are not claimed; check and review evidence must bind to the eventual final SHA.
-Owner approval and merge remain required.
-
 ## Resumed repair
 
-Owner authorized resuming the bounded repair. Fixed stage and allowlisted local
-error categories now distinguish readiness, fixture and golden failures without
-printing server messages. Discovery documentation includes engines-container.
-Real engine validation and final cross-vendor delivery remain pending.
+Owner authorized resuming. Run 44991829514 isolated failure to readiness-version;
+run 44991970425 reported the exact runtime build `0.293-2f48ff6`. The old comparison
+with `0.293` rejected this pinned image. A regression using the real build string
+failed before the fix. The runner now requires the complete pinned build identity;
+wrong-version regressions confirm fixture setup is skipped and cleanup still runs.
+Discovery documentation includes engines-container. Fixed stage and allowlisted
+failure messages preserve public-safe diagnostics.
+
+Remaining: obtain a passing real engine run, run final CI, obtain the cross-vendor
+report and deliver through Ready. Evidence belongs in PR comments or CI artifacts,
+not an evidence-only commit. Owner approval and merge remain required.

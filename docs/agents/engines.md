@@ -103,22 +103,18 @@ The fixed amd64 manifest also runs on arm hosts only when Docker emulation is
 available. Source for image layout, CLI path and memory sizing:
 https://github.com/prestodb/presto/tree/0.293/docker
 
-Container tasks are implemented: pinned image provisioning, readiness/version
-check, fixture setup, verifier reuse, owned-container cleanup, offline lifecycle
-regressions and a separate real-engine CI job. Real execution on this workstation
-remains NOT RUN because Docker's daemon is unavailable. Two remote runs timed out waiting for readiness; the second confirmed a running
-container without OOM or logged exception classes. The probe now invokes the
-image-provided CLI by absolute path and records fixed diagnostic categories; controlled state and
-exception-class diagnostics are included for investigation. Review repairs ensure
-create-timeout cleanup and preserve failure summaries. Remote engine results and
-exact-head delivery evidence belong in PR comments and Actions, without a new
-commit solely to record them. Owner reviews and merges.
+Container tasks are implemented: pinned provisioning, readiness/version check,
+fixture setup, golden verification, cleanup, offline regressions and CI. Local
+real execution is NOT RUN because Docker's daemon is unavailable. Remote evidence
+and final delivery bind to the head SHA in PR comments and Actions.
 
-Readiness diagnosis: the pinned engine rejects `version()` as unregistered.
-The version probe now reads `node_version` from `system.runtime.nodes`, following
-https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphinx/connector/system.rst .
-Earlier diagnostic-only runs did not establish execution support.
+Two readiness defects were diagnosed with controlled remote evidence: this engine
+rejects `version()` as unregistered, so the probe reads `node_version` from
+`system.runtime.nodes`; the pinned manifest reports `0.293-2f48ff6`, not `0.293`.
+The runner now requires that exact build identity. A lifecycle regression reproduces
+the real version string and rejects other versions before fixture setup. Fixed
+stage and allowlisted error diagnostics distinguish subsequent execution failures.
+Sources: https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphinx/connector/system.rst
 
-Delivery stopped with a failing real engine job; see
-[presto-container-notes.md](presto-container-notes.md) for the current handoff.
-PR #42 remains Draft; no successful engine execution is claimed.
+See [presto-container-notes.md](presto-container-notes.md) for the repair handoff.
+Owner reviews and merges after final evidence and cross-vendor delivery.
