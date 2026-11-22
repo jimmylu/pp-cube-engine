@@ -23,5 +23,5 @@ Review corrections continue within this change's scope. Each task is at most two
 - [x] Verify implemented behavior, sync the two deltas and archive in this same PR before final review; no T1/T2 claims.
 - [x] Fix review findings about the unknown-granularity diagnostic, API documentation and archived lifecycle record; these corrections were subsequently committed and published in PR #40.
 - [x] Clarify B0-AGG-003 multi-cube validation precedence in the main spec and archived delta, and distinguish historical publication restrictions from the current repair request.
-- PR #40 contains the published implementation and earlier corrections. This repair session leaves its new edits uncommitted in the worktree, without pushing, merging or altering gates. That session-specific restriction does not prohibit a subsequent authorized delivery controller from checking, committing and publishing repairs under `docs/agents/delivery.md`.
+- PR #40 contains the committed and published implementation and review corrections. Continue delivery under `docs/agents/delivery.md`.
 - Delivery must establish different-vendor review and exact-head remote t0 evidence for the corrected head; final approval and merge remain with the owner.
