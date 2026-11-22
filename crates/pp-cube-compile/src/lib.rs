@@ -86,7 +86,7 @@ pub fn compile(
         check_security_filter(filter)?;
     }
     if context.dialect == DialectId::Doris {
-        check_doris(model, query, context)?;
+        check_doris(query)?;
     }
     let fingerprint = fingerprint::fingerprint(model, query, context)?;
     let mut query = query.clone();
@@ -154,43 +154,11 @@ fn internal_mapping_keeps_operator_detail_out_of_display() {
 }
 
 // Intentionally conservative until the remaining Doris matrix is implemented.
-fn check_doris(model: &Model, query: &Query, ctx: &CompileContext) -> Result<(), CompileError> {
-    use pp_cube_model::{DimensionType, Operator};
-    fn supported(filter: &Filter) -> bool {
-        match filter {
-            Filter::And(fs) | Filter::Or(fs) => fs.iter().all(supported),
-            Filter::Condition(c) => matches!(
-                c.operator,
-                Operator::Contains
-                    | Operator::NotContains
-                    | Operator::StartsWith
-                    | Operator::NotStartsWith
-                    | Operator::EndsWith
-                    | Operator::NotEndsWith
-                    | Operator::Equals
-                    | Operator::NotEquals
-                    | Operator::Gt
-                    | Operator::Gte
-                    | Operator::Lt
-                    | Operator::Lte
-                    | Operator::Set
-                    | Operator::NotSet
-            ),
-        }
-    }
-    if model.cubes.iter().any(|c| {
-        c.dimensions
-            .iter()
-            .any(|d| d.dimension_type == DimensionType::Time)
-    }) || !query.time_dimensions.is_empty()
-        || (query.offset.is_some() && query.limit.is_none())
-        || !query
-            .filters
-            .iter()
-            .chain(&ctx.security_filters)
-            .all(supported)
-    {
-        return Err(CompileError::Unsupported("Doris compilation currently requires models without time dimensions, scalar/pattern filters and a limit when offset is present".into()));
+fn check_doris(query: &Query) -> Result<(), CompileError> {
+    if query.offset.is_some() && query.limit.is_none() {
+        return Err(CompileError::Unsupported(
+            "Doris offset requires a limit".into(),
+        ));
     }
     Ok(())
 }

@@ -1,0 +1,8 @@
+---
+source: crates/pp-cube-compile/tests/doris_time.rs
+expression: "format!(\"{}\\n-- parameters: {:?}\", result.sql, result.parameters)"
+---
+SELECT DATE_TRUNC(CONVERT_TZ(`sales`.sold_at, 'UTC', 'Asia/Tokyo'), 'day') `sales__sold_at_day`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: [Text("2026-09-30T15:00:00.000Z"), Text("2026-10-31T14:59:59.999Z")]

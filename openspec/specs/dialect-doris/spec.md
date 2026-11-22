@@ -10,10 +10,11 @@ Doris SHALL compile single-cube models without joins or time dimensions using B0
 #### Scenario: B0-DORIS-003 Basic SQL
 - **WHEN** a basic single-cube aggregate query with grouping, scalar filters and security restrictions compiles for Doris
 - **THEN** SQL equals its reviewed golden and parameters/metadata are preserved
+
 ### Requirement: Doris initial boundary
-Doris SHALL return unsupported without SQL for time-typed model dimensions, timeDimensions, date filters or offset without limit. Invalid models SHALL still produce model errors first. This initial envelope SHALL NOT imply full B0 or engine execution acceptance.
+Doris SHALL return unsupported without SQL for offset without limit. Invalid models SHALL still produce model errors first. Supported temporal requests SHALL use the existing B0 validation and timezone precedence. This envelope SHALL NOT imply full B0 or engine execution acceptance.
 #### Scenario: B0-DORIS-004 Initial unsupported envelope
-- **WHEN** a Doris request exceeds the initial envelope, including through security filters
+- **WHEN** a Doris request has offset without limit
 - **THEN** it returns unsupported without SQL
 
 ### Requirement: Doris dimension joins
@@ -33,3 +34,9 @@ Doris SHALL compile case-insensitive contains, startsWith, endsWith and their ne
 #### Scenario: B0-DORIS-008 Security pattern conjunction
 - **WHEN** a mandatory security pattern accompanies a nested user OR filter
 - **THEN** SQL requires the security pattern AND the complete user OR group without changing parameter order
+
+### Requirement: Doris temporal compilation
+Doris SHALL compile time dimensions, day/week/month/quarter/year grouping and all B0 date operators using UTC millisecond bounds and the effective query timezone. Ordered bound parameters, metadata and security conjunction SHALL be preserved.
+#### Scenario: B0-DORIS-009 Temporal SQL
+- **WHEN** each B0 granularity and date operator compiles for Doris with a non-UTC timezone
+- **THEN** SQL equals its reviewed golden and bounds remain ordered bound parameters
