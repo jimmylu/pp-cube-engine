@@ -45,7 +45,7 @@ def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
         # The CLI probes the actual query service, not merely an open HTTP port.
         for attempt in range(60):
             try:
-                version = command('exec', name, '/opt/presto-cli', '--execute', 'SELECT version()',
+                version = command('exec', name, '/opt/presto-cli', '--execute', 'SELECT DISTINCT node_version FROM system.runtime.nodes',
                                   '--output-format', 'CSV', timeout=5)
                 if version != '"0.293"':
                     raise ValueError('unexpected engine version')

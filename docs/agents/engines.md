@@ -82,7 +82,7 @@ Protocol and memory setup follow the pinned Presto 0.293 official documentation:
 `harness/presto-container` adds `scripts/check.sh engines-container`. On a Docker
 host it pulls the Presto 0.293 linux/amd64 manifest pinned by digest, creates one
 uniquely named container with a loopback-only ephemeral port and 2 GiB memory,
-installs the memory catalog before startup, checks `SELECT version()`, loads the
+installs the memory catalog before startup, checks `SELECT DISTINCT node_version FROM system.runtime.nodes`, loads the
 existing fixture and calls the existing golden verifier. It always attempts to
 remove its unique container after a creation attempt, including on readiness, setup or assertion
 failure. It never removes a pre-existing container. Docker commands have explicit
@@ -113,3 +113,8 @@ exception-class diagnostics are included for investigation. Review repairs ensur
 create-timeout cleanup and preserve failure summaries. Remote engine results and
 exact-head delivery evidence belong in PR comments and Actions, without a new
 commit solely to record them. Owner reviews and merges.
+
+Readiness diagnosis: the pinned engine rejects `version()` as unregistered.
+The version probe now reads `node_version` from `system.runtime.nodes`, following
+https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphinx/connector/system.rst .
+Earlier diagnostic-only runs did not establish execution support.

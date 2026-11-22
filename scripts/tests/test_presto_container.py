@@ -20,7 +20,7 @@ class LifecycleTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(1, ['docker'])
             if args[0] == 'inspect':
                 return '{"8080/tcp":[{"HostPort":"12345"}]}'
-            if args[:1] == ('exec',) and 'SELECT version()' in args:
+            if args[:1] == ('exec',) and 'SELECT DISTINCT node_version FROM system.runtime.nodes' in args:
                 return '"0.293"'
             return ''
 
