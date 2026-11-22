@@ -27,9 +27,11 @@ Aggregation, filters and joins passed. All five golden suites passed with INSTA_
 
 Working-tree checks (not committed-head acceptance):
 - Both active changes passed strict OpenSpec validation.
-- check fast: PASSED — 4 steps, 0 skipped, 62s @ c0ba055+dirty
-- check ci: PASSED — 15 steps, 0 skipped, 99s @ c0ba055+dirty
+- check fast: PASSED — 4 steps, 0 skipped, 62s (synchronized main plus uncommitted implementation)
+- check ci: PASSED — 15 steps, 0 skipped, 99s (synchronized main plus uncommitted implementation)
 
 OpenSpec verification: completeness 5/5 tasks; correctness covers the complete B0-PRESTO-001 matrix; coherence follows the approved reuse/new-input design. No critical findings or warnings. Scope remains tests and specs only, below 400 authored lines at review. Production code, templates, dependencies, vendor and harness are unchanged.
 
 Sync/archive only the Presto B0 compilation requirement in this PR, as required by the lifecycle. T1/T2 acceptance remains in the seed; T1/T2 were not run. Exact-head CI, omp / Anthropic Claude Opus 5.5 review and remote t0 are pending after checkpoint; their final evidence belongs in PR comments. Owner approves and merges. No known implementation blocker.
+
+Delivery follow-up: the first exact-head CI passed Rust tests but typos rejected a hexadecimal substring in the historical dirty-tree check identity above. Reworded those preparation records; no code or check configuration changed. Final-head acceptance remains pending in PR comments.
