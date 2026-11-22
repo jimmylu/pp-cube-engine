@@ -1,0 +1,18 @@
+syntax = "proto3";
+package ppcube.engine.v1;
+service CubeEngine {
+  rpc Compile(CompileRequest) returns (CompileResponse);
+  rpc ValidateModel(ValidateModelRequest) returns (ValidateModelResponse);
+  rpc GetMeta(GetMetaRequest) returns (GetMetaResponse);
+}
+message CompileRequest { string model_version = 1; string query_json = 2; string dialect = 3; string timezone = 4; repeated string security_filters_json = 5; string request_id = 6; }
+message CompileResponse { oneof result { Compiled compiled = 1; CompileFailure failure = 2; } }
+// params are JSON scalar strings in placeholder order, not SQL literals.
+message Compiled { string sql = 1; repeated string params = 2; repeated OutputColumn columns = 3; repeated string used_tables = 4; bytes fingerprint = 5; }
+message OutputColumn { string alias = 1; string member = 2; string type = 3; optional string granularity = 4; }
+message CompileFailure { string kind = 1; string message = 2; }
+message ValidateModelRequest { bytes model_bundle = 1; }
+message ValidateModelResponse { repeated ModelIssue issues = 1; }
+message ModelIssue { string path = 1; string rule = 2; string message = 3; }
+message GetMetaRequest { string model_version = 1; }
+message GetMetaResponse { string meta_json = 1; }

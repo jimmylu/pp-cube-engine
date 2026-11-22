@@ -24,7 +24,7 @@ impl fmt::Display for ServiceError {
 impl std::error::Error for ServiceError {}
 
 /// Discovery fields only: deliberately excludes SQL, sources and opaque metadata.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct MemberMeta<T> {
     pub name: String,
     pub member_type: T,
@@ -32,7 +32,7 @@ pub struct MemberMeta<T> {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct CubeMeta {
     pub name: String,
     pub title: Option<String>,
@@ -116,3 +116,5 @@ impl CubeService {
 
 mod workers;
 pub use workers::{CompilePool, CompileTask, PoolError};
+
+pub mod grpc;
