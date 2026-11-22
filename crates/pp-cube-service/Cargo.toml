@@ -13,18 +13,18 @@ workspace = true
 [dependencies]
 pp-cube-model = { path = "../pp-cube-model" }
 pp-cube-compile = { path = "../pp-cube-compile" }
-tokio = { version = "1.54.1", default-features = false, features = ["sync"] }
+tokio = { version = "1.54.1", default-features = false, features = ["sync", "rt", "net", "signal", "time"] }
 
 tonic = "0.14.9"
 tonic-prost = "0.14.9"
 prost = "0.14"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tokio-stream = { version = "0.1", features = ["net"] }
 
 [build-dependencies]
 tonic-prost-build = "0.14.9"
 protoc-bin-vendored = "3"
 
 [dev-dependencies]
-tokio-stream = { version = "0.1", features = ["net"] }
 tokio = { version = "1.54.1", features = ["rt", "net", "macros"] }
