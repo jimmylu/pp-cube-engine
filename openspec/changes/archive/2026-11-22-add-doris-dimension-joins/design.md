@@ -1,5 +1,5 @@
 ## Decisions
-Remove only the model-count/join-presence checks from the Doris facade guard. Reuse existing LEFT JOIN templates and adapter join planning; do not implement new planner logic. The adapter continues to reject ambiguous/unconnected/cross-source paths as query errors and joined-cube measures as unsupported. Keep conservative time-typed-model, timeDimensions, pattern/date filter and offset-without-limit exclusions.
+Remove only the model-count/join-presence checks from the Doris facade guard. Reuse existing LEFT JOIN templates and adapter join planning; do not implement new planner logic. The adapter continues to reject ambiguous/unconnected/cross-source paths as query errors and sole non-root measures as query errors; multiple measure-owner cubes remain unsupported. Keep conservative time-typed-model, timeDimensions, pattern/date filter and offset-without-limit exclusions.
 Alternatives: adding Doris-specific join planning would duplicate audited behavior; broad time/filter enablement would mix independent dialect work. Multi-cube catalogs with unused cubes may now compile without generating unnecessary joins.
 Sources: pinned Cube planner at 486f0d26bab58ab4fe0be0e4cdd39818b35a7870; crates/pp-cube-adapter/src/joins.rs; existing templates/doris.yaml LEFT JOIN and identifier templates. No upstream source change.
 ## Verification

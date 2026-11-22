@@ -148,6 +148,7 @@ fn joined_dimensions_and_security_only_paths() {
 #[test]
 fn doris_retains_join_boundaries() {
     for text in [
+        r#"{"measures":["receipts.tax"],"dimensions":["sales.channel_cd"]}"#,
         r#"{"measures":["refunds.amount"],"dimensions":["regions.region_name"]}"#,
         r#"{"measures":["sales.amount"],"dimensions":["visits.source"]}"#,
     ] {
