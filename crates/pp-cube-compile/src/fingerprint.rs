@@ -29,6 +29,7 @@ fn identity(
         query,
         match ctx.dialect {
             crate::DialectId::Presto => "presto",
+            crate::DialectId::Doris => "doris",
         },
         ctx.timezone,
         ctx.security_filters,

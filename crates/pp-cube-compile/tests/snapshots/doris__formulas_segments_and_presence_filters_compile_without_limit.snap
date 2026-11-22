@@ -1,0 +1,7 @@
+---
+source: crates/pp-cube-compile/tests/doris.rs
+expression: result.sql
+---
+SELECT sum(CASE WHEN (`sales`.region = 'north') THEN `sales`.amount END) `sales__restricted`, sum(`sales`.amount) / NULLIF(count(*), 0) `sales__ratio`  
+FROM  dw.sales  AS `sales`
+WHERE ((`sales`.region IS NOT NULL) OR (`sales`.region IS NULL)) AND (`sales`.region = ?) AND (`sales`.amount > 0)
