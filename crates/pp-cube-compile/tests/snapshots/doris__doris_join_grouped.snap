@@ -1,0 +1,10 @@
+---
+source: crates/pp-cube-compile/tests/doris.rs
+expression: "format!(\"{}\\n-- parameters: {:?}\", result.sql, result.parameters)"
+---
+SELECT `stores`.store_name `stores__store_name`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+LEFT JOIN  dw.dim_store  AS `stores` ON `sales`.store_cd = `stores`.store_cd
+LEFT JOIN  dw.dim_region  AS `regions` ON `stores`.region_cd = `regions`.region_cd
+WHERE (`stores`.store_name = ?) AND (`regions`.region_name = ?) GROUP BY 1 ORDER BY  2  DESC
+-- parameters: [Text("central"), Text("north")]

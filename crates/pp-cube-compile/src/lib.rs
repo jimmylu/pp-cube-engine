@@ -172,14 +172,11 @@ fn check_doris(model: &Model, query: &Query, ctx: &CompileContext) -> Result<(),
             ),
         }
     }
-    if model.cubes.len() != 1
-        || model.cubes.iter().any(|c| {
-            !c.joins.is_empty()
-                || c.dimensions
-                    .iter()
-                    .any(|d| d.dimension_type == DimensionType::Time)
-        })
-        || !query.time_dimensions.is_empty()
+    if model.cubes.iter().any(|c| {
+        c.dimensions
+            .iter()
+            .any(|d| d.dimension_type == DimensionType::Time)
+    }) || !query.time_dimensions.is_empty()
         || (query.offset.is_some() && query.limit.is_none())
         || !query
             .filters
@@ -187,7 +184,7 @@ fn check_doris(model: &Model, query: &Query, ctx: &CompileContext) -> Result<(),
             .chain(&ctx.security_filters)
             .all(supported)
     {
-        return Err(CompileError::Unsupported("Doris initial compilation requires one cube without joins/time, scalar comparison filters and a limit when offset is present".into()));
+        return Err(CompileError::Unsupported("Doris compilation currently requires models without time dimensions, scalar comparison filters and a limit when offset is present".into()));
     }
     Ok(())
 }

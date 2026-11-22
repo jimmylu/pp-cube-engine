@@ -1,0 +1,4 @@
+# Session notes
+Owner authorized next PR after #54 merged. Using add-doris-dimension-joins. Only enable already-baseline join behavior for Doris; full matrix and real Doris acceptance remain in the seed. No harness change. Owner merges.
+
+Implemented by removing only the blanket cube-count/join-presence restriction. Added reviewed golden snapshots for joined grouping/filtering and security-only two-hop joins, four-process replay, Presto parity for parameters/columns/lineage and expected physical tables. Negative tests preserve ambiguous/cross-source query errors and joined-measure unsupported. Existing time/pattern/offset restrictions and invalid-model precedence remain tested. The initial new tests failed before implementation. Final acceptance evidence belongs in PR comments on the pushed SHA; local CI, Docker and cross-vendor review remain delivery gates. Doris engine execution is not run.
