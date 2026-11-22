@@ -102,3 +102,19 @@ than modifying harness code in this product PR. Resume only when the review
 context/gate concern can be addressed within a separately scoped effort or an
 owner decision. This handoff-only commit changes no tests or behavior; its check
 evidence is recorded separately in the PR, bound to the resulting SHA.
+
+
+## Resumed after merged harness correction
+
+The owner requested completion through Ready. Harness PR #35 is merged as
+68fe053cc97efc53f59e6264dbfdf0558156aa17. Synchronize that main tip by a normal
+merge (no history rewrite or force push), then use the merged evidence-grounded
+review controller with omp / Anthropic Claude Opus 5.5. Implementer remains
+Codex / OpenAI GPT-6. Previous bounded stop is historical, not an approval bypass.
+
+All implementation tasks remain complete. No new product behavior, snapshots,
+vendor changes or PR-specific harness changes are needed. The merge imports
+already merged harness history; relative to main this PR retains its original
+test/spec scope. Fast runs before the merge commit. Exact-head CI, Opus review
+and remote t0 are pending; final evidence will be posted to PR #34 without a
+further evidence-only commit. Owner reviews and merges after Ready. T1/T2 not run.

@@ -35,6 +35,10 @@ Repair prompts leave edits uncommitted; the controller checks and commits them.
 Do not grant a reviewer write tools. Model credentials remain in the tools' own profiles;
 GitHub publication tokens are removed from model process environments.
 
+Read [review.md](review.md) for the evidence, history and context-question contract.
+Use `scripts/dev deliver --review-context path/to/tracked/file` to supplement missing
+context without changing harness code; repeat the flag for additional files.
+
 `deliver --rounds 2` checks local CI, gets cross-vendor review, publishes its SHA-bound
 report, repairs findings, checkpoints, and repeats. Exhaustion leaves a Draft PR and a
 visible blocker. A model failure or invalid reply cannot become a passing review.

@@ -1,0 +1,156 @@
+# Evidence-grounded review
+
+## Scope and design
+
+Harness issue #33: reviewers previously received AGENTS.md and a diff, but not
+complete archived artifacts, deleted base content or relevant public types.
+Inference from roadmap language and rename similarity produced unsupported
+findings. This change improves the supplied evidence and review continuity;
+it cannot prove the semantic correctness of a model's conclusion.
+
+Keep the reviewer without tools. Supply a packet pinned to the PR binding, with base text from the merge-base
+(the diff pre-image) and head text from the reviewed head: complete changed files on both sides, agent workflow/verification
+contracts, active or archived change artifacts, seed transfer policy, traceability
+script and public crate roots. Include the pinned diff. Deleted files exist only
+on the base side. Preserve whitespace for line citations. Vendor source remains
+excluded. Packets above 500 KB fail explicitly rather than silently truncating.
+An omitted implementation dependency can still require context clarification.
+
+The other choices were changing the reviewer alone (leaves missing evidence) or
+granting repository tools (widens permissions and makes inputs less reproducible).
+The selected design keeps the existing read-only boundary and delivery gates.
+
+## Review contract
+
+- Findings describe introduced defects and consequences, with exact citations:
+  `evidence: [{revision: "base" | "head", path, line, quote}]`.
+- Each finding location must itself have a citation. The controller checks the
+  quote against that line of a supplied pinned file. This verifies provenance,
+  not whether the text logically supports the claim. A matching quote alone is
+  insufficient for a sound review.
+- Missing context goes into `questions`, an array of strings. Any question blocks
+  delivery without invoking code repair or consuming its repair rounds.
+- Every previous finding has a zero-based `reassessments` entry with `index`,
+  `status` (`resolved`, `withdrawn`, `remaining`) and a concrete `reason`.
+  Remaining defects must also be reported in findings. New defects are allowed.
+- History is retained only for the same repository, PR, branch and base, and an
+  ancestor head. It is evidence to reassess, never authority to accept a claim.
+- Protocol or reviewer-command changes invalidate the cached result. New reports
+  remain bound to exact base/head/model; stale or malformed responses cannot pass.
+
+The local review-packet.json preserves supplied file evidence. The PR comment
+preserves the structured report. Both are outside tracked files, so recording
+successful checks does not invalidate their SHA. Findings and context questions
+both keep the PR Draft. Local CI, cross-vendor review, remote t0 and owner merge
+remain required; no gate or approval rule changes.
+
+## Model selection and verification
+
+Default working arrangement for this effort: Codex / OpenAI GPT-6 implements;
+omp / Anthropic Claude Opus 5.5 reviews with explicit model selection and
+`--print --no-tools`. Configure per worktree; no credentials belong in Git.
+Selecting Opus does not establish greater accuracy without comparative evidence.
+
+Offline regressions exercise actual Git objects for archived/deleted context,
+exact citations, prior-finding reassessment and questions blocking repair.
+Run `python3 -m unittest discover -s scripts/tests`, then the standard fast/ci
+checks. Real model and GitHub delivery evidence belongs in the PR at its SHA.
+
+## Handoff
+
+Implemented on harness/review-evidence, based on main after PR #29. Product PR #34
+remains separate and Draft; do not merge or modify it as part of this effort.
+Offline implementation and verification are complete before checkpoint. Real
+Opus review and exact-head CI/t0 acceptance are pending publication; their results
+and any bounded repairs are recorded in this PR rather than evidence-only commits.
+Owner performs final review and merge. No production, vendor or OpenSpec changes.
+
+First live Opus review returned a report but citation validation rejected its
+line references. Add explicit per-line numbers in the model packet and retain
+review-response.txt even for invalid responses, alongside the exact packet.
+These are diagnostic artifacts, never acceptance evidence. The 500 KB cap also
+covers the final numbered packet plus previous report. This is the first repair.
+
+
+Second repair from a valid Opus report: non-ancestor/missing old heads now discard
+history, test classes precede the direct-run entry point, and delivery.md links
+this contract. To resolve context questions, rerun `scripts/dev review` or
+`scripts/dev deliver` with repeatable `--review-context path/to/tracked/file`.
+The named files are read from both pinned revisions, never the filesystem;
+unknown paths and vendor files are rejected. The selected path set participates
+in cache identity, so a changed selection triggers a fresh review on the same
+head. Supply the same flags when resuming. If new repository evidence is needed,
+commit it normally; a genuine owner-only decision follows the decision-issue rule.
+Do not delete acceptance evidence or edit cached reports to clear questions.
+Repeated reviews on the same SHA with different context produce distinct report
+comment markers, so the PR retains the new verdict instead of hiding it behind
+an earlier comment for that SHA.
+
+## Earlier bounded delivery stop
+
+Stopped after two different review repairs. At cf1036b, Opus returned valid
+citations and explicitly marked all three prior findings resolved. It reported
+new issues: P2 base-side full files use the main tip while the three-dot diff uses
+the merge base; P3 strict text decoding prevents review of non-UTF-8 files.
+These are remaining implementation issues, not a service failure or ungrounded
+policy inference. PR #35 stays Draft; do not bypass the gate or mark Ready.
+
+Resume with a diverged-history regression and make the packet distinguish the
+PR base tip from the diff pre-image, using consistent revisions for citations.
+Add binary/non-UTF-8 coverage and a documented explicit handling path that does
+not silently omit changed content. Keep all work in harness paths. Existing
+issue #33 remains open until this PR is accepted. No product PR changes or merge.
+
+Latest reviewed-head evidence: 27 offline tests passed;
+`check ci: PASSED — 15 steps, 0 skipped, 44s @ cf1036b`.
+Remote t0 passed on that head. T1/T2 not run. This final handoff-only commit will
+receive its own CI evidence in PR comments; it is not a reviewed/accepted head.
+The original automatic Opus route failed a service preflight; the explicitly
+selected alternative Opus 5.5 route returned real reports. No credentials or
+service configuration changes were needed.
+
+
+## Resumed correction
+
+The owner authorized continuation of the two remaining defects. The packet now
+records `binding.base` as the PR base tip and `revisions.base` as the merge-base
+used by the three-dot diff. All base file selection and line citations use that
+pre-image; head files use `revisions.head`. A real diverged-history regression
+checks that main-only edits never appear as PR deletions.
+
+Git blobs are read as bytes. Valid UTF-8 without NUL remains source text with
+unchanged line numbering. Other content goes in `binary_files`, with lossless
+base64 bytes, byte length and SHA-256. This content is never silently dropped or
+replaced with fabricated text lines. Git diff is display-only, with undecodable
+bytes escaped; the blob is authoritative. Binary content has no source-line
+citations. Reviewers must ask a blocking question if they cannot assess it;
+encoding transport alone does not establish a successful semantic review.
+Both representations count toward the context limit. Existing supplemental
+context and no-tools restrictions still apply.
+
+Completed: diverged-base fix, byte-preserving blob transport, binary/non-UTF-8
+and real Git regressions. All 29 offline regressions pass. This correction is
+ready for checkpoint and exact-head CI/Opus/t0 acceptance; final status belongs
+in PR comments to avoid invalidating the reviewed head. Product PR #34 is unchanged.
+
+
+The resumed Opus review marked both base/diff and byte transport findings
+resolved, then found a source-line boundary issue. Source numbering and citation
+validation now share Git's LF-only line rule; Unicode separators, form feeds and
+CR bytes remain within their original line. A regression checks mixed separators,
+CRLF, final LF and empty input. All 30 offline regressions pass before checkpoint.
+Final exact-head CI/Opus/t0 evidence is pending in the PR.
+
+
+Opus confirmed LF numbering resolved and identified Git path quoting as the next
+boundary. Changed paths and trees now use NUL-separated output, with no whitespace
+stripping. Real Git coverage includes non-ASCII, quote, newline and leading-space
+names, including supplemental context lookup. The resumed two original findings
+and LF finding are resolved; path correction awaits final exact-head acceptance.
+
+
+The path regression also includes a raw invalid UTF-8 filename. NUL path lists
+are decoded reversibly with surrogateescape, so subprocess arguments recover the
+original filesystem bytes. The packet JSON uses ASCII escapes to transport these
+path keys without invalid Unicode encoding. Blob bytes remain lossless base64.
+This completes the path handling correction; exact-head acceptance is pending.

@@ -13,4 +13,4 @@ Each task is bounded to two hours.
 ## Workflow follow-up
 - Sync/archive only implemented requirements before final review in the same PR.
 - Checkpoint/push; publish exact-head CI, cross-vendor review and remote t0 before Ready. Owner reviews and merges.
-- Blocked after two review repairs: PR #34 remains Draft; see notes.md and deferred issue #33. No further repair or Ready transition in this session.
+- Previous session stopped after bounded review repairs; the owner authorized resumption after harness PR #35 merged. Synchronize main and rerun exact-head CI, Opus review and t0 before Ready.
