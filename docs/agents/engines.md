@@ -104,9 +104,10 @@ available. Source for image layout, CLI path and memory sizing:
 https://github.com/prestodb/presto/tree/0.293/docker
 
 Container tasks are implemented: pinned provisioning, readiness/version check,
-fixture setup, golden verification, cleanup, offline regressions and CI. Local
-real execution is NOT RUN because Docker's daemon is unavailable. Remote evidence
-and final delivery bind to the head SHA in PR comments and Actions.
+fixture setup, golden verification, cleanup, offline regressions and CI. Local and remote
+real engine execution have both passed. The local Docker daemon is now available;
+the first local run completed fixture loading, golden verification and cleanup.
+Current delivery evidence binds to the head SHA in PR comments and Actions.
 
 Two readiness defects were diagnosed with controlled remote evidence: this engine
 rejects `version()` as unregistered, so the probe reads `node_version` from

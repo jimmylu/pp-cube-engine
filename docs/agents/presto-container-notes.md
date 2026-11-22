@@ -23,10 +23,10 @@ repairs address cleanup on uncertain create outcomes and failure step summaries.
   `SELECT DISTINCT node_version FROM system.runtime.nodes` query. Fast passed.
   The real engine job now fails quickly with ValueError instead of the readiness
   timeout: run 44991214339, job 137112462936. This does not establish execution
-  correctness; no passing T2 evidence exists.
+  correctness; that historical run supplied no passing T2 evidence.
 - Earlier Opus review raised two implementation findings, subsequently repaired.
   Its next report requested actual passing engine evidence and verification of the
-  pinned image layout. No final accepted cross-vendor report exists for this head.
+  pinned image layout. That historical report was not final; subsequent head-bound reports live in PR comments.
 - The image config was inspected through the public registry: it supplies
   /opt/presto-cli, /opt/presto-server/etc/catalog, Java 11 and a 1 GiB JVM heap.
   The runner has a 2 GiB container limit. Registry inspection is not runtime proof.
@@ -68,3 +68,9 @@ engine failure stops before reviewer invocation and Ready. Controller regression
 cover ordering and failure blocking. Runner progress is visible with fixed messages.
 Run the full delivery command again after checkpointing this change. Current
 SHA-bound local and remote evidence belongs in the PR, not a follow-up evidence commit.
+
+The initial local real-engine run passed, followed by the delivery-gated local run
+at a031ab9. No owned container remained after cleanup. The first renewed Opus
+review found only a stale statement in engines.md claiming Docker was unavailable;
+that statement is now corrected. Repeat final delivery for the new head. A remote
+fixture failure at a031ab9 is being rechecked; do not substitute prior-head results.
