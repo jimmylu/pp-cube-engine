@@ -100,6 +100,7 @@ fn canonical_objects_preserve_numbers_and_array_order() {
     );
 }
 // scenario: B0-DET-002
+// scenario: B0-UPSTREAM-001
 #[test]
 fn upstream_identity_matches_repository_gitlink() {
     let root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
@@ -129,5 +130,45 @@ fn upstream_identity_matches_repository_gitlink() {
     assert_eq!(
         stdout.trim(),
         format!("160000 commit {UPSTREAM_PIN}\tvendor/cube")
+    );
+    let checkout = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(root.join("vendor/cube"))
+        .output()
+        .expect("read the checked-out upstream identity");
+    assert!(
+        checkout.status.success(),
+        "cannot read upstream checkout: {}",
+        String::from_utf8_lossy(&checkout.stderr)
+    );
+    let checkout = String::from_utf8(checkout.stdout).unwrap();
+    let checkout = checkout.trim();
+    assert_eq!(checkout, UPSTREAM_PIN);
+
+    let model = std::sync::Arc::new(
+        pp_cube_model::load_yaml(include_str!("../tests/fixtures/sales.yaml")).unwrap(),
+    );
+    let query = pp_cube_model::load_query(r#"{"measures":["sales.amount"]}"#).unwrap();
+    let ctx = CompileContext {
+        dialect: crate::DialectId::Presto,
+        timezone: "UTC".into(),
+        security_filters: vec![],
+        request_id: String::new(),
+    };
+    let compiled = crate::compile(&model, &query, &ctx).unwrap();
+    assert_eq!(
+        compiled.fingerprint,
+        identity(&model, &query, &ctx, env!("CARGO_PKG_VERSION"), checkout).unwrap()
+    );
+    assert_ne!(
+        compiled.fingerprint,
+        identity(
+            &model,
+            &query,
+            &ctx,
+            env!("CARGO_PKG_VERSION"),
+            "different-upstream"
+        )
+        .unwrap()
     );
 }
