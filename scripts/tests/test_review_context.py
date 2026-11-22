@@ -185,13 +185,22 @@ class ReviewContextTests(unittest.TestCase):
             git('add', '.')
             git('commit', '-qm', 'base')
             base = git('rev-parse', 'HEAD')
-            names = ['中文.md', 'a"b.txt', 'line\nbreak.txt', ' leading space.txt',
-                     os.fsdecode(b'raw\xff.txt')]
+            names = ['中文.md', 'a"b.txt', 'line\nbreak.txt', ' leading space.txt']
             for name in names:
                 (Path(directory) / name).write_text('content\n')
             git('add', '.')
             git('commit', '-qm', 'paths')
-            bound = dict(base=base, head=git('rev-parse', 'HEAD'), branch='harness/x')
+            parent = git('rev-parse', 'HEAD')
+            # Build the raw path in Git objects: some filesystems reject such names.
+            blob = subprocess.check_output(['git', '-C', directory, 'hash-object', '-w', '--stdin'],
+                                           input=b'content\n').strip()
+            entries = subprocess.check_output(['git', '-C', directory, 'ls-tree', '-z', parent])
+            entries += b'100644 blob ' + blob + b'\traw\xff.txt\0'
+            tree = subprocess.check_output(['git', '-C', directory, 'mktree', '-z'], input=entries).strip()
+            head = subprocess.check_output(['git', '-C', directory, 'commit-tree', tree, '-p', parent],
+                                          input=b'raw path\n').decode().strip()
+            names.append(os.fsdecode(b'raw\xff.txt'))
+            bound = dict(base=base, head=head, branch='harness/x')
             previous_cwd = os.getcwd()
             try:
                 os.chdir(directory)
