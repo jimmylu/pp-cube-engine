@@ -58,3 +58,13 @@ container; ordinary failures attempt bounded cleanup automatically.
 
 Remaining: run final CI, obtain the cross-vendor report and deliver through Ready. Evidence belongs in PR comments or CI artifacts,
 not an evidence-only commit. Owner approval and merge remain required.
+
+## Local Docker delivery requirement
+
+Owner requested local Docker integration smoke before review and merge. PR was
+returned to Draft. Docker daemon is now available. Delivery now requires local
+CI followed by real local engines-container before each cross-vendor review round;
+engine failure stops before reviewer invocation and Ready. Controller regressions
+cover ordering and failure blocking. Runner progress is visible with fixed messages.
+Run the full delivery command again after checkpointing this change. Current
+SHA-bound local and remote evidence belongs in the PR, not a follow-up evidence commit.

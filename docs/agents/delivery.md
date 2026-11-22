@@ -39,9 +39,14 @@ Read [review.md](review.md) for the evidence, history and context-question contr
 Use `scripts/dev deliver --review-context path/to/tracked/file` to supplement missing
 context without changing harness code; repeat the flag for additional files.
 
-`deliver --rounds 2` checks local CI, gets cross-vendor review, publishes its SHA-bound
+`deliver --rounds 2` checks local CI, runs the real local Docker Presto smoke,
+then gets cross-vendor review and publishes its SHA-bound
 report, repairs findings, checkpoints, and repeats. Exhaustion leaves a Draft PR and a
 visible blocker. A model failure or invalid reply cannot become a passing review.
+A working local Docker daemon with amd64 support/emulation is required. Every
+round runs `scripts/check.sh ci` followed by `scripts/check.sh engines-container`
+before review; Docker or engine failure stops delivery without a model repair.
+Remote engine success does not substitute for this local execution.
 Remote t0 must pass for the exact reviewed head before Ready. It never waits for owner
 approval itself. The final gate runs only for a Ready PR. Owner approval stays in the
 existing protected environment; switching its authorization mechanism is a separate

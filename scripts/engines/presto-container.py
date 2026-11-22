@@ -29,6 +29,7 @@ def docker(*args, input=None, timeout=60):
 def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
     """Only remove the uniquely named container created by this invocation."""
     command('info', '--format', '{{.ServerVersion}}', timeout=15)
+    print('Presto container: pulling pinned amd64 image', flush=True)
     command('pull', '--platform', 'linux/amd64', IMAGE, timeout=300)
     name = 'cube-presto-' + uuid.uuid4().hex
     owned = False
@@ -41,11 +42,13 @@ def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
             catalog = Path(directory) / 'memory.properties'
             catalog.write_text('connector.name=memory\n')
             command('cp', str(catalog), name + ':/opt/presto-server/etc/catalog/memory.properties')
+        print('Presto container: starting engine', flush=True)
         command('start', name)
         ports = json.loads(command('inspect', '--format', '{{json .NetworkSettings.Ports}}', name))
         port = ports['8080/tcp'][0]['HostPort']
         endpoint = 'http://127.0.0.1:' + str(int(port))
         stage = 'readiness-version'
+        print('Presto container: waiting for query readiness and exact version', flush=True)
         # The CLI probes the actual query service, not merely an open HTTP port.
         for attempt in range(60):
             try:
@@ -80,9 +83,11 @@ def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
                     raise TimeoutError('Presto readiness failed')
                 pause(1)
         stage = 'fixture'
+        print('Presto container: loading memory fixture', flush=True)
         command('exec', '-i', name, '/opt/presto-cli', '--file', '/dev/stdin',
                 input=(ROOT / 'scripts/engines/presto-fixture.sql').read_text(), timeout=30)
         stage = 'golden-verification'
+        print('Presto container: executing grouped-sum golden over HTTP', flush=True)
         verify(endpoint)
     except Exception:
         print('engine failure stage: ' + stage, file=sys.stderr)
@@ -90,6 +95,7 @@ def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
     finally:
         if owned:
             # Cleanup failure is itself a failed run, never a passing evidence line.
+            print('Presto container: removing owned container', flush=True)
             command('rm', '--force', name, timeout=30)
 
 

@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -64,7 +65,7 @@ class DeliveryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'budget exhausted'):
                 dev.deliver(0)
             git.assert_any_call('commit', '-m', 'fix: resume pending delivery changes')
-            self.assertEqual([call.args for call in check.call_args_list], [('fast',), ('ci',)])
+            self.assertEqual([call.args for call in check.call_args_list], [('fast',), ('ci',), ('engines-container',)])
 
     def test_scope_rejects_product_edit_on_harness_branch(self):
         with patch.object(dev, 'git', side_effect=['crates/model.rs', '']):
@@ -80,6 +81,28 @@ class DeliveryTests(unittest.TestCase):
         with patch.object(dev, 'identity', return_value=('harness/x', 'abc')), \
              patch.object(dev, 'git', return_value=''):
             self.assertIsNone(dev.remote_sha())
+
+    def test_local_engine_failure_blocks_review_and_ready(self):
+        modes = []
+
+        def check(mode):
+            modes.append(mode)
+            if mode == 'engines-container':
+                raise subprocess.CalledProcessError(1, ['scripts/check.sh', mode])
+
+        with patch.object(dev, 'publish'), \
+             patch.object(dev, 'binding', return_value={'head': 'a'}), \
+             patch.object(dev, 'check', side_effect=check), \
+             patch.object(dev, 'review') as review, \
+             patch.object(dev, 'run') as runner, \
+             patch.object(dev, 'model') as model:
+            with self.assertRaises(subprocess.CalledProcessError):
+                dev.deliver(2)
+            self.assertEqual(modes, ['ci', 'engines-container'])
+            review.assert_not_called()
+            runner.assert_not_called()
+            model.assert_not_called()
+            self.assertFalse((dev.state / 'evidence.md').exists())
 
     def test_pending_snapshot_blocks_checkpoint(self):
         with patch.object(dev, 'git', side_effect=['crates/a.snap.new', '']):
@@ -128,10 +151,15 @@ class DeliveryTests(unittest.TestCase):
                 return next(responses)
             return ''
 
+        def review_after_local_checks():
+            self.assertEqual([call.args[0] for call in check.call_args_list],
+                             ['ci', 'engines-container'])
+            return {'findings': [], 'reviewer': 'other/model'}
+
         with patch.object(dev, 'publish'), \
              patch.object(dev, 'binding', return_value={'head': 'a', 'number': 1}), \
-             patch.object(dev, 'check'), \
-             patch.object(dev, 'review', return_value={'findings': [], 'reviewer': 'other/model'}), \
+             patch.object(dev, 'check') as check, \
+             patch.object(dev, 'review', side_effect=review_after_local_checks), \
              patch.object(dev, 'config', return_value={'implementer': 'example/model'}), \
              patch.object(dev, 'pr', return_value={'isDraft': True, 'url': 'https://example.test/1'}), \
              patch.object(dev, 'run', side_effect=run_result) as runner, \

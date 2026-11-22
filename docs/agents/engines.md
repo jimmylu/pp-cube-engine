@@ -118,3 +118,15 @@ Sources: https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphi
 
 See [presto-container-notes.md](presto-container-notes.md) for the repair handoff.
 Owner reviews and merges after final evidence and cross-vendor delivery.
+
+## Local delivery prerequisite
+
+The owner requires local Docker execution before review and merge. The delivery
+controller runs `ci`, then `engines-container`, then cross-vendor review and the
+remote t0 gate. Every repair round repeats both local checks. Docker unavailability
+or a failing engine smoke stops delivery; remote success cannot replace local proof.
+Run `scripts/check.sh engines-container` directly to reproduce. Fixed progress lines
+show image pull, startup, readiness, fixture, SQL execution and cleanup without raw
+server output. The ordinary `ci` command remains Docker-free for the separate T0 job.
+This is the same real-engine integration smoke (one stored golden), not a new
+model-to-execution end-to-end suite.
