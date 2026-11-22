@@ -13,6 +13,61 @@ loader.exec_module(dev)
 
 
 class ReviewContextTests(unittest.TestCase):
+    def test_compact_transport_preserves_lf_lines_and_citations(self):
+        import json
+        sources = ['', '\n', 'one\n\n', 'CR\rLF\r\nUnicode\u2028inside\nlast', '1:prefix\nno final LF']
+        for source in sources:
+            with self.subTest(source=source):
+                packet = {'files': {'head:source.rs': source}, 'binary_files': {},
+                          'previous_review': {'findings': []}}
+                transported = json.loads(dev.encode_review_packet(packet))
+                numbered = transported['files']['head:source.rs']
+                restored = '\n'.join(line.split(':', 1)[1] for line in dev.source_lines(numbered))
+                if numbered.endswith('\n'):
+                    restored += '\n'
+                self.assertEqual(restored, source)
+                self.assertEqual(transported['previous_review'], packet['previous_review'])
+                for index, text in enumerate(dev.source_lines(source), 1):
+                    if text.strip():
+                        dev.validate_review({'findings': [dict(priority='P2', path='source.rs', line=index,
+                            message='Test consequence', evidence=[dict(revision='head', path='source.rs',
+                            line=index, quote=text)])]}, packet, None)
+
+    def test_dependency_sized_packet_fits_without_omitting_lockfile(self):
+        import json
+        lock = ''.join(f'name = "package_{n}"\nversion = "1.0.0"\n\n' for n in range(2200))
+        packet = {'files': {'base:Cargo.lock': lock, 'head:Cargo.lock': lock + '# change\n'},
+                  'binary_files': {}, 'diff': 'dependency change',
+                  'previous_review': {'findings': []}}
+        old = dict(packet, files={p: [{'line': n, 'text': t} for n, t in enumerate(dev.source_lines(s), 1)]
+                                  for p, s in packet['files'].items()})
+        self.assertGreater(len(json.dumps(old).encode()), 500_000)
+        # Exercise the actual base/head Git extraction for a dependency-only diff.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            def git(*args):
+                raw = subprocess.check_output(['git', '-C', directory, *args])
+                return raw if args[0] == 'show' else raw.decode().strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Test')
+            git('config', 'user.email', 'test@example.com')
+            (root / 'Cargo.lock').write_text(lock)
+            git('add', '.')
+            git('commit', '-qm', 'base')
+            base = git('rev-parse', 'HEAD')
+            (root / 'Cargo.lock').write_text(lock + '# change\n')
+            git('add', '.')
+            git('commit', '-qm', 'dependency')
+            pinned = dev.review_packet(dict(base=base, head=git('rev-parse', 'HEAD'),
+                                           branch='change/dependency'), git)
+            self.assertEqual(pinned['files'], packet['files'])
+            self.assertLess(len(dev.encode_review_packet(pinned).encode()), 500_000)
+        encoded = dev.encode_review_packet(packet)
+        self.assertLess(len(encoded.encode()), 500_000)
+        self.assertEqual(set(json.loads(encoded)['files']), set(packet['files']))
+        with self.assertRaisesRegex(ValueError, '500 KB'):
+            dev.encode_review_packet({'files': {'head:large': 'x' * 500_000}})
+
     def test_archived_change_and_deleted_base_are_available(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -82,7 +137,7 @@ class ReviewContextTests(unittest.TestCase):
                      patch.object(dev, 'run', return_value='{"comments":[]}'):
                     report = dev.review()
                     self.assertEqual(report['findings'], [])
-                    self.assertIn('"previous_review": null', model.call_args.args[1])
+                    self.assertIn('"previous_review":null', model.call_args.args[1])
 
     def test_context_selection_invalidates_cached_questions(self):
         from unittest.mock import patch

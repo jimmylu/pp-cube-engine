@@ -154,3 +154,21 @@ are decoded reversibly with surrogateescape, so subprocess arguments recover the
 original filesystem bytes. The packet JSON uses ASCII escapes to transport these
 path keys without invalid Unicode encoding. Blob bytes remain lossless base64.
 This completes the path handling correction; exact-head acceptance is pending.
+
+## Compact review transport (#47)
+
+Protocol 8 transports each complete text file as a JSON string whose LF-delimited
+lines start with `N:` (the original one-based source line). Strip only that prefix
+for citation text. Empty files, blank lines, CR bytes, Unicode separators and the
+final LF are preserved. The saved packet and citation validator still use original
+Git text; binary transport and review history are unchanged. Compact JSON and line
+prefixes remove per-line object/key overhead without omitting files or increasing
+the 500 KB limit. The protocol bump invalidates old cached reviews.
+
+Issue #47 reproduces on product PR #46: mandatory lockfile base/head text made
+the old numbered packet exceed the limit. This isolated harness change adds
+round-trip, exact-citation, dependency-sized real-Git and oversized-packet tests.
+With bundle/model supplemental context, the complete #46 packet is 403,185 bytes
+at product head b6ac814. No model acceptance is inferred from this size check.
+After owner merge, resume #46 delivery with the updated controller and full
+context; its model review and final-head acceptance remain required.
