@@ -77,6 +77,8 @@ fn date_filter(name: &'static str, values: &str, amount: u32) -> Case {
     total(name, &filter, amount)
 }
 
+// scenario: B0-DORIS-010
+// Executed on a real engine by the Doris container tier, not by T0.
 pub fn cases() -> Vec<Case> {
     let range = r#"["2026-10-01","2026-10-31"]"#;
     let day = r#"["2026-10-01"]"#;

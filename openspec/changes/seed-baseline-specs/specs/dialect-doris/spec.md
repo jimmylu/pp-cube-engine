@@ -11,9 +11,3 @@ Doris output SHALL be accepted by execution against hand-written SQL on Doris in
 #### Scenario: B0-DORIS-002 Engine execution (T2)
 - **WHEN** each golden case runs on Doris
 - **THEN** it executes and its result equals the hand-written reference query on identical data
-
-### Requirement: Doris temporal execution tier
-The defined Doris execution tier SHALL run live-compiled temporal cases and fail on bucket, boundary or security regressions. Formal execution acceptance remains proposed until the test belongs to the execution layer and its invocation is integrated by a separate harness-only change.
-#### Scenario: B0-DORIS-010 Temporal execution smoke (T2)
-- **WHEN** compiled temporal queries execute on a real local Doris fixture
-- **THEN** calendar buckets, millisecond boundary inclusion and security restrictions equal independently chosen expected results
