@@ -94,3 +94,12 @@ templates:
   tesseract/join_types_left:
     source: BaseQuery.ts
     text: "LEFT"
+  filters/like_pattern:
+    source: MysqlQuery.ts
+    text: "CONCAT({% if start_wild %}'%'{% else %}''{% endif %}, LOWER({{ value }}), {% if end_wild %}'%'{% else %}''{% endif %})"
+  filters/like_escape_char:
+    source: MysqlQuery.ts
+    text: "\\"
+  tesseract/ilike:
+    source: MysqlQuery.ts
+    text: "LOWER({{ expr }}) {% if negated %}NOT {% endif %}LIKE {{ pattern }}"
