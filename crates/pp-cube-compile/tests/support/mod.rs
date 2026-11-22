@@ -54,7 +54,12 @@ pub fn compile(
 
 fn run_worker(input: &[u8]) -> std::process::Output {
     let mut child = Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", "support::worker", "--nocapture"])
+        .args([
+            "--exact",
+            "support::worker",
+            "--nocapture",
+            "--test-threads=1",
+        ])
         .env("PP_GOLDEN_WORKER", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -93,8 +98,9 @@ fn worker() {
         security_filters: serde_json::from_value(input["security"].take()).unwrap(),
         request_id: input["request_id"].as_str().unwrap().into(),
     };
+    // Start a new line after libtest's single-thread progress prefix.
     println!(
-        "{}",
+        "\n{}",
         record(&pp_cube_compile::compile(&Arc::new(model), &query, &ctx).unwrap())
     );
 }

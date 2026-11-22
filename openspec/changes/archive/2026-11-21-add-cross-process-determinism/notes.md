@@ -118,3 +118,26 @@ already merged harness history; relative to main this PR retains its original
 test/spec scope. Fast runs before the merge commit. Exact-head CI, Opus review
 and remote t0 are pending; final evidence will be posted to PR #34 without a
 further evidence-only commit. Owner reviews and merges after Ready. T1/T2 not run.
+
+
+## Opus worker transport follow-up
+
+Opus reported a progress-prefix collision and requested the other test binaries
+to verify golden coverage. Reproduced with RUST_TEST_THREADS=1 on aggregation's
+one_sum_grouped_by_one_dimension: the child prints its record after libtest's
+progress prefix, so no tagged line is found. Worker now emits a leading newline
+and always selects --test-threads=1. All five golden suites pass with
+RUST_TEST_THREADS=1; their normal runs also continuously exercise this child mode.
+No production output or snapshots change. Local CI before repair passed:
+`check ci: PASSED — 15 steps, 0 skipped, 74s @ 765d85b`.
+
+Repository-wide search for insta snapshot assertions finds only aggregation,
+filters, joins, time and security. Provide all other compile integration tests
+(result.rs, errors.rs, model_validation.rs) as supplemental context for Opus;
+result.rs has direct assertions and a focused fingerprint replay, not goldens.
+Expanding the single-thread run to every compile binary exposed the pre-existing
+fingerprint child prefix collision in result.rs; that full command failed.
+This independent B0-DET-002 transport issue is deferred in #36 (after-baseline),
+not hidden as passing evidence and not part of the new golden worker. Default
+full CI and the five-suite single-thread run remain the acceptance checks here.
+Final exact-head acceptance remains pending in PR comments.
