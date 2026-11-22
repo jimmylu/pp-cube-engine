@@ -1,5 +1,6 @@
-//! Contract type for a query: Cube's query format, narrowed to what the
-//! kernel compiles. A field it does not compile yet does not deserialize.
+//! Contract type for a query: the supported subset of Cube's query format plus
+//! recognized options retained for compile-time rejection as unsupported.
+//! Unknown fields and malformed values are rejected during loading.
 
 use std::fmt;
 
@@ -52,8 +53,9 @@ pub struct TimeDimension {
     pub compare_date_range: Option<Vec<DateRange>>,
 }
 
-/// The granularities of the baseline. Cube also has the ones below a day.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Recognized Cube granularities. B0 compiles day, week, month, quarter and year;
+/// second, minute and hour deserialize but are rejected as unsupported.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Granularity {
     Second,
@@ -64,6 +66,38 @@ pub enum Granularity {
     Month,
     Quarter,
     Year,
+}
+
+impl<'de> Deserialize<'de> for Granularity {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Written;
+
+        impl<'de> Visitor<'de> for Written {
+            type Value = Granularity;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a granularity name")
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<Granularity, E> {
+                match value {
+                    "second" => Ok(Granularity::Second),
+                    "minute" => Ok(Granularity::Minute),
+                    "hour" => Ok(Granularity::Hour),
+                    "day" => Ok(Granularity::Day),
+                    "week" => Ok(Granularity::Week),
+                    "month" => Ok(Granularity::Month),
+                    "quarter" => Ok(Granularity::Quarter),
+                    "year" => Ok(Granularity::Year),
+                    _ => Err(E::custom(format_args!(
+                        "unknown granularity `{value}`; B0 granularities are `day`, `week`, `month`, `quarter`, `year`"
+                    ))),
+                }
+            }
+        }
+
+        deserializer.deserialize_str(Written)
+    }
 }
 
 impl Query {

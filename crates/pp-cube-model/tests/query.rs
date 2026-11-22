@@ -236,20 +236,23 @@ fn malformed_boundary_fields_and_unknown_names_are_rejected() {
     }
 }
 
+// scenario: B0-QUERY-008
 #[test]
-fn granularity_outside_the_five_is_rejected_where_it_is_written() {
+fn unknown_granularity_is_rejected_where_it_is_written_naming_the_b0_rule() {
     let granularity = "fortnight";
     let text = format!(
         "{{\"timeDimensions\": [\n  {{\"dimension\": \"sales.sold_at\", \"granularity\": \"{granularity}\"}}\n]}}"
     );
 
-    let error = load_query(&text).expect_err("the granularity is outside the baseline");
+    let error = load_query(&text).expect_err("the granularity is unknown");
 
     assert_eq!(
         (
             error.position.map(|at| at.line),
             error.message.contains(granularity),
-            error.message.contains("`quarter`"),
+            error
+                .message
+                .contains("B0 granularities are `day`, `week`, `month`, `quarter`, `year`"),
         ),
         (Some(2), true, true),
         "{granularity}: {}",

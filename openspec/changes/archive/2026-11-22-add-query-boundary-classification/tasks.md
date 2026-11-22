@@ -1,6 +1,7 @@
 # Tasks
 
-Implementation is pending a new apply request. Each task is at most two hours.
+Implementation is complete, the main specs are synced, and this change is archived.
+Review corrections continue within this change's scope. Each task is at most two hours.
 
 ## 1. Typed boundary
 
@@ -19,5 +20,6 @@ Implementation is pending a new apply request. Each task is at most two hours.
 
 ## Workflow follow-up
 
-- Verify implemented behavior, sync the two deltas and archive in this same PR before final review; no T1/T2 claims.
-- Checkpoint, run deliver with a different-vendor reviewer and exact-head remote t0; leave final approval and merge to the owner.
+- [x] Verify implemented behavior, sync the two deltas and archive in this same PR before final review; no T1/T2 claims.
+- [x] Fix review findings about the unknown-granularity diagnostic, API documentation and archived lifecycle record; leave edits in the worktree as requested.
+- Publication and delivery are deferred by the current request: do not push or merge. A future delivery session must establish different-vendor review and exact-head remote t0 evidence; final approval and merge remain with the owner.
