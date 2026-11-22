@@ -10,3 +10,5 @@ Stopped under the harness-path scope boundary. Independent issue https://github.
 
 ## Delivery resumed after #48
 Owner merged harness PR #48 and issue #47 is closed. Main is synchronized into this branch with a merge, preserving published product history without force-push. The compact lossless protocol fits the complete product packet with bundle/model supplemental context. No harness edits originate in this product PR; those changes are inherited from main. Resume exact-head CI, real local Docker smoke, remote checks and Opus review. Final acceptance and publication evidence live in PR comments; owner merges.
+
+First real protocol-8 Opus review completed after the capacity fix. Two P3 findings were repaired: proposal scope now explicitly names the seed spec and its retained network scenario; B0-API-001's own test directly validates invalid input and located issues. Product behavior is unchanged. Final-head checks and reassessment follow in PR comments.

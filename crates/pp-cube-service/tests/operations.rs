@@ -44,6 +44,12 @@ fn versioned_operations_return_facade_result_and_only_public_metadata() {
         Err(ServiceError::Bundle(_))
     ));
     assert!(service.get_meta("missing").is_err());
+    let mut invalid = model();
+    invalid.cubes[0].measures[0].sql = None;
+    let issues = service.validate_model(&invalid);
+    assert!(!issues.is_empty());
+    assert!(issues.iter().all(|issue| !issue.path.is_empty()));
+    assert_eq!(issues, pp_cube_model::validate_model(&invalid));
     let meta = service.get_meta("v1").unwrap();
     assert_eq!(meta.len(), 1);
     assert_eq!(meta[0].name, "sales");
