@@ -2,7 +2,7 @@
 
 Use the existing pinned planner and adapter time semantics. Add Doris templates
 for UTC DATETIMEV2(3) bounds, UTC-to-query-zone conversion and calendar truncation.
-Remove only the temporal facade rejection; offset without limit remains unsupported.
+Remove the time-dimension rejection and filter allowlist (the only formerly rejected Operator variants are the six B0 date operators); offset without limit remains unsupported.
 Reusing MySQL DATE_FORMAT would complicate quarters/weeks; local Rust bucket
 calculation would duplicate planner logic. Doris DATE_TRUNC directly supports B0.
 
