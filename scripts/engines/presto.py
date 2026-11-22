@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute existing aggregate and text-filter Presto goldens against a prepared fixture."""
+"""Execute aggregate, text-filter and Tokyo day Presto goldens against a prepared fixture."""
 import argparse
 from contextlib import contextmanager
 import http.client
@@ -18,13 +18,16 @@ ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT = ROOT / 'crates/pp-cube-compile/tests/snapshots/aggregation__one_sum_grouped_by_one_dimension.snap'
 EXPECTED_COLUMNS = ['sales__channel_cd', 'sales__amount']
 EXPECTED_ROWS = [['C1', 30], ['C2', 7]]
+TIME_SNAPSHOT = ROOT / 'crates/pp-cube-compile/tests/snapshots/time__day_granularity_in_tokyo.snap'
+TIME_COLUMNS = ['sales__sold_at_day', 'sales__amount']
+TIME_ROWS = [['2026-10-01 00:00:00.000', 20], ['2026-10-31 00:00:00.000', 7]]
 FILTER_SNAPSHOT = ROOT / 'crates/pp-cube-compile/tests/snapshots/filters__equals_on_a_string_dimension.snap'
 
 
 # Only locally authored, fixed messages may enter public failure evidence.
 SAFE_FAILURES = frozenset({
     'invalid golden header', 'only explicitly empty parameters are supported',
-    'expected one text snapshot parameter', 'expected a SELECT golden', 'HTTP redirects are not supported',
+    'expected one or two text snapshot parameters', 'expected a SELECT golden', 'HTTP redirects are not supported',
     'endpoint must be an HTTP(S) origin without credentials', 'invalid query response',
     'nextUri must remain on the configured origin', 'Presto returned a query error',
     'result columns changed between pages', 'unexpected result size',
@@ -49,14 +52,15 @@ def snapshot_sql(text):
     return sql
 
 
-def text_filter_snapshot(text):
+def text_snapshot(text):
     """Read the one supported snapshot shape; Rust Debug is not a general wire format."""
     body, separator, parameters = text.rpartition('\n-- parameters: ')
-    match = re.fullmatch(r'\[Text\(("(?:[^"\\]|\\.)*")\)\]\s*', parameters)
+    token = r'Text\(("(?:[^"\\]|\\.)*")\)'
+    match = re.fullmatch(r'\[' + token + r'(?:, ' + token + r')?\]\s*', parameters)
     if not separator or not match:
-        raise ValueError('expected one text snapshot parameter')
-    value = json.loads(match.group(1))
-    return snapshot_sql(body + '\n-- parameters: []'), (value,)
+        raise ValueError('expected one or two text snapshot parameters')
+    values = tuple(json.loads(value) for value in match.groups() if value is not None)
+    return snapshot_sql(body + '\n-- parameters: []'), values
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -107,12 +111,12 @@ def execute_query(endpoint, sql, timeout, parameters=()):
                'Content-Type': 'text/plain; charset=utf-8'}
     url = endpoint.rstrip('/') + '/v1/statement'
     if parameters:
-        if len(parameters) != 1 or not isinstance(parameters[0], str) or '\x00' in parameters[0]:
-            raise ValueError('expected one text snapshot parameter')
+        if len(parameters) not in (1, 2) or any(not isinstance(value, str) or '\x00' in value for value in parameters):
+            raise ValueError('expected one or two text snapshot parameters')
         headers['X-Presto-Prepared-Statement'] = 'cube_smoke=' + urllib.parse.quote_plus(sql, safe='')
         # EXECUTE USING accepts SQL expressions. Quote a text literal, retaining
         # the original golden and its placeholder in the prepared statement.
-        sql = "EXECUTE cube_smoke USING '" + parameters[0].replace("'", "''") + "'"
+        sql = "EXECUTE cube_smoke USING " + ", ".join("'" + value.replace("'", "''") + "'" for value in parameters)
     body = sql.encode('utf-8')
     rows, columns = [], None
     pending = None
@@ -170,9 +174,13 @@ def verify(endpoint, timeout=30):
 
 def verify_suite(endpoint, timeout=30):
     verify(endpoint, timeout)
-    sql, parameters = text_filter_snapshot(FILTER_SNAPSHOT.read_text())
+    sql, parameters = text_snapshot(FILTER_SNAPSHOT.read_text())
     columns, rows = execute(endpoint, sql, timeout, parameters)
     if columns != EXPECTED_COLUMNS or rows != [['C1', 30]]:
+        raise ValueError('result differs from the prepared fixture expectation')
+    sql, parameters = text_snapshot(TIME_SNAPSHOT.read_text())
+    columns, rows = execute(endpoint, sql, timeout, parameters)
+    if columns != TIME_COLUMNS or rows != TIME_ROWS:
         raise ValueError('result differs from the prepared fixture expectation')
 
 
@@ -189,7 +197,7 @@ def main():
         # Do not publish endpoint names, SQL, or server-provided messages.
         print('check engines: FAILED — ' + failure_category(error), file=sys.stderr)
         return 1
-    print('check engines: PASSED — Presto grouped sum and text binding goldens, 2 cases; not full T2 acceptance')
+    print('check engines: PASSED — Presto aggregate, text binding and Tokyo day goldens, 3 cases; not full T2 acceptance')
     return 0
 
 

@@ -1,151 +1,102 @@
-# Presto execution smoke test
+# Presto execution smoke suite
 
-## Scope and design
+## Scope
 
-The harness executes two unchanged existing goldens on Presto 0.293: grouped sum
-and equality on one string dimension. It checks columns and ordered rows from a
-neutral three-row fixture. This covers basic aggregation and one text parameter;
-it does not establish full B0/T2, temporal execution, other parameter types, other
-dialects or Cube Core conformance. The Rust kernel remains compile-only.
+The harness executes three unchanged Presto 0.293 SQL goldens: grouped sum, one
+string equality binding, and Tokyo day aggregation over an inclusive date range.
+Columns and ordered rows are checked against independently chosen fixture results.
+The kernel remains compile-only; no product, vendor, snapshot or dependency change
+is required. This does not establish full B0/T2, other time granularities, DST,
+other parameter types, other dialects or Cube Core conformance. T1 is not built.
+The verifier reads stored compiler goldens; it does not compile live input.
 
-The standard-library HTTP client bounds each query to 30 seconds, including body
-reads, retries 503, rejects redirects and cross-origin continuation, and attempts
-cancellation. Text binding follows Presto's prepared-statement request header and
-`EXECUTE ... USING`: the golden SQL retains `?`. The prepared SQL is form-URL-encoded
-in `X-Presto-Prepared-Statement`; the text value becomes an apostrophe-escaped SQL
-literal in USING. This is the engine's binding protocol, not placeholder replacement.
+## Run locally
 
-Only the checked-in one-Text snapshot shape is supported. Snapshot parameters are
-Rust Debug output, not a general serialization format: numeric, null, multiple
-parameters and Rust-only string escapes fail closed. The protocol test includes
-apostrophes, SQL-like punctuation and Unicode. Authenticated endpoints and arbitrary
-session mutations remain outside this client.
+With a working Docker daemon and amd64 support/emulation:
 
-## Run
+```sh
+scripts/check.sh ci
+scripts/check.sh engines-container
+```
 
-Use a disposable Presto 0.293 instance with `etc/catalog/memory.properties`:
+The container command pulls a digest-pinned Presto 0.293 amd64 image, provisions
+one uniquely named container with a loopback-only ephemeral port and 2 GiB limit,
+installs the memory catalog, checks the exact runtime build, probes Memory worker
+execution, loads the fixture, runs all three goldens and removes the container.
+Progress lines show each stage without publishing raw server responses.
+
+For an already prepared disposable engine, install this catalog before startup:
 
 ```properties
 connector.name=memory
 ```
 
-Run `scripts/engines/presto-fixture.sql` using the Presto CLI against that instance.
-The fixture creates `memory.dw.sales_dtl`; it intentionally fails if the table
-already exists. Reset the disposable instance before repeating setup. With its
-HTTP origin in `PRESTO_URL`, run:
+Load `scripts/engines/presto-fixture.sql` with the Presto CLI, then run:
 
 ```sh
-scripts/check.sh ci
-scripts/check.sh engines
+PRESTO_URL=http://127.0.0.1:8080 scripts/check.sh engines
 ```
 
-`ci` first establishes that the checked-in golden agrees with the current compiler.
-The runner executes both goldens; the grouped-sum case requires empty parameters.
-The equality case reads its single Text parameter without replacing the placeholder. Headers select memory/dw and UTC. The three
-fixture rows yield `C1,30` then `C2,7`; the equality filter yields only `C1,30`.
-The runner does not create, drop or alter tables. Without PRESTO_URL it exits 2
-(NOT RUN); connection, protocol, SQL and comparison failures exit 1; only matching
-results exit 0. Queries have a 30-second request budget and best-effort cancellation.
+Fixture table creation deliberately fails if the table already exists. Reset the
+engine before repeating setup. Without PRESTO_URL, `engines` exits 2 (NOT RUN);
+protocol/query/result failures exit 1. Only matching columns and rows pass.
 
-A successful command covers two Presto smoke cases only. Record its last line with
-the Git SHA and engine version in PR/CI artifacts. Do not publish endpoint names or
-server responses. No engine test runs implicitly in T0; offline protocol tests run
-there and cannot count as T2 evidence.
+## Assertions and parameter binding
 
-## Tasks and handoff
+The four-row fixture preserves aggregate results C1=30, C2=7 and the equality
+result C1=30. Its UTC timestamps surround the existing Tokyo October range:
 
-- [x] Design an isolated harness slice using an unchanged existing golden.
-- [x] Add the HTTP runner, fixture and check entry point.
-- [x] Cover successful pagination/retry and failure paths with offline tests.
-- [x] Keep missing engine configuration visibly NOT RUN.
-- [ ] Establish exact-head local CI, cross-vendor review and remote t0 via delivery.
+| UTC timestamp | Channel/amount | Tokyo day and inclusion |
+| --- | --- | --- |
+| 2026-09-30 14:59:59.999 | C1/10 | September 30; excluded |
+| 2026-09-30 15:00:00.000 | C1/20 | October 1; included |
+| 2026-10-31 14:59:59.999 | C2/7 | October 31; included |
+| 2026-10-31 15:00:00.000 | C2/0 | November 1; excluded |
 
-The prepared-engine command was introduced in #41. At that point the local Docker
-daemon was unavailable, so real local execution was not run. The container entry
-point below now provisions the engine, and local real execution has passed. Final
-head-bound CI, engine and review evidence belongs in PR comments. Two smoke cases
-do not establish full T1/T2 acceptance. Additional parameter types and temporal
-execution cases remain separately scoped work. Owner reviews and merges.
+The temporal result must be October 1=20, October 31=7. The zero-valued outsider
+keeps earlier totals unchanged but produces an extra November bucket if admitted.
+Session timezone remains UTC; the golden SQL applies Asia/Tokyo explicitly.
 
-## Sources
+Text binding follows the pinned Presto client's prepared-statement header and
+`EXECUTE ... USING`. SQL retains its original `?` placeholders. Prepared SQL is
+form-URL-encoded in `X-Presto-Prepared-Statement`; values become apostrophe-escaped
+text literals in USING. Placeholder substitution is never used.
 
-Protocol and memory setup follow the pinned Presto 0.293 official documentation:
+Only one or two Text parameters in the checked-in Rust Debug snapshot shape are
+supported. Numeric, null, three or more parameters, mixed types and Rust-only
+string escapes fail closed. This is not a general Debug parser. Offline protocol
+regressions cover encoding, quoting, Unicode, parameter order and result failures.
 
-- https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphinx/develop/client-protocol.rst
-- https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphinx/connector/memory.rst
+## Bounds, cleanup and delivery
 
-## Reproducible container entry point
+Each HTTP query has a 30-second POSIX wall-clock deadline including body reads,
+503 retries, and best-effort cancellation. Redirects, cross-origin continuation,
+query errors, changing columns and excessive rows fail. Public failures use fixed
+allowlisted diagnostics rather than endpoints or server messages.
 
-`harness/presto-container` adds `scripts/check.sh engines-container`. On a Docker
-host it pulls the Presto 0.293 linux/amd64 manifest pinned by digest, creates one
-uniquely named container with a loopback-only ephemeral port and 2 GiB memory,
-installs the memory catalog before startup, checks `SELECT DISTINCT node_version FROM system.runtime.nodes`, loads the
-existing fixture and calls the existing golden verifier. It always attempts to
-remove its unique container after a creation attempt, including on readiness, setup or assertion
-failure. It never removes a pre-existing container. Docker commands have explicit
-timeouts; the readiness loop is bounded. Ordinary Python exceptions are sanitized
-at the CLI boundary. SIGKILL or machine shutdown can prevent cleanup; abandoned
-containers can be identified by their `cube-presto-` prefix.
+Docker commands have explicit timeouts. Version readiness uses runtime.nodes,
+because this build rejects version(). The pinned image reports 0.293-2f48ff6.
+Memory worker readiness uses a bounded CTAS probe; only known no-nodes errors are
+retried. Each attempt has a distinct table to isolate partial outcomes. The
+successful probe is dropped and all remaining state disappears with the container.
+Cleanup is attempted after any create attempt, even a timeout. Ordinary cleanup
+failure fails the run. SIGKILL or shutdown can leave an owned cube-presto- container
+requiring manual removal; pre-existing containers are never removed.
 
-The separate `presto-engine` workflow runs this command for relevant pull requests
-and manual dispatches, with read-only repository permissions and no credentials
-passed to the engine. The Actions job log and summary record the SHA and final
-smoke line. A pull-request run tests GitHub's merge commit; use its recorded SHA
-alongside the PR head and t0 evidence. It does not replace t0 or expand the smoke
-case into full T2 acceptance. No kernel, snapshot or dependency change is included.
+`scripts/dev deliver` runs local CI, real local Docker smoke, cross-vendor review
+and remote t0 before Ready. Every repair round repeats both local checks. Engine
+failure stops before review; remote success cannot replace local proof. T0 remains
+Docker-free. The separate presto-engine CI runs the real suite on relevant PRs.
+Its log/summary records the tested merge SHA and final smoke line. Evidence binds
+to the PR head and recorded merge SHA in comments/Actions, not evidence-only commits.
+The owner approves and merges.
 
-Design choice: one standard-library lifecycle runner reuses the HTTP verifier;
-manual setup remains available, while multi-engine Compose orchestration is deferred.
-The fixed amd64 manifest also runs on arm hosts only when Docker emulation is
-available. Source for image layout, CLI path and memory sizing:
-https://github.com/prestodb/presto/tree/0.293/docker
+## Sources and handoffs
 
-Container tasks are implemented: pinned provisioning, readiness/version check,
-fixture setup, golden verification, cleanup, offline regressions and CI. Local and remote
-real engine execution have both passed. The local Docker daemon is now available;
-the first local run completed fixture loading, golden verification and cleanup.
-Current delivery evidence binds to the head SHA in PR comments and Actions.
-
-Two readiness defects were diagnosed with controlled remote evidence: this engine
-rejects `version()` as unregistered, so the probe reads `node_version` from
-`system.runtime.nodes`; the pinned manifest reports `0.293-2f48ff6`, not `0.293`.
-The runner now requires that exact build identity. A lifecycle regression reproduces
-the real version string and rejects other versions before fixture setup. Fixed
-stage and allowlisted error diagnostics distinguish subsequent execution failures.
-Sources: https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphinx/connector/system.rst
-
-See [presto-container-notes.md](presto-container-notes.md) for the repair handoff.
-Owner reviews and merges after final evidence and cross-vendor delivery.
-
-## Local delivery prerequisite
-
-The owner requires local Docker execution before review and merge. The delivery
-controller runs `ci`, then `engines-container`, then cross-vendor review and the
-remote t0 gate. Every repair round repeats both local checks. Docker unavailability
-or a failing engine smoke stops delivery; remote success cannot replace local proof.
-Run `scripts/check.sh engines-container` directly to reproduce. Fixed progress lines
-show image pull, startup, readiness, fixture, SQL execution and cleanup without raw
-server output. The ordinary `ci` command remains Docker-free for the separate T0 job.
-This is a real-engine integration smoke suite (two stored goldens), not a new
-model-to-execution end-to-end suite.
-
-Memory readiness must exercise execution: the version query can pass before worker
-nodes are advertised. Before loading the fixture, the runner performs a bounded
-Memory CTAS probe (`SELECT 1`), retrying only the fixed no-nodes errors. Every attempt
-uses a different probe table to isolate partial CTAS outcomes; the successful probe
-is dropped and all remaining state disappears with the disposable container.
-Other errors and timeouts fail immediately. This preserves the fixture and golden
-assertions. Source for Memory creation and worker lookup:
-https://github.com/prestodb/presto/blob/0.293/presto-memory/src/main/java/com/facebook/presto/plugin/memory/MemoryMetadata.java
-
-## Parameter-binding design and sources
-
-The fixture now uses C1/C2 channel values so the unchanged string-equality golden's
-`Text("C1")` selects two rows totaling 30 and excludes a row totaling 7. Both direct
-and container commands execute the same suite. Existing aggregate semantics and
-SQL snapshots are unchanged. See [presto-parameters.md](presto-parameters.md).
-
-The prepared-header form encoding follows the pinned official client implementation:
-https://github.com/prestodb/presto/blob/0.293/presto-client/src/main/java/com/facebook/presto/client/StatementClientV1.java
-Protocol documentation:
-https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphinx/develop/client-protocol.rst
+- Protocol: https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphinx/develop/client-protocol.rst
+- Header encoding: https://github.com/prestodb/presto/blob/0.293/presto-client/src/main/java/com/facebook/presto/client/StatementClientV1.java
+- Memory worker lookup: https://github.com/prestodb/presto/blob/0.293/presto-memory/src/main/java/com/facebook/presto/plugin/memory/MemoryMetadata.java
+- Image layout/heap: https://github.com/prestodb/presto/tree/0.293/docker
+- Current design/tasks: [presto-time.md](presto-time.md).
+- Historical handoffs: [presto-container-notes.md](presto-container-notes.md) and
+  [presto-parameters.md](presto-parameters.md); their final evidence is in merged PRs #42/#43.
