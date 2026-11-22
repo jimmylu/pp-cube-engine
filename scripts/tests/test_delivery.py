@@ -65,7 +65,7 @@ class DeliveryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'budget exhausted'):
                 dev.deliver(0)
             git.assert_any_call('commit', '-m', 'fix: resume pending delivery changes')
-            self.assertEqual([call.args for call in check.call_args_list], [('fast',), ('ci',), ('engines-container',)])
+            self.assertEqual([call.args for call in check.call_args_list], [('fast',), ('ci',), ('engines-container',), ('doris-container',)])
 
     def test_scope_rejects_product_edit_on_harness_branch(self):
         with patch.object(dev, 'git', side_effect=['crates/model.rs', '']):
@@ -103,6 +103,20 @@ class DeliveryTests(unittest.TestCase):
             runner.assert_not_called()
             model.assert_not_called()
             self.assertFalse((dev.state / 'evidence.md').exists())
+
+    def test_doris_failure_blocks_review_and_ready(self):
+        def fail_doris(mode):
+            if mode == 'doris-container':
+                raise subprocess.CalledProcessError(1, ['check', mode])
+        with patch.object(dev, 'publish'), \
+             patch.object(dev, 'binding', return_value={'head': 'a'}), \
+             patch.object(dev, 'check', side_effect=fail_doris), \
+             patch.object(dev, 'review') as review, \
+             patch.object(dev, 'run') as runner:
+            with self.assertRaises(subprocess.CalledProcessError):
+                dev.deliver(0)
+            review.assert_not_called()
+            runner.assert_not_called()
 
     def test_pending_snapshot_blocks_checkpoint(self):
         with patch.object(dev, 'git', side_effect=['crates/a.snap.new', '']):
@@ -153,7 +167,7 @@ class DeliveryTests(unittest.TestCase):
 
         def review_after_local_checks():
             self.assertEqual([call.args[0] for call in check.call_args_list],
-                             ['ci', 'engines-container'])
+                             ['ci', 'engines-container', 'doris-container'])
             return {'findings': [], 'reviewer': 'other/model'}
 
         with patch.object(dev, 'publish'), \
