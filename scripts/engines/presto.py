@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Execute one existing parameter-free Presto golden against a prepared fixture."""
+"""Execute existing aggregate and text-filter Presto goldens against a prepared fixture."""
 import argparse
 from contextlib import contextmanager
 import http.client
 import signal
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import time
@@ -16,7 +17,8 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT = ROOT / 'crates/pp-cube-compile/tests/snapshots/aggregation__one_sum_grouped_by_one_dimension.snap'
 EXPECTED_COLUMNS = ['sales__channel_cd', 'sales__amount']
-EXPECTED_ROWS = [['web', 30], ['store', 7]]
+EXPECTED_ROWS = [['C1', 30], ['C2', 7]]
+FILTER_SNAPSHOT = ROOT / 'crates/pp-cube-compile/tests/snapshots/filters__equals_on_a_string_dimension.snap'
 
 
 # Only locally authored, fixed messages may enter public failure evidence.
@@ -45,6 +47,16 @@ def snapshot_sql(text):
     if not sql.lstrip().startswith('SELECT '):
         raise ValueError('expected a SELECT golden')
     return sql
+
+
+def text_filter_snapshot(text):
+    """Read the one supported snapshot shape; Rust Debug is not a general wire format."""
+    body, separator, parameters = text.rpartition('\n-- parameters: ')
+    match = re.fullmatch(r'\[Text\(("(?:[^"\\]|\\.)*")\)\]\s*', parameters)
+    if not separator or not match:
+        raise ValueError('expected one text snapshot parameter')
+    value = json.loads(match.group(1))
+    return snapshot_sql(body + '\n-- parameters: []'), (value,)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -76,12 +88,12 @@ def deadline(seconds):
                              previous_timer[1])
 
 
-def execute(endpoint, sql, timeout=30):
+def execute(endpoint, sql, timeout=30, parameters=()):
     with deadline(timeout):
-        return execute_query(endpoint, sql, timeout)
+        return execute_query(endpoint, sql, timeout, parameters)
 
 
-def execute_query(endpoint, sql, timeout):
+def execute_query(endpoint, sql, timeout, parameters=()):
     """A bounded, single-statement client; no session mutation or authentication."""
     origin = urllib.parse.urlsplit(endpoint)
     if (origin.scheme not in ('http', 'https') or not origin.hostname
@@ -94,6 +106,13 @@ def execute_query(endpoint, sql, timeout):
                'X-Presto-Schema': 'dw', 'X-Presto-Time-Zone': 'UTC',
                'Content-Type': 'text/plain; charset=utf-8'}
     url = endpoint.rstrip('/') + '/v1/statement'
+    if parameters:
+        if len(parameters) != 1 or not isinstance(parameters[0], str) or '\x00' in parameters[0]:
+            raise ValueError('expected one text snapshot parameter')
+        headers['X-Presto-Prepared-Statement'] = 'cube_smoke=' + urllib.parse.quote_plus(sql, safe='')
+        # EXECUTE USING accepts SQL expressions. Quote a text literal, retaining
+        # the original golden and its placeholder in the prepared statement.
+        sql = "EXECUTE cube_smoke USING '" + parameters[0].replace("'", "''") + "'"
     body = sql.encode('utf-8')
     rows, columns = [], None
     pending = None
@@ -149,6 +168,14 @@ def verify(endpoint, timeout=30):
         raise ValueError('result differs from the prepared fixture expectation')
 
 
+def verify_suite(endpoint, timeout=30):
+    verify(endpoint, timeout)
+    sql, parameters = text_filter_snapshot(FILTER_SNAPSHOT.read_text())
+    columns, rows = execute(endpoint, sql, timeout, parameters)
+    if columns != EXPECTED_COLUMNS or rows != [['C1', 30]]:
+        raise ValueError('result differs from the prepared fixture expectation')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--endpoint', default=os.environ.get('PRESTO_URL'))
@@ -157,12 +184,12 @@ def main():
         print('check engines: NOT RUN — set PRESTO_URL; see docs/agents/engines.md', file=sys.stderr)
         return 2
     try:
-        verify(args.endpoint)
+        verify_suite(args.endpoint)
     except (OSError, ValueError, KeyError, TypeError, http.client.HTTPException) as error:
         # Do not publish endpoint names, SQL, or server-provided messages.
         print('check engines: FAILED — ' + failure_category(error), file=sys.stderr)
         return 1
-    print('check engines: PASSED — Presto grouped sum golden, 1 case; not full T2 acceptance')
+    print('check engines: PASSED — Presto grouped sum and text binding goldens, 2 cases; not full T2 acceptance')
     return 0
 
 

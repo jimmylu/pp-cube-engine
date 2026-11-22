@@ -2,27 +2,24 @@
 
 ## Scope and design
 
-Branch `harness/presto-execution` adds the first T2 entry point. Execute the existing
-`aggregation__one_sum_grouped_by_one_dimension.snap` SQL unchanged against a
-prepared Presto instance; assert column names and ordered rows from independently
-chosen fixture data. This catches SQL syntax, catalog binding and grouped-sum
-execution mistakes. It does not establish full B0, other dialects, parameter binding,
-timezone, security or Cube Core conformance. The Rust kernel remains compile-only.
-No product code, snapshot or dependency changes belong in this PR.
+The harness executes two unchanged existing goldens on Presto 0.293: grouped sum
+and equality on one string dimension. It checks columns and ordered rows from a
+neutral three-row fixture. This covers basic aggregation and one text parameter;
+it does not establish full B0/T2, temporal execution, other parameter types, other
+dialects or Cube Core conformance. The Rust kernel remains compile-only.
 
-A full container orchestrator and Cube Core comparison are larger independent
-steps. This slice uses Python's standard library HTTP client and an explicitly
-provided disposable engine on POSIX (Linux/macOS), whose signal timer enforces the
-wall-clock bound. HTTP pagination, 503 retries, a total request deadline,
-query errors, cancellation and result mismatches have offline HTTP regressions.
-Review repairs cover slow-body wall deadlines, sanitized HTTP protocol failures,
-cancellation preserving the original error, and redirects with Location headers.
-The redirect assertion requires the explicit refusal error and exactly one request;
-a failed request after following a redirect cannot pass it.
-The slow-body test streams bytes within the socket timeout so it tests the total
-deadline rather than racing the socket timeout on Python 3.9.
-Redirects and cross-origin continuation URLs fail. Session-mutating SQL and
-authenticated endpoints are outside this small client's scope.
+The standard-library HTTP client bounds each query to 30 seconds, including body
+reads, retries 503, rejects redirects and cross-origin continuation, and attempts
+cancellation. Text binding follows Presto's prepared-statement request header and
+`EXECUTE ... USING`: the golden SQL retains `?`. The prepared SQL is form-URL-encoded
+in `X-Presto-Prepared-Statement`; the text value becomes an apostrophe-escaped SQL
+literal in USING. This is the engine's binding protocol, not placeholder replacement.
+
+Only the checked-in one-Text snapshot shape is supported. Snapshot parameters are
+Rust Debug output, not a general serialization format: numeric, null, multiple
+parameters and Rust-only string escapes fail closed. The protocol test includes
+apostrophes, SQL-like punctuation and Unicode. Authenticated endpoints and arbitrary
+session mutations remain outside this client.
 
 ## Run
 
@@ -43,14 +40,14 @@ scripts/check.sh engines
 ```
 
 `ci` first establishes that the checked-in golden agrees with the current compiler.
-The runner executes that golden, requiring explicitly empty parameters. It does
-not interpolate values or rewrite SQL. Headers select memory/dw and UTC. The three
-fixture rows yield `web,30` then `store,7`, including the golden's descending order.
+The runner executes both goldens; the grouped-sum case requires empty parameters.
+The equality case reads its single Text parameter without replacing the placeholder. Headers select memory/dw and UTC. The three
+fixture rows yield `C1,30` then `C2,7`; the equality filter yields only `C1,30`.
 The runner does not create, drop or alter tables. Without PRESTO_URL it exits 2
 (NOT RUN); connection, protocol, SQL and comparison failures exit 1; only matching
 results exit 0. Queries have a 30-second request budget and best-effort cancellation.
 
-A successful command covers one Presto smoke case only. Record its last line with
+A successful command covers two Presto smoke cases only. Record its last line with
 the Git SHA and engine version in PR/CI artifacts. Do not publish endpoint names or
 server responses. No engine test runs implicitly in T0; offline protocol tests run
 there and cannot count as T2 evidence.
@@ -129,7 +126,7 @@ or a failing engine smoke stops delivery; remote success cannot replace local pr
 Run `scripts/check.sh engines-container` directly to reproduce. Fixed progress lines
 show image pull, startup, readiness, fixture, SQL execution and cleanup without raw
 server output. The ordinary `ci` command remains Docker-free for the separate T0 job.
-This is the same real-engine integration smoke (one stored golden), not a new
+This is a real-engine integration smoke suite (two stored goldens), not a new
 model-to-execution end-to-end suite.
 
 Memory readiness must exercise execution: the version query can pass before worker
@@ -140,3 +137,15 @@ is dropped and all remaining state disappears with the disposable container.
 Other errors and timeouts fail immediately. This preserves the fixture and golden
 assertions. Source for Memory creation and worker lookup:
 https://github.com/prestodb/presto/blob/0.293/presto-memory/src/main/java/com/facebook/presto/plugin/memory/MemoryMetadata.java
+
+## Parameter-binding design and sources
+
+The fixture now uses C1/C2 channel values so the unchanged string-equality golden's
+`Text("C1")` selects two rows totaling 30 and excludes a row totaling 7. Both direct
+and container commands execute the same suite. Existing aggregate semantics and
+SQL snapshots are unchanged. See [presto-parameters.md](presto-parameters.md).
+
+The prepared-header form encoding follows the pinned official client implementation:
+https://github.com/prestodb/presto/blob/0.293/presto-client/src/main/java/com/facebook/presto/client/StatementClientV1.java
+Protocol documentation:
+https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphinx/develop/client-protocol.rst

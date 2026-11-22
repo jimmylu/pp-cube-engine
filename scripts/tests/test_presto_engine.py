@@ -65,10 +65,39 @@ def result(rows):
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_suite_executes_both_real_golden_requests_and_checks_filtered_rows(self):
+        pages = [(200, result(presto.EXPECTED_ROWS)), (200, result([['C1', 30]]))]
+        with server(pages) as (origin, requests):
+            presto.verify_suite(origin)
+        self.assertEqual(len(requests), 2)
+        sql, params = presto.text_filter_snapshot(presto.FILTER_SNAPSHOT.read_text())
+        self.assertEqual(params, ('C1',))
+        self.assertIn(' = ?', sql)
+        self.assertEqual(requests[1][2], b"EXECUTE cube_smoke USING 'C1'")
+        with server([(200, result(presto.EXPECTED_ROWS)),
+                     (200, result([['C2', 7]]))]) as (origin, _):
+            with self.assertRaisesRegex(ValueError, 'result differs'):
+                presto.verify_suite(origin)
+
+    def test_unsupported_parameter_shapes_fail_before_http(self):
+        for value in ('[]', '[Int(1)]', '[Text("a"), Text("b")]', '[Text(bad)]'):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                presto.text_filter_snapshot('---\nsource: test\n---\nSELECT ?\n-- parameters: ' + value)
+
+    def test_text_binding_uses_prepared_header_without_replacing_placeholders(self):
+        sql = "SELECT ? AS value"
+        value = "C1' OR 'x'='x; -- café"
+        with server([(200, result([[value, 30]]))]) as (origin, requests):
+            presto.execute(origin, sql, parameters=(value,))
+        self.assertEqual(requests[0][2].decode(),
+                         "EXECUTE cube_smoke USING 'C1'' OR ''x''=''x; -- café'")
+        header = requests[0][3]['X-Presto-Prepared-Statement']
+        self.assertEqual(presto.urllib.parse.unquote_plus(header.split('=', 1)[1]), sql)
+
     def test_pages_and_busy_retry_execute_exact_golden(self):
         pages = [(503, {}), (200, {'nextUri': 'ORIGIN/v1/statement/next'}),
-                 (200, dict(result([['web', 30]]), nextUri='ORIGIN/v1/statement/last')),
-                 (200, result([['store', 7]]))]
+                 (200, dict(result([['C1', 30]]), nextUri='ORIGIN/v1/statement/last')),
+                 (200, result([['C2', 7]]))]
         with server(pages) as (origin, requests):
             presto.verify(origin)
         self.assertEqual([r[0] for r in requests], ['POST', 'POST', 'GET', 'GET'])
@@ -78,8 +107,8 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(pages, [])
 
     def test_wrong_rows_columns_and_missing_results_fail(self):
-        for payload in [result([['web', 31], ['store', 7]]),
-                        {'columns': [{'name': 'wrong'}], 'data': [['web', 30], ['store', 7]]},
+        for payload in [result([['C1', 31], ['C2', 7]]),
+                        {'columns': [{'name': 'wrong'}], 'data': [['C1', 30], ['C2', 7]]},
                         {}]:
             with self.subTest(payload=payload), server([(200, payload)]) as (origin, _):
                 with self.assertRaisesRegex(ValueError, 'result differs'):
