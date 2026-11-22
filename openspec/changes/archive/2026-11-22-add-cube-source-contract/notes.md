@@ -10,3 +10,6 @@ Verification complete: both focused model tests pass; full model tests are inclu
 OpenSpec verification: all three tasks complete; B0-MODEL-002 is exercised by one test covering all four failure cases in both encodings. B0-MODEL-006 is exercised by one test covering all accepted fields with each source, field preservation, both round trips and unknown-field rejection. No critical findings or warnings. Each matrix scenario has complete coverage in a single test, following the seed rule.
 
 Sync/archive the implemented requirement into existing contract-model specs before final review. Immutable bundles remain proposed in the seed. Final exact-head CI, omp/Opus review and remote t0 are pending publication and will be recorded in PR comments. Owner approves and merges. No known blocker; T1/T2 not run.
+
+
+Review repair: Opus found that empty collection inputs cannot prove preservation because serde defaults also yield empty lists. Populated joins, dimensions, measures and segments, adding a valid target cube and primary keys at both ends. Field-preservation assertions recursively compare every supplied value and collection length, allowing only extra serialized defaults. Typed JSON/YAML round trips still compare complete models. Focused tests pass after this correction; final-head CI/review remains pending. No runtime or scope change.
