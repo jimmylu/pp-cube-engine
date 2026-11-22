@@ -63,12 +63,12 @@ there and cannot count as T2 evidence.
 - [x] Keep missing engine configuration visibly NOT RUN.
 - [ ] Establish exact-head local CI, cross-vendor review and remote t0 via delivery.
 
-Implementation is ready for checkpoint; delivery evidence belongs in PR comments,
-without evidence-only commits. Docker CLI is installed in this workspace but the
-daemon is unavailable, so real Presto execution is NOT RUN. No T1/T2 acceptance is
-claimed. Owner reviews and merges; no product change or baseline expansion is needed.
-Next: run this smoke case on a prepared engine, then add parameterized and temporal
-cases and reproducible engine provisioning in separately scoped changes.
+The prepared-engine command was introduced in #41. At that point the local Docker
+daemon was unavailable, so real local execution was not run. The container entry
+point below now provisions the engine, and local real execution has passed. Final
+head-bound CI, engine and review evidence belongs in PR comments. One smoke case
+does not establish full T1/T2 acceptance. Parameterized and temporal execution
+cases remain separately scoped work. Owner reviews and merges.
 
 ## Sources
 
