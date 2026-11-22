@@ -31,7 +31,7 @@ The following existing tests supply the matrix; names below are in `crates/pp-cu
 | Absolute closed range | time: october_is_closed_at_its_first_and_its_last_millisecond |
 | Five granularities in UTC | time: each_granularity_truncates_the_time_dimension_in_the_timezone |
 | Context timezone and query precedence | time: query_timezone_wins_over_the_one_of_the_context |
-| Five granularities outside UTC | time: new per-granularity golden cases |
+| Five granularities outside UTC | time: day_granularity_in_tokyo, week_granularity_in_tokyo, month_granularity_in_tokyo, quarter_granularity_in_tokyo, year_granularity_in_tokyo |
 
 Duplicating the matrix in a standalone integration binary would duplicate fixtures and lose automatic coverage when feature tests evolve. Building T1/T2 now would require separate infrastructure and harness scope. Keep the existing tests and add only the missing inputs.
 
