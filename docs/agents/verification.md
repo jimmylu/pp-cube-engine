@@ -9,7 +9,10 @@
 | T2 | `scripts/check.sh engines`: generated SQL on Presto, Doris, Druid containers | On demand | Milestone |
 | T3 | Generated SQL on real clusters, run by a person | Outside this repository | Milestone acceptance |
 
-T1 and T2 are not built yet; the script says so and exits with status 2. Results from T3 are recorded publicly only as pass or fail per scenario.
+T1 is not built yet and exits 2. T2 has one Presto grouped-sum smoke case; see
+[engines.md](engines.md) for fixture setup and limits. It exits 2 without PRESTO_URL,
+not a passing or complete T2 result. Doris and Druid execution are not built.
+Results from T3 are recorded publicly only as pass or fail per scenario.
 
 ## Tools
 
