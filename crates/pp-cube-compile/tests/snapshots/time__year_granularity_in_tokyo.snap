@@ -1,6 +1,6 @@
 ---
 source: crates/pp-cube-compile/tests/time.rs
-expression: "compiled(\"Asia/Tokyo\",\nr#\"\"timeDimensions\": [{\n             \"dimension\": \"sales.sold_at\",\n             \"granularity\": \"year\",\n             \"dateRange\": [\"2026-10-01\", \"2026-10-31\"]\n           }]\"#)"
+expression: "compiled(\"Asia/Tokyo\", &query)"
 ---
 SELECT date_trunc('year', CAST(date_add('minute', timezone_minute(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'Asia/Tokyo'), date_add('hour', timezone_hour(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'Asia/Tokyo'), COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP)) "sales__sold_at_year", sum("sales".amount) "sales__amount"  
 FROM  dw.sales_dtl  AS "sales"
