@@ -128,3 +128,9 @@ B0-API-001/002/003 move to add-versioned-service-api. Network transport and work
 
 ## Network transfer
 Complete Network service transport and B0-API-004 move to add-grpc-service. The emptied service-api seed delta is deleted.
+
+## Doris temporal execution acceptance
+B0-DORIS-010 remains proposed here after add-doris-time-queries implements and
+locally executes the temporal feature. A separate harness change must integrate
+its live-compiled test into the defined execution layer/tier before formal T2
+acceptance. Product PR #58 does not archive this execution requirement.

@@ -13,3 +13,7 @@ product tests and does not alter harness paths. Assert UTC boundary exclusion,
 Tokyo buckets, DST and security OR conjunction. The kernel remains compile-only.
 Doris documentation: https://doris.apache.org/docs/4.x/sql-manual/sql-functions/scalar-functions/date-time-functions/date-trunc/
 https://doris.apache.org/docs/4.x/sql-manual/sql-functions/scalar-functions/date-time-functions/convert-tz/
+
+Formal T2 acceptance B0-DORIS-010 is retained in the active seed delta, pending
+execution-layer placement and integration of a defined tier in a harness PR.
+The opt-in test provides real local execution evidence for this product PR.

@@ -40,6 +40,3 @@ Doris SHALL compile time dimensions, day/week/month/quarter/year grouping and al
 #### Scenario: B0-DORIS-009 Temporal SQL
 - **WHEN** each B0 granularity and date operator compiles for Doris with a non-UTC timezone
 - **THEN** SQL equals its reviewed golden and bounds remain ordered bound parameters
-#### Scenario: B0-DORIS-010 Temporal execution smoke (T2)
-- **WHEN** compiled temporal queries execute on a real local Doris fixture
-- **THEN** calendar buckets, millisecond boundary inclusion and security restrictions equal independently chosen expected results
