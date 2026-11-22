@@ -4,9 +4,12 @@
 //! templates, followed by the parameters in placeholder order. Nobody has
 //! executed them; execution belongs to tiers T1 and T2.
 
+mod support;
+use support::compile;
+
 use std::sync::Arc;
 
-use pp_cube_compile::{compile, CompileContext, CompileError, Compiled, DialectId};
+use pp_cube_compile::{CompileContext, CompileError, Compiled, DialectId};
 use pp_cube_model::{load_query, load_yaml};
 
 fn compile_presto(query: &str) -> Result<Compiled, CompileError> {
@@ -37,6 +40,7 @@ fn query_failure(rest: &str) -> String {
     }
 }
 
+// scenario: B0-DET-001
 #[test]
 fn equals_on_a_string_dimension() {
     insta::assert_snapshot!(compiled(
@@ -45,6 +49,7 @@ fn equals_on_a_string_dimension() {
 }
 
 // scenario: B0-QUERY-006
+// scenario: B0-DET-001
 #[test]
 fn equality_and_presence_operators() {
     insta::assert_snapshot!(compiled(
@@ -59,6 +64,7 @@ fn equality_and_presence_operators() {
 }
 
 // scenario: B0-QUERY-006
+// scenario: B0-DET-001
 #[test]
 fn string_operators_escape_the_pattern_characters_of_their_values() {
     insta::assert_snapshot!(compiled(
@@ -74,6 +80,7 @@ fn string_operators_escape_the_pattern_characters_of_their_values() {
 }
 
 // scenario: B0-QUERY-006
+// scenario: B0-DET-001
 #[test]
 fn comparison_operators_on_a_number_dimension() {
     insta::assert_snapshot!(compiled(
@@ -87,6 +94,7 @@ fn comparison_operators_on_a_number_dimension() {
 }
 
 // scenario: B0-QUERY-006
+// scenario: B0-DET-001
 #[test]
 fn filters_on_measures_restrict_groups() {
     insta::assert_snapshot!(compiled(
@@ -99,6 +107,7 @@ fn filters_on_measures_restrict_groups() {
 }
 
 // scenario: B0-QUERY-005
+// scenario: B0-DET-001
 #[test]
 fn top_level_filters_are_joined_with_and_and_groups_keep_their_nesting() {
     insta::assert_snapshot!(compiled(
@@ -116,6 +125,7 @@ fn top_level_filters_are_joined_with_and_and_groups_keep_their_nesting() {
 }
 
 // scenario: B0-QUERY-007
+// scenario: B0-DET-001
 #[test]
 fn segment_order_limit_and_offset() {
     insta::assert_snapshot!(compiled(
@@ -126,6 +136,7 @@ fn segment_order_limit_and_offset() {
     ));
 }
 
+// scenario: B0-DET-001
 #[test]
 fn order_written_empty_turns_the_default_order_off() {
     let ordered = |rest: &str| compiled(rest).contains("ORDER BY");
