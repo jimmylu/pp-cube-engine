@@ -99,10 +99,13 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(len(requests), 1)
 
     def test_no_redirect_or_http_error_is_success(self):
-        for status in [302, 500]:
-            with self.subTest(status=status), server([(status, {})]) as (origin, _):
-                with self.assertRaises((OSError, ValueError)):
-                    presto.verify(origin)
+        with server([(302, {})]) as (origin, requests):
+            with self.assertRaisesRegex(ValueError, 'redirects are not supported'):
+                presto.verify(origin)
+        self.assertEqual(len(requests), 1)
+        with server([(500, {})]) as (origin, _):
+            with self.assertRaises(OSError):
+                presto.verify(origin)
 
     def test_slow_body_is_interrupted_by_wall_deadline(self):
         class SlowHandler(BaseHTTPRequestHandler):
