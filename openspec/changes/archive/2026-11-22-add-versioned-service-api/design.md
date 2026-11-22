@@ -1,0 +1,7 @@
+## Decisions
+CubeService owns a private ModelCatalog. register validates a complete ModelBundle before registration, with exclusive writes. compile accepts an exact version, typed Query and CompileContext, delegates unchanged to the facade and wraps errors without SQL. validate_model exposes existing structured validation without registration. get_meta projects public cubes and members into dedicated DTOs containing names, types, title and description, excluding SQL, sources, joins, segments and opaque meta. Missing public flags mean public; false hides the cube and all children. Original order is preserved.
+
+Typed synchronous calls are an independently useful service core; combining gRPC and runtime dispatch would add unrelated protocol and deployment decisions. The executable remains a placeholder. Network transport and worker pool are explicitly deferred. Metadata visibility is discovery only, not query authorization. Consumers supply trusted security filters to compile. Errors preserve BundleError or CompileError categories.
+
+## Validation
+Tests at the public CubeService boundary cover B0-API-001/002/003. Compare complete compile results with direct facade calls using nondefault context and restrictive filters, verify an OR cannot weaken the security filter and malformed security fails. Validate invalid models without changing availability. Check metadata projection and exact version lookup. No snapshots change. Final CI, real local Presto Docker smoke and cross-vendor review are required.

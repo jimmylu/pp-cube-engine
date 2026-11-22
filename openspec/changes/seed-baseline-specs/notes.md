@@ -122,3 +122,6 @@ left the new gate run queued behind the old one. Finish every commit before open
 
 ## Bundle requirement transfer
 The complete immutable model bundle requirement and B0-MODEL-003 move to add-versioned-model-bundles. This empties the contract-model delta, which is removed; existing main model requirements are unaffected.
+
+## Service core transfer
+B0-API-001/002/003 move to add-versioned-service-api. Network transport and worker dispatch remain proposed as B0-API-004; no gRPC acceptance is claimed.
