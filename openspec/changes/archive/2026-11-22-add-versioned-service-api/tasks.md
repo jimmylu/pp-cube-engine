@@ -4,4 +4,4 @@
 - [x] 3. Run focused/fast checks, sync/archive implemented specs and prepare delivery (under two hours).
 
 ## Delivery follow-up
-- [ ] 4. After independent harness issue #47 is resolved, rerun exact-head CI, real local Docker smoke and cross-vendor review; deliver through Ready.
+- [x] 4. Resolve independent harness issue #47 and resume final-head delivery using the merged controller; SHA-bound acceptance is recorded in PR comments.

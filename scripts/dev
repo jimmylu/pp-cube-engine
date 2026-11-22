@@ -141,7 +141,7 @@ def binding():
             'head': sha, 'branch': branch}
 
 
-REVIEW_PROTOCOL = 7
+REVIEW_PROTOCOL = 8
 context_paths = []
 
 
@@ -196,6 +196,18 @@ def source_lines(text):
         return []
     lines = text.split('\n')
     return lines[:-1] if text.endswith('\n') else lines
+
+
+def encode_review_packet(packet):
+    """Lossless LF line prefixes avoid an object and two keys for every line."""
+    numbered = dict(packet, files={path: '\n'.join(
+        f'{n}:{text}' for n, text in enumerate(source_lines(source), 1))
+        + ('\n' if source.endswith('\n') else '')
+        for path, source in packet['files'].items()})
+    encoded = json.dumps(numbered, ensure_ascii=True, separators=(',', ':'))
+    if len(encoded.encode()) > 500_000:
+        raise ValueError('Review context exceeds 500 KB; no truncation')
+    return encoded
 
 
 def validate_review(report, packet, previous):
@@ -275,15 +287,13 @@ def review():
               '"path":"file","line":1,"quote":"exact text on that line"}]}],'
               '"questions":[],"reassessments":[{"index":0,"status":"resolved","reason":"evidence"}]}. '
               'Use empty arrays when appropriate. Evidence revision is base (diff merge-base preimage) or head. '
+              'files maps revision:path to complete text with LF line prefixes N:original text. '
+              'Use N as the citation line and strip only the N: prefix for the quote. '
+              'Prefixes are transport metadata, not source content. '
               'binary_files contains lossless base64 bytes and SHA-256, not source lines. '
               'Do not cite binary blobs as text lines; if you cannot assess their changes, ask a question. '
               'Diff byte escapes are display-only; binary_files is the authoritative non-text content.\n')
-    numbered = dict(packet, files={path: [{'line': n, 'text': text}
-                                         for n, text in enumerate(source_lines(source), 1)]
-                                   for path, source in packet['files'].items()})
-    encoded = json.dumps(numbered, ensure_ascii=True)
-    if len(encoded.encode()) > 500_000:
-        raise ValueError('Review context exceeds 500 KB; no truncation')
+    encoded = encode_review_packet(packet)
     save(state / 'review-packet.json', packet)
     prompt += encoded
     raw = model('reviewer', prompt).strip()
