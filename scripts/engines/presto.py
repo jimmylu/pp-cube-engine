@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Execute one existing parameter-free Presto golden against a prepared fixture."""
 import argparse
+from contextlib import contextmanager
+import http.client
+import signal
 import json
 import os
 from pathlib import Path
@@ -33,14 +36,43 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ValueError('HTTP redirects are not supported')
 
 
+@contextmanager
+def deadline(seconds):
+    """POSIX wall-clock deadline, including slow response-body reads."""
+    if seconds <= 0:
+        raise TimeoutError('Presto query deadline exceeded')
+    started = time.monotonic()
+    previous_handler = signal.getsignal(signal.SIGALRM)
+
+    def expired(signum, frame):
+        raise TimeoutError('Presto query deadline exceeded')
+
+    signal.signal(signal.SIGALRM, expired)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer[0]:
+            signal.setitimer(signal.ITIMER_REAL,
+                             max(0.000001, previous_timer[0] - (time.monotonic() - started)),
+                             previous_timer[1])
+
+
 def execute(endpoint, sql, timeout=30):
+    with deadline(timeout):
+        return execute_query(endpoint, sql, timeout)
+
+
+def execute_query(endpoint, sql, timeout):
     """A bounded, single-statement client; no session mutation or authentication."""
     origin = urllib.parse.urlsplit(endpoint)
     if (origin.scheme not in ('http', 'https') or not origin.hostname
             or origin.username or origin.password or origin.query or origin.fragment
             or origin.path not in ('', '/')):
         raise ValueError('endpoint must be an HTTP(S) origin without credentials')
-    deadline = time.monotonic() + timeout
+    cutoff = time.monotonic() + timeout
     opener = urllib.request.build_opener(NoRedirect)
     headers = {'X-Presto-User': 'cube-engine-test', 'X-Presto-Catalog': 'memory',
                'X-Presto-Schema': 'dw', 'X-Presto-Time-Zone': 'UTC',
@@ -51,7 +83,7 @@ def execute(endpoint, sql, timeout=30):
     pending = None
     try:
         while True:
-            remaining = deadline - time.monotonic()
+            remaining = cutoff - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError('Presto query deadline exceeded')
             request = urllib.request.Request(url, data=body, headers=headers)
@@ -62,7 +94,7 @@ def execute(endpoint, sql, timeout=30):
                 if error.code != 503:
                     raise
                 error.close()
-                time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+                time.sleep(min(0.05, max(0, cutoff - time.monotonic())))
                 continue
             if not isinstance(page, dict):
                 raise ValueError('invalid query response')
@@ -89,9 +121,9 @@ def execute(endpoint, sql, timeout=30):
         if pending:
             try:
                 cancel = urllib.request.Request(pending, headers=headers, method='DELETE')
-                with opener.open(cancel, timeout=1):
+                with deadline(1), opener.open(cancel, timeout=1):
                     pass
-            except (OSError, ValueError):
+            except (OSError, ValueError, http.client.HTTPException):
                 pass
 
 
@@ -110,7 +142,7 @@ def main():
         return 2
     try:
         verify(args.endpoint)
-    except (OSError, ValueError, KeyError, TypeError) as error:
+    except (OSError, ValueError, KeyError, TypeError, http.client.HTTPException) as error:
         # Do not publish endpoint names, SQL, or server-provided messages.
         print('check engines: FAILED — ' + type(error).__name__, file=sys.stderr)
         return 1

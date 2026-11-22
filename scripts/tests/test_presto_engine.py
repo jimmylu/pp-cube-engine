@@ -4,6 +4,11 @@ from pathlib import Path
 import unittest
 import json
 import threading
+import time
+import http.client
+import io
+from unittest.mock import patch
+from contextlib import redirect_stderr
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -34,6 +39,8 @@ def server(pages):
             payload = json.dumps(payload).replace('ORIGIN', origin).encode()
             self.send_response(status)
             self.send_header('Content-Length', str(len(payload)))
+            if status == 302:
+                self.send_header('Location', origin + '/redirected')
             self.end_headers()
             self.wfile.write(payload)
 
@@ -96,6 +103,61 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(status=status), server([(status, {})]) as (origin, _):
                 with self.assertRaises((OSError, ValueError)):
                     presto.verify(origin)
+
+    def test_slow_body_is_interrupted_by_wall_deadline(self):
+        class SlowHandler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):
+                self.send_response(200)
+                self.send_header('Content-Length', '2')
+                self.end_headers()
+                self.wfile.write(b'{')
+                self.wfile.flush()
+                time.sleep(0.3)
+                try:
+                    self.wfile.write(b'}')
+                except OSError:
+                    pass
+
+        httpd = ThreadingHTTPServer(('127.0.0.1', 0), SlowHandler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            started = time.monotonic()
+            with self.assertRaises(TimeoutError):
+                presto.execute('http://127.0.0.1:' + str(httpd.server_port), 'SELECT 1', 0.05)
+            self.assertLess(time.monotonic() - started, 0.25)
+        finally:
+            httpd.shutdown()
+            thread.join()
+            httpd.server_close()
+
+    def test_http_protocol_errors_are_sanitized(self):
+        for error in [http.client.BadStatusLine('private-response'),
+                      http.client.IncompleteRead(b'private-response')]:
+            output = io.StringIO()
+            with patch.object(presto, 'verify', side_effect=error), \
+                    patch('sys.argv', ['presto.py', '--endpoint', 'http://localhost']), \
+                    redirect_stderr(output):
+                self.assertEqual(presto.main(), 1)
+            self.assertNotIn('private-response', output.getvalue())
+            self.assertIn('FAILED', output.getvalue())
+
+    def test_cancel_protocol_failure_preserves_query_error(self):
+        class Response:
+            def __enter__(self):
+                return io.StringIO(json.dumps({'error': {'message': 'bad'},
+                                              'nextUri': 'http://localhost/next'}))
+
+            def __exit__(self, *args):
+                pass
+
+        with patch.object(presto.urllib.request, 'build_opener') as opener:
+            opener.return_value.open.side_effect = [Response(), http.client.BadStatusLine('bad')]
+            with self.assertRaisesRegex(ValueError, 'query error'):
+                presto.execute('http://localhost', 'SELECT 1')
 
     def test_deadline_and_invalid_endpoint_fail(self):
         with self.assertRaises(TimeoutError):

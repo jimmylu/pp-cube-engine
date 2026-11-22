@@ -12,8 +12,11 @@ No product code, snapshot or dependency changes belong in this PR.
 
 A full container orchestrator and Cube Core comparison are larger independent
 steps. This slice uses Python's standard library HTTP client and an explicitly
-provided disposable engine. HTTP pagination, 503 retries, a total request deadline,
+provided disposable engine on POSIX (Linux/macOS), whose signal timer enforces the
+wall-clock bound. HTTP pagination, 503 retries, a total request deadline,
 query errors, cancellation and result mismatches have offline HTTP regressions.
+Review repairs cover slow-body wall deadlines, sanitized HTTP protocol failures,
+cancellation preserving the original error, and redirects with Location headers.
 Redirects and cross-origin continuation URLs fail. Session-mutating SQL and
 authenticated endpoints are outside this small client's scope.
 
