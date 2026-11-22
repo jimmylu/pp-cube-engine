@@ -147,3 +147,10 @@ boundary. Changed paths and trees now use NUL-separated output, with no whitespa
 stripping. Real Git coverage includes non-ASCII, quote, newline and leading-space
 names, including supplemental context lookup. The resumed two original findings
 and LF finding are resolved; path correction awaits final exact-head acceptance.
+
+
+The path regression also includes a raw invalid UTF-8 filename. NUL path lists
+are decoded reversibly with surrogateescape, so subprocess arguments recover the
+original filesystem bytes. The packet JSON uses ASCII escapes to transport these
+path keys without invalid Unicode encoding. Blob bytes remain lossless base64.
+This completes the path handling correction; exact-head acceptance is pending.

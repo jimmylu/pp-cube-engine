@@ -20,8 +20,9 @@ def run(*args, cwd=None, capture=True, input=None, strip=True):
 
 
 def git(*args):
-    if args and args[0] == 'show':
-        return subprocess.run(['git', *args], stdout=subprocess.PIPE, check=True).stdout
+    if args and (args[0] == 'show' or '-z' in args):
+        raw = subprocess.run(['git', *args], stdout=subprocess.PIPE, check=True).stdout
+        return raw if args[0] == 'show' else raw.decode('utf-8', errors='surrogateescape')
     return run('git', *args, strip='-z' not in args)
 
 
@@ -140,7 +141,7 @@ def binding():
             'head': sha, 'branch': branch}
 
 
-REVIEW_PROTOCOL = 6
+REVIEW_PROTOCOL = 7
 context_paths = []
 
 
@@ -280,7 +281,7 @@ def review():
     numbered = dict(packet, files={path: [{'line': n, 'text': text}
                                          for n, text in enumerate(source_lines(source), 1)]
                                    for path, source in packet['files'].items()})
-    encoded = json.dumps(numbered, ensure_ascii=False)
+    encoded = json.dumps(numbered, ensure_ascii=True)
     if len(encoded.encode()) > 500_000:
         raise ValueError('Review context exceeds 500 KB; no truncation')
     save(state / 'review-packet.json', packet)

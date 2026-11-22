@@ -185,7 +185,8 @@ class ReviewContextTests(unittest.TestCase):
             git('add', '.')
             git('commit', '-qm', 'base')
             base = git('rev-parse', 'HEAD')
-            names = ['中文.md', 'a"b.txt', 'line\nbreak.txt', ' leading space.txt']
+            names = ['中文.md', 'a"b.txt', 'line\nbreak.txt', ' leading space.txt',
+                     os.fsdecode(b'raw\xff.txt')]
             for name in names:
                 (Path(directory) / name).write_text('content\n')
             git('add', '.')
