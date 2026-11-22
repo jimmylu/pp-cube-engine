@@ -12,7 +12,8 @@ ignore = [
 
 [licenses]
 confidence-threshold = 0.9
-allow = ["Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "CDLA-Permissive-2.0", "ISC", "MIT", "Unicode-3.0"]
+# Owner-approved in issue #50: foldhash is a gRPC code-generation dependency.
+allow = ["Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "CDLA-Permissive-2.0", "ISC", "MIT", "Unicode-3.0", "Zlib"]
 
 # Upstream's crates carry no licence field. Cube's LICENSE file makes Apache-2.0
 # the default for the repository, and these crates have no other licence file.
