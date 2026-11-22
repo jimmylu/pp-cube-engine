@@ -60,14 +60,6 @@ fn unsupported_doris_features_fail_closed() {
         compile(&Arc::new(time_model), &query, &context()),
         Err(CompileError::Unsupported(_))
     ));
-    let mut multi = (*model()).clone();
-    let mut second = multi.cubes[0].clone();
-    second.name = "other".into();
-    multi.cubes.push(second);
-    assert!(matches!(
-        compile(&Arc::new(multi), &query, &context()),
-        Err(CompileError::Unsupported(_))
-    ));
     let mut invalid = (*model()).clone();
     invalid.cubes[0].sql_table = None;
     assert!(matches!(
@@ -100,4 +92,81 @@ fn formulas_segments_and_presence_filters_compile_without_limit() {
         result.parameters,
         vec![pp_cube_compile::Parameter::Text("north".into())]
     );
+}
+
+fn retail() -> Arc<pp_cube_model::Model> {
+    let mut model = pp_cube_model::load_yaml(include_str!("fixtures/retail.yaml")).unwrap();
+    // Time-typed models remain outside the Doris envelope in this change.
+    for cube in &mut model.cubes {
+        cube.dimensions
+            .retain(|d| d.dimension_type != pp_cube_model::DimensionType::Time);
+    }
+    Arc::new(model)
+}
+fn join_context() -> CompileContext {
+    let mut ctx = context();
+    ctx.security_filters = pp_cube_model::load_query(
+        r#"{"filters":[{"member":"regions.region_name","operator":"equals","values":["north"]}]}"#,
+    )
+    .unwrap()
+    .filters;
+    ctx
+}
+// scenario: B0-DORIS-005
+#[test]
+fn joined_dimensions_and_security_only_paths() {
+    for (name, text) in [
+        (
+            "grouped",
+            r#"{"measures":["sales.amount"],"dimensions":["stores.store_name"],"filters":[{"member":"stores.store_name","operator":"equals","values":["central"]}]}"#,
+        ),
+        ("security_only", r#"{"measures":["sales.amount"]}"#),
+    ] {
+        let query = pp_cube_model::load_query(text).unwrap();
+        let result = support::compile(&retail(), &query, &join_context()).unwrap();
+        insta::assert_snapshot!(
+            format!("doris_join_{name}"),
+            format!("{}\n-- parameters: {:?}", result.sql, result.parameters)
+        );
+        let mut ctx = join_context();
+        ctx.dialect = DialectId::Presto;
+        let expected = compile(&retail(), &query, &ctx).unwrap();
+        assert_eq!(result.parameters, expected.parameters);
+        assert_eq!(result.columns, expected.columns);
+        assert_eq!(result.used_cubes, expected.used_cubes);
+        let tables: Vec<_> = result
+            .used_cubes
+            .iter()
+            .flat_map(|c| c.physical_tables.iter().map(|p| p.join(".")))
+            .collect();
+        for table in ["dw.sales_dtl", "dw.dim_store", "dw.dim_region"] {
+            assert!(tables.iter().any(|t| t == table));
+        }
+    }
+}
+// scenario: B0-DORIS-006
+#[test]
+fn doris_retains_join_boundaries() {
+    for text in [
+        r#"{"measures":["receipts.tax"],"dimensions":["sales.channel_cd"]}"#,
+        r#"{"measures":["refunds.amount"],"dimensions":["regions.region_name"]}"#,
+        r#"{"measures":["sales.amount"],"dimensions":["visits.source"]}"#,
+    ] {
+        assert!(matches!(
+            compile(
+                &retail(),
+                &pp_cube_model::load_query(text).unwrap(),
+                &join_context()
+            ),
+            Err(CompileError::Query(_))
+        ));
+    }
+    let query = pp_cube_model::load_query(
+        r#"{"measures":["sales.amount","stores.store_count"],"dimensions":["stores.store_name"]}"#,
+    )
+    .unwrap();
+    assert!(matches!(
+        compile(&retail(), &query, &join_context()),
+        Err(CompileError::Unsupported(_))
+    ));
 }

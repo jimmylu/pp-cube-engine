@@ -1,0 +1,6 @@
+# Session notes
+Owner authorized next PR after #54 merged. Using add-doris-dimension-joins. Only enable already-baseline join behavior for Doris; full matrix and real Doris acceptance remain in the seed. No harness change. Owner merges.
+
+Implemented by removing only the blanket cube-count/join-presence restriction. Added reviewed golden snapshots for joined grouping/filtering and security-only two-hop joins, four-process replay, Presto parity for parameters/columns/lineage and expected physical tables. Negative tests preserve ambiguous/cross-source query errors and multiple-measure-owner unsupported. Existing time/pattern/offset restrictions and invalid-model precedence remain tested. The initial new tests failed before implementation. Final acceptance evidence belongs in PR comments on the pushed SHA; local CI, Docker and cross-vendor review remain delivery gates. Doris engine execution is not run.
+
+Review correction: the original new spec overgeneralized the adapter classification. A sole non-root measure is Query; measures spanning multiple cubes are Unsupported. Updated both archived delta and main requirement to preserve these existing classifications, and added the reported receipts.tax/sales.channel_cd case to B0-DORIS-006. No adapter/upstream or Presto behavior change. Final checks/review rerun on the repair SHA.
