@@ -141,9 +141,15 @@ impl cube_engine_server::CubeEngine for GrpcService {
         let bytes = request.into_inner().model_bundle;
         let text = String::from_utf8(bytes)
             .map_err(|_| Status::invalid_argument("model must be UTF-8 YAML or JSON"))?;
-        let issues = tokio::task::spawn_blocking(move || pp_cube_model::validate_yaml(&text))
-            .await
-            .map_err(|_| internal())?;
+        let issues = tokio::task::spawn_blocking(move || {
+            if serde_json::from_str::<serde_json::Value>(&text).is_ok() {
+                pp_cube_model::validate_json(&text)
+            } else {
+                pp_cube_model::validate_yaml(&text)
+            }
+        })
+        .await
+        .map_err(|_| internal())?;
         Ok(Response::new(ValidateModelResponse {
             issues: issues
                 .into_iter()

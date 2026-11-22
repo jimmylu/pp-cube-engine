@@ -67,8 +67,21 @@ async fn real_tcp_operations_preserve_compilation_validation_and_public_metadata
     assert_eq!(result.fingerprint, expected.fingerprint);
     assert_eq!(result.params, vec!["\"north\""]);
     assert_eq!(result.used_tables, vec!["dw.sales"]);
-    assert_eq!(result.columns[0].member, expected.columns[0].member);
-    assert_eq!(result.columns[0].r#type, "number");
+    let expected_columns: Vec<_> = expected
+        .columns
+        .into_iter()
+        .map(|c| OutputColumn {
+            alias: c.alias,
+            member: c.member,
+            r#type: serde_json::to_value(c.semantic_type)
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_owned(),
+            granularity: c.granularity,
+        })
+        .collect();
+    assert_eq!(result.columns, expected_columns);
     let meta = client
         .get_meta(GetMetaRequest {
             model_version: "v1".into(),
@@ -90,6 +103,18 @@ async fn real_tcp_operations_preserve_compilation_validation_and_public_metadata
     assert!(client
         .validate_model(ValidateModelRequest {
             model_bundle: source.as_bytes().to_vec()
+        })
+        .await
+        .unwrap()
+        .into_inner()
+        .issues
+        .is_empty());
+    // JSON surrogate pairs must use the JSON parser rather than the YAML scanner.
+    let json_source = r#"{"cubes":[{"name":"sales","data_source":"warehouse","title":"\ud83d\ude00","sql_table":"dw.sales","measures":[{"name":"amount","type":"sum","sql":"{CUBE}.amount"}]}]}"#;
+    assert!(pp_cube_model::validate_json(json_source).is_empty());
+    assert!(client
+        .validate_model(ValidateModelRequest {
+            model_bundle: json_source.as_bytes().to_vec()
         })
         .await
         .unwrap()

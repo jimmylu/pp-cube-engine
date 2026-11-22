@@ -12,3 +12,6 @@ Scope review: protocol and adapter/tests form one network behavior; Cargo.lock c
 Owner approved Zlib in isolated harness PR #52, now merged. Merged origin/main into this product branch without rewriting published history; the PR diff contains no harness edits. Fast checks (4 steps, 0 skipped), strict change validation and the focused real TCP integration pass with the approved policy. B0-API-004 is implemented and synced to the main service-api spec; archive is prepared in this PR. All implementation tasks are complete.
 
 Final exact-head CI, real local Docker Presto smoke, cross-vendor review and remote checks are the remaining delivery gates, recorded in PR comments rather than a tracked evidence-only commit. The owner reviews and merges. No owner-only decision remains.
+
+## Review repair
+Opus found JSON surrogate-pair handling and incomplete column assertions. A real TCP regression reproduced the valid JSON rejection before the fix. Validation now routes syntactically valid JSON to validate_json and other input to validate_yaml. The network test compares the entire output-column list, including aliases and optional granularity. Earlier-head CI and Docker smoke passed; these repairs require fresh exact-head checks and review, recorded externally.
