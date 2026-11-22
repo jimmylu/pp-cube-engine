@@ -134,3 +134,8 @@ B0-DORIS-010 remains proposed here after add-doris-time-queries implements and
 locally executes the temporal feature. A separate harness change must integrate
 its live-compiled test into the defined execution layer/tier before formal T2
 acceptance. Product PR #58 does not archive this execution requirement.
+
+## Doris temporal execution transfer
+The complete Doris temporal execution tier requirement and B0-DORIS-010 move to
+accept-doris-temporal-execution, after the Doris container tier began executing
+the live-compiled manifest. B0-DORIS-001 and B0-DORIS-002 remain proposed here.
