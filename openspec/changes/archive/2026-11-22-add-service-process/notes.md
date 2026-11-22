@@ -1,0 +1,4 @@
+# Session notes
+Owner authorized the next PR design and implementation after #51 merged at 8c3003c. Selected add-service-process to make the existing B0 service executable locally. Scope is service crate, dependency lock and OpenSpec artifacts; no harness change. Implementation and exact-head delivery checks pending. Owner merges.
+
+Implemented strict arguments, validated YAML/JSON startup, explicit loopback binding and Ctrl-C shutdown. Real subprocess tests pass for all RPCs, exact version selection, invalid arguments/models, bind conflicts and clean SIGINT exit. The initial tests failed against the version-only binary; implementation exposed and corrected a shared temporary-file race in the tests. Fast passed. No SQL snapshot change or new lockfile dependency. Main spec synchronization/archive is part of this PR. Final CI, Docker and Opus acceptance will be recorded against the pushed SHA in PR comments. Owner merges.
