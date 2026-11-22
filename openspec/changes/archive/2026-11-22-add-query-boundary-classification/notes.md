@@ -4,8 +4,13 @@
 
 Implementation is complete, the main specs are synced, and this change is archived
 at `archive/2026-11-22-add-query-boundary-classification`. The branch remains
-`change/add-query-boundary-classification` for review corrections. The current
-request requires leaving edits in the worktree without pushing or merging.
+`change/add-query-boundary-classification` for review corrections. The implementation
+and earlier corrections are committed and published in PR #40. The final session
+below records the review repair request and its session-specific worktree-only
+constraint. A subsequent authorized delivery controller can check, commit
+and publish repairs under `docs/agents/delivery.md`; the earlier worktree-only
+requests are historical, not a continuing delivery prohibition. Owner approval
+and merge remain required.
 
 ## 2026-11-22: overall review, implementation and archive
 
@@ -35,8 +40,8 @@ Implementation:
 
 Open:
 - Presto T1/T2 remain unbuilt and unrun. No execution evidence is claimed.
-- Delivery evidence for the corrected head must be established in a future
-  authorized delivery session; this record does not claim Ready status.
+- Delivery evidence must bind to the final corrected head; the historical local
+  checks below do not establish the current PR's Ready status.
 
 Learned: the seed's task completion reports proposal preparation only. Main
 B0-QUERY-008 and remaining seed B0-AGG-003 disagree about hour classification;
@@ -74,9 +79,45 @@ Verification at a1d38ee+dirty:
   command output is in `/tmp/pp-cube-review-corrections-ci.log` for this session.
   Later CI steps were not run by that invocation; no CI pass is claimed.
 
-Open: rerun the unchanged CI command with a writable advisory database cache
-before delivery, then establish review and remote evidence for the final head.
-No commit, push, merge, gate or snapshot change is authorized by this request.
+At the end of that session, CI still needed a rerun with a writable advisory
+database cache before delivery, followed by review and remote evidence for the
+final head. That session authorized no commit, push, merge, gate or snapshot
+change. Its worktree-only restriction was subsequently superseded for publication
+of those corrections in PR #40; the failed local run remains historical evidence.
 
 Learned: a supported-unit substring assertion also matched the misleading
 eight-variant error. Tests must identify the B0 rule explicitly.
+
+## 2026-11-22: contract and handoff review repairs
+
+Done:
+- Clarified B0-AGG-003 in both the main spec and archived delta: multi-cube
+  Unsupported requires an otherwise valid query with a unique usable join tree
+  on one data source. When multi-cube measures are the only feature outside B0,
+  query validation errors take precedence, including disconnected cubes,
+  ambiguous paths and cross-data-source cubes. The early guard for recognized
+  ungrouped, comparison and sub-day options retains its existing precedence.
+- Checked the contract against the existing error tests: sales/stores measures
+  return Unsupported, while sales/refunds and refunds/stores return Query;
+  invalid models, members, security filters and data sources retain their classes.
+- Replaced stale current-state publication restrictions with historical context
+  and the published PR #40 state. No runtime behavior or tests needed changing.
+
+Current session constraint: leave these repairs uncommitted in the worktree;
+do not push, merge, alter gates or remove failing tests. This applies to this
+repair session, not a later authorized delivery session.
+
+Verification at defefd2+dirty:
+- `OPENSPEC_TELEMETRY=0 openspec validate --all --strict`: 10 passed, 0 failed.
+- `cargo test -p pp-cube-compile --test errors --locked --offline`: 5 passed,
+  0 failed. Output: `/tmp/pp-cube-boundary-review-errors.log` for this session.
+- `git diff --check`: passed.
+- `scripts/check.sh fast` and `scripts/check.sh ci`: not run for this
+  documentation-only repair; no new full-check pass or delivery evidence claimed.
+
+Open: the delivery controller must establish checks, different-vendor review and
+remote t0 evidence against the final corrected head before owner review.
+
+Learned: multi-cube rejection follows join validation, whereas the newer typed
+boundary options are rejected immediately after model validation. A valid bundle
+alone therefore does not guarantee multi-cube Unsupported classification.
