@@ -1,5 +1,13 @@
 # Session notes
 
+## 2026-11-22: boundary proposal transfer
+
+The complete Checks before compilation and B0 boundary requirements, including
+B0-QUERY-009 and B0-AGG-003, move to add-query-boundary-classification.
+The emptied contract-query and compile-b0 delta files are deleted. This is
+planning only, not implemented behavior or execution acceptance. The new
+change's review.md records the overall gaps and recommended delivery sequence.
+
 ## 2026-11-19: step 5 proposal preparation
 
 Owner decision: approved in conversation on 2026-11-19, resolving
