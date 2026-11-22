@@ -161,3 +161,14 @@ class ReviewContextTests(unittest.TestCase):
                 self.assertEqual(base64.b64decode(encoded['base64']), value)
                 self.assertEqual(encoded['size'], len(value))
                 self.assertNotIn('head:' + name, packet['files'])
+
+    def test_citations_follow_git_lf_lines_not_unicode_separators(self):
+        source = 'first\fstill first\u2028same line\r\nsecond\x85same second\nlast'
+        packet = {'files': {'head:source.txt': source}}
+        finding = dict(priority='P3', path='source.txt', line=2, message='Concrete defect',
+                       evidence=[dict(revision='head', path='source.txt', line=2, quote='second')])
+        dev.validate_review({'findings': [finding]}, packet, None)
+        self.assertEqual(dev.source_lines(source), [
+            'first\fstill first\u2028same line\r', 'second\x85same second', 'last'])
+        self.assertEqual(dev.source_lines('one\n'), ['one'])
+        self.assertEqual(dev.source_lines(''), [])

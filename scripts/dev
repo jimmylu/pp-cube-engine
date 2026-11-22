@@ -140,7 +140,7 @@ def binding():
             'head': sha, 'branch': branch}
 
 
-REVIEW_PROTOCOL = 4
+REVIEW_PROTOCOL = 5
 context_paths = []
 
 
@@ -189,6 +189,14 @@ def review_packet(bound, read_git=None, extra_paths=()):
     return packet
 
 
+def source_lines(text):
+    """Git counts LF delimiters; other Unicode/control separators stay on the line."""
+    if not text:
+        return []
+    lines = text.split('\n')
+    return lines[:-1] if text.endswith('\n') else lines
+
+
 def validate_review(report, packet, previous):
     if not isinstance(report, dict) or not isinstance(report.get('findings'), list):
         raise ValueError('Reviewer must return a findings array in an object')
@@ -206,8 +214,8 @@ def validate_review(report, packet, previous):
             line, quote = citation.get('line'), citation.get('quote')
             if (source is None or type(line) is not int or line < 1
                     or not isinstance(quote, str) or not quote.strip()
-                    or line > len(source.splitlines())
-                    or quote not in source.splitlines()[line - 1]):
+                    or line > len(source_lines(source))
+                    or quote not in source_lines(source)[line - 1]):
                 raise ValueError('Review evidence does not match pinned file and line')
         if not any(c['path'] == finding['path'] and c['line'] == finding['line']
                    for c in finding['evidence']):
@@ -270,7 +278,7 @@ def review():
               'Do not cite binary blobs as text lines; if you cannot assess their changes, ask a question. '
               'Diff byte escapes are display-only; binary_files is the authoritative non-text content.\n')
     numbered = dict(packet, files={path: [{'line': n, 'text': text}
-                                         for n, text in enumerate(source.splitlines(), 1)]
+                                         for n, text in enumerate(source_lines(source), 1)]
                                    for path, source in packet['files'].items()})
     encoded = json.dumps(numbered, ensure_ascii=False)
     if len(encoded.encode()) > 500_000:

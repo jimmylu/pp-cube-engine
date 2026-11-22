@@ -132,3 +132,11 @@ Completed: diverged-base fix, byte-preserving blob transport, binary/non-UTF-8
 and real Git regressions. All 29 offline regressions pass. This correction is
 ready for checkpoint and exact-head CI/Opus/t0 acceptance; final status belongs
 in PR comments to avoid invalidating the reviewed head. Product PR #34 is unchanged.
+
+
+The resumed Opus review marked both base/diff and byte transport findings
+resolved, then found a source-line boundary issue. Source numbering and citation
+validation now share Git's LF-only line rule; Unicode separators, form feeds and
+CR bytes remain within their original line. A regression checks mixed separators,
+CRLF, final LF and empty input. All 30 offline regressions pass before checkpoint.
+Final exact-head CI/Opus/t0 evidence is pending in the PR.
