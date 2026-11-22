@@ -118,3 +118,7 @@ Readiness diagnosis: the pinned engine rejects `version()` as unregistered.
 The version probe now reads `node_version` from `system.runtime.nodes`, following
 https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphinx/connector/system.rst .
 Earlier diagnostic-only runs did not establish execution support.
+
+Delivery stopped with a failing real engine job; see
+[presto-container-notes.md](presto-container-notes.md) for the current handoff.
+PR #42 remains Draft; no successful engine execution is claimed.
