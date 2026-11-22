@@ -49,8 +49,28 @@ fn load_failure(time_dimension: &str) -> String {
         .message
 }
 
+// scenario: B0-PRESTO-001
+// scenario: B0-DET-001
+#[test]
+fn all_granularities_in_tokyo() {
+    for granularity in ["day", "week", "month", "quarter", "year"] {
+        let query = format!(
+            r#""timeDimensions": [{{
+                 "dimension": "sales.sold_at",
+                 "granularity": "{granularity}",
+                 "dateRange": ["2026-10-01", "2026-10-31"]
+               }}]"#
+        );
+        insta::assert_snapshot!(
+            format!("{granularity}_granularity_in_tokyo"),
+            compiled("Asia/Tokyo", &query)
+        );
+    }
+}
+
 // scenario: B0-QUERY-001
 // scenario: B0-DET-001
+// scenario: B0-PRESTO-015
 #[test]
 fn each_granularity_truncates_the_time_dimension_in_the_timezone() {
     insta::assert_snapshot!(compiled(
@@ -67,6 +87,7 @@ fn each_granularity_truncates_the_time_dimension_in_the_timezone() {
 
 // scenario: B0-QUERY-001
 // scenario: B0-DET-001
+// scenario: B0-PRESTO-013
 #[test]
 fn each_date_operator_compares_with_the_bounds_of_its_dates() {
     insta::assert_snapshot!(compiled(
@@ -84,6 +105,7 @@ fn each_date_operator_compares_with_the_bounds_of_its_dates() {
 
 // scenario: B0-QUERY-003
 // scenario: B0-DET-001
+// scenario: B0-PRESTO-014
 #[test]
 fn october_is_closed_at_its_first_and_its_last_millisecond() {
     insta::assert_snapshot!(compiled(
@@ -97,6 +119,7 @@ fn october_is_closed_at_its_first_and_its_last_millisecond() {
 
 // scenario: B0-QUERY-010
 // scenario: B0-DET-001
+// scenario: B0-PRESTO-016
 #[test]
 fn query_timezone_wins_over_the_one_of_the_context() {
     let october_by_month = r#""timeDimensions": [{

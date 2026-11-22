@@ -51,6 +51,7 @@ fn one_sum_grouped_by_one_dimension() {
 
 // scenario: B0-AGG-001
 // scenario: B0-DET-001
+// scenario: B0-PRESTO-004
 #[test]
 fn six_aggregate_types_grouped_by_a_dimension() {
     insta::assert_snapshot!(compiled(
@@ -68,6 +69,7 @@ fn six_aggregate_types_grouped_by_a_dimension() {
 
 // scenario: B0-AGG-002
 // scenario: B0-DET-001
+// scenario: B0-PRESTO-005
 #[test]
 fn filtered_sum_and_ratio_of_aggregates() {
     insta::assert_snapshot!(compiled("sales", &["toy_amount", "amount_per_order"]));
