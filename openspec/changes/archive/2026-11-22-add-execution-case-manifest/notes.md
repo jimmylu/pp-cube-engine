@@ -39,3 +39,11 @@ Learned: every current `Parameter` variant has a manifest type, so the only
 unrepresentable parameter is a non-finite number. Fixture statements are
 idempotent (create if absent, truncate, insert) so a tier can switch fixtures
 on one engine without dropping the database.
+
+## 2026-11-22: delivery not run
+
+`scripts/dev deliver` has not run. The worktree's delivery configuration names
+an OpenAI implementer and an Anthropic reviewer, but this change was implemented
+by an Anthropic model, so the reviewer must come from another vendor. The owner
+sets the identities with `scripts/dev configure`; then run `scripts/dev deliver`.
+Cross-vendor review and exact-head evidence are therefore still open.
