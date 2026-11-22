@@ -84,8 +84,18 @@ def run(command=docker, verify=SMOKE.verify, pause=time.sleep):
                 pause(1)
         stage = 'fixture'
         print('Presto container: loading memory fixture', flush=True)
-        command('exec', '-i', name, '/opt/presto-cli', '--file', '/dev/stdin',
-                input=(ROOT / 'scripts/engines/presto-fixture.sql').read_text(), timeout=30)
+        try:
+            command('exec', '-i', name, '/opt/presto-cli', '--file', '/dev/stdin',
+                    input=(ROOT / 'scripts/engines/presto-fixture.sql').read_text(), timeout=30)
+        except subprocess.CalledProcessError as error:
+            raw = (error.stdout or '') + (error.stderr or '')
+            phrases = ['No nodes available', 'Insufficient active worker nodes',
+                       'does not exist', 'already exists', 'not found', 'not registered',
+                       'memory', 'Server starting', 'starting up', 'Connection refused',
+                       'timeout', 'not supported', 'Permission denied', 'line 1']
+            print('fixture categories: ' + ','.join(p for p in phrases if p.lower() in raw.lower()),
+                  file=sys.stderr)
+            raise
         stage = 'golden-verification'
         print('Presto container: executing grouped-sum golden over HTTP', flush=True)
         verify(endpoint)
