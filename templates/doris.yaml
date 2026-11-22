@@ -1,0 +1,96 @@
+# Apache-2.0; common templates adapted from pinned Cube BaseQuery.ts/MysqlQuery.ts.
+# Doris SELECT ordering and STRING type are local overrides; no full B0 acceptance.
+commit: 486f0d26bab58ab4fe0be0e4cdd39818b35a7870
+# BaseQuery.ts, timestampPrecision; Presto does not override it.
+timestamp_precision: 3
+templates:
+  statements/select:
+    source: BaseQuery.ts
+    text: "{% if ctes %} WITH \n{{ ctes | join(',\n') }}\n{% endif %}SELECT {% if distinct %}DISTINCT {% endif %}{{ select_concat | map(attribute='aliased') | join(', ') }}  {% if from %}\nFROM (\n  {{ from }}\n) AS {{ from_alias }} {% elif from_prepared %}\nFROM {{ from_prepared }}{% endif %}{% for join in joins %}\n{{ join }}{% endfor %}{% if filter %}\nWHERE {{ filter }}{% endif %}{% if group_by %} GROUP BY {{ group_by }}{% endif %}{% if having %}\nHAVING {{ having }}{% endif %}{% if order_by %} ORDER BY {{ order_by | map(attribute='expr') | join(', ') }}{% endif %}{% if limit is not none %}\nLIMIT {{ limit }}{% if offset is not none %} OFFSET {{ offset }}{% endif %}{% endif %}"
+  functions/COUNT_DISTINCT:
+    source: BaseQuery.ts
+    text: "COUNT(DISTINCT {{ args_concat }})"
+  statements/group_by_exprs:
+    source: BaseQuery.ts
+    text: "{{ group_by | map(attribute='index') | join(', ') }}"
+  expressions/column_aliased:
+    source: BaseQuery.ts
+    text: "{{expr}} {{quoted_alias}}"
+  expressions/query_aliased:
+    source: BaseQuery.ts
+    text: "{{ query }} AS {{ quoted_alias }}"
+  expressions/wrap_boolean_dimension:
+    source: BaseQuery.ts
+    text: "{{ expr }}"
+  expressions/cast:
+    source: BaseQuery.ts
+    text: "CAST({{ expr }} AS {{ data_type }})"
+  expressions/concat_strings:
+    source: MysqlQuery.ts
+    text: "CONCAT({{ strings | join(',') }})"
+  types/string:
+    source: BaseQuery.ts
+    text: "STRING"
+  expressions/order_by:
+    source: BaseQuery.ts
+    text: "{% if index %} {{ index }} {% else %} {{ expr }} {% endif %} {% if asc %}ASC{% else %}DESC{% endif %}{% if nulls_first %} NULLS FIRST{% endif %}"
+  quotes/identifiers:
+    source: MysqlQuery.ts
+    text: '`'
+  quotes/escape:
+    source: MysqlQuery.ts
+    text: '``'
+  params/param:
+    source: BaseQuery.ts
+    text: "?"
+  expressions/wrap_segment_filter:
+    source: BaseQuery.ts
+    text: "{{ expr }}"
+  filters/equals:
+    source: BaseQuery.ts
+    text: "{{ column }} = {{ value }}{{ is_null_check }}"
+  filters/not_equals:
+    source: BaseQuery.ts
+    text: "{{ column }} <> {{ value }}{{ is_null_check }}"
+  filters/or_is_null_check:
+    source: BaseQuery.ts
+    text: " OR {{ column }} IS NULL"
+  filters/set_where:
+    source: BaseQuery.ts
+    text: "{{ column }} IS NOT NULL"
+  filters/not_set_where:
+    source: BaseQuery.ts
+    text: "{{ column }} IS NULL"
+  filters/in:
+    source: BaseQuery.ts
+    text: "{{ column }} IN ({{ values_concat }}){{ is_null_check }}"
+  filters/not_in:
+    source: BaseQuery.ts
+    text: "{{ column }} NOT IN ({{ values_concat }}){{ is_null_check }}"
+  filters/gt:
+    source: BaseQuery.ts
+    text: "{{ column }} > {{ param }}"
+  filters/gte:
+    source: BaseQuery.ts
+    text: "{{ column }} >= {{ param }}"
+  filters/lt:
+    source: BaseQuery.ts
+    text: "{{ column }} < {{ param }}"
+  filters/lte:
+    source: BaseQuery.ts
+    text: "{{ column }} <= {{ param }}"
+  filters/always_true:
+    source: BaseQuery.ts
+    text: "1 = 1"
+  tesseract/bool_param_cast:
+    source: BaseQuery.ts
+    text: "CAST({{ expr }} AS BOOLEAN)"
+  tesseract/number_param_cast:
+    source: BaseQuery.ts
+    text: "CAST({{ expr }} AS DOUBLE)"
+  statements/join:
+    source: BaseQuery.ts
+    text: "{{ join_type }} JOIN {{ source }} ON {{ condition }}"
+  tesseract/join_types_left:
+    source: BaseQuery.ts
+    text: "LEFT"

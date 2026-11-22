@@ -1,0 +1,9 @@
+---
+source: crates/pp-cube-compile/tests/doris.rs
+expression: result.sql
+---
+SELECT `sales`.region `sales__region`, count(*) `sales__count`, sum(`sales`.amount) `sales__total`, avg(`sales`.amount) `sales__average`, min(`sales`.amount) `sales__minimum`, max(`sales`.amount) `sales__maximum`, COUNT(DISTINCT `sales`.amount) `sales__unique`  
+FROM  dw.sales  AS `sales`
+WHERE (`sales`.region = ?) GROUP BY 1
+HAVING (sum(`sales`.amount) > CAST(? AS DOUBLE)) ORDER BY  3  DESC
+LIMIT 10 OFFSET 2

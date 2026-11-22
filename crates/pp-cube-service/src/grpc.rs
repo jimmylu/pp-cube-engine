@@ -62,9 +62,8 @@ impl cube_engine_server::CubeEngine for GrpcService {
         }
         let dialect = match request.dialect.as_str() {
             "presto" => DialectId::Presto,
-            "doris" | "druid" => {
-                return Ok(failure("unsupported", "dialect is not implemented".into()))
-            }
+            "doris" => DialectId::Doris,
+            "druid" => return Ok(failure("unsupported", "dialect is not implemented".into())),
             _ => return Err(Status::invalid_argument("unknown dialect")),
         };
         let context = CompileContext {

@@ -22,6 +22,7 @@ pub fn compile(
     let expected = record(&result);
     let dialect = match ctx.dialect {
         DialectId::Presto => "presto",
+        DialectId::Doris => "doris",
     };
     for run in 0..4 {
         let input = serde_json::to_vec(&serde_json::json!({
@@ -89,11 +90,15 @@ fn worker() {
     let mut input = String::new();
     std::io::stdin().read_to_string(&mut input).unwrap();
     let mut input: serde_json::Value = serde_json::from_str(&input).unwrap();
-    assert_eq!(input["dialect"], "presto");
+    let dialect = match input["dialect"].as_str().unwrap() {
+        "presto" => DialectId::Presto,
+        "doris" => DialectId::Doris,
+        other => panic!("unknown dialect {other}"),
+    };
     let model: Model = serde_json::from_value(input["model"].take()).unwrap();
     let query: Query = serde_json::from_value(input["query"].take()).unwrap();
     let ctx = CompileContext {
-        dialect: DialectId::Presto,
+        dialect,
         timezone: input["timezone"].as_str().unwrap().into(),
         security_filters: serde_json::from_value(input["security"].take()).unwrap(),
         request_id: input["request_id"].as_str().unwrap().into(),

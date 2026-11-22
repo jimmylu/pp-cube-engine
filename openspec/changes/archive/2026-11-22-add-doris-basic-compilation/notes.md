@@ -1,0 +1,4 @@
+# Session notes
+Owner authorized next PR after #53 merged. Using add-doris-basic-compilation for a bounded B0 subset. Seed requirements B0-DORIS-001/002 remain proposed; new ids cover only this slice. No Doris execution acceptance claimed. Owner merges.
+
+Implemented basic Doris templates and fingerprint identity, recursive fail-closed user/security filter envelope and gRPC selection. Focused SQL and network tests pass. Numeric filter values remain text bindings with SQL CAST, matching the existing kernel contract; the initial numeric test expectation was corrected. New SQL snapshot reviewed via cargo insta review; no Presto snapshot changed. The first fast run exposed one overbroad test-helper edit, corrected before publication. Full CI/Docker/model review evidence belongs in PR comments against the final SHA. Doris real execution is not run and full matrix remains in the seed; no T2 claim.

@@ -8,6 +8,7 @@ use pp_cube_service::{
 use std::sync::Arc;
 
 // scenario: B0-API-004
+// scenario: B0-DORIS-003
 #[tokio::test(flavor = "current_thread")]
 async fn real_tcp_operations_preserve_compilation_validation_and_public_metadata() {
     let mut core = CubeService::default();
@@ -121,6 +122,12 @@ async fn real_tcp_operations_preserve_compilation_validation_and_public_metadata
         .into_inner()
         .issues
         .is_empty());
+    let mut doris = request.clone();
+    doris.dialect = "doris".into();
+    let result = client.compile(doris).await.unwrap().into_inner();
+    assert!(
+        matches!(result.result, Some(compile_response::Result::Compiled(value)) if value.sql.contains("`sales`"))
+    );
     let mut unknown = request.clone();
     unknown.model_version = "missing".into();
     assert_eq!(

@@ -14,6 +14,7 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DialectId {
     Presto,
+    Doris,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,10 +85,19 @@ static PRESTO: LazyLock<Result<Dialect, DialectError>> = LazyLock::new(|| {
     )
 });
 
+static DORIS: LazyLock<Result<Dialect, DialectError>> = LazyLock::new(|| {
+    Dialect::from_data(
+        "doris",
+        include_str!("../../../templates/doris.yaml"),
+        false,
+    )
+});
+
 /// The dialect for `id`. Its data is parsed once per process.
 pub fn dialect(id: DialectId) -> Result<&'static Dialect, DialectError> {
     match id {
         DialectId::Presto => PRESTO.as_ref().map_err(Clone::clone),
+        DialectId::Doris => DORIS.as_ref().map_err(Clone::clone),
     }
 }
 
