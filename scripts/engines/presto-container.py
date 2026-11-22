@@ -115,7 +115,7 @@ def run(command=docker, verify=SMOKE.verify_suite, pause=time.sleep):
                   file=sys.stderr)
             raise
         stage = 'golden-verification'
-        print('Presto container: executing aggregate and text-binding goldens over HTTP', flush=True)
+        print('Presto container: executing aggregate, text-binding and Tokyo day goldens over HTTP', flush=True)
         verify(endpoint)
     except Exception:
         print('engine failure stage: ' + stage, file=sys.stderr)
@@ -134,7 +134,7 @@ def main():
             subprocess.SubprocessError, SMOKE.http.client.HTTPException) as error:
         print('check engines-container: FAILED — ' + SMOKE.failure_category(error), file=sys.stderr)
         return 1
-    print('check engines-container: PASSED — Presto 0.293, grouped sum and text binding goldens, 2 cases; not full T2 acceptance')
+    print('check engines-container: PASSED — Presto 0.293, aggregate, text binding and Tokyo day goldens, 3 cases; not full T2 acceptance')
     return 0
 
 

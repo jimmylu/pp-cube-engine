@@ -65,12 +65,23 @@ def result(rows):
 
 
 class ProtocolTests(unittest.TestCase):
-    def test_suite_executes_both_real_golden_requests_and_checks_filtered_rows(self):
-        pages = [(200, result(presto.EXPECTED_ROWS)), (200, result([['C1', 30]]))]
+    def test_time_golden_preserves_both_range_parameters(self):
+        sql, params = presto.text_snapshot(presto.TIME_SNAPSHOT.read_text())
+        self.assertEqual(params, ('2026-09-30T15:00:00.000Z', '2026-10-31T14:59:59.999Z'))
+        with server([(200, {})]) as (origin, requests):
+            presto.execute(origin, sql, parameters=params)
+        self.assertEqual(requests[0][2],
+                         b"EXECUTE cube_smoke USING '2026-09-30T15:00:00.000Z', '2026-10-31T14:59:59.999Z'")
+        header = requests[0][3]['X-Presto-Prepared-Statement']
+        self.assertEqual(presto.urllib.parse.unquote_plus(header.split('=', 1)[1]), sql)
+
+    def test_suite_executes_three_golden_requests_and_checks_filtered_rows(self):
+        pages = [(200, result(presto.EXPECTED_ROWS)), (200, result([['C1', 30]])),
+                 (200, {'columns': [{'name': name} for name in presto.TIME_COLUMNS], 'data': presto.TIME_ROWS})]
         with server(pages) as (origin, requests):
             presto.verify_suite(origin)
-        self.assertEqual(len(requests), 2)
-        sql, params = presto.text_filter_snapshot(presto.FILTER_SNAPSHOT.read_text())
+        self.assertEqual(len(requests), 3)
+        sql, params = presto.text_snapshot(presto.FILTER_SNAPSHOT.read_text())
         self.assertEqual(params, ('C1',))
         self.assertIn(' = ?', sql)
         self.assertEqual(requests[1][2], b"EXECUTE cube_smoke USING 'C1'")
@@ -79,12 +90,22 @@ class ProtocolTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'result differs'):
                 presto.verify_suite(origin)
 
+    def test_wrong_temporal_buckets_or_boundary_totals_fail(self):
+        for rows in [[['2026-10-01 00:00:00.000', 30]],
+                     [['2026-09-30 00:00:00.000', 20]],
+                     presto.TIME_ROWS + [['2026-11-01 00:00:00.000', 0]]]:
+            pages = [(200, result(presto.EXPECTED_ROWS)), (200, result([['C1', 30]])),
+                     (200, {'columns': [{'name': name} for name in presto.TIME_COLUMNS], 'data': rows})]
+            with self.subTest(rows=rows), server(pages) as (origin, _):
+                with self.assertRaisesRegex(ValueError, 'result differs'):
+                    presto.verify_suite(origin)
+
     def test_unsupported_parameter_shapes_fail_before_http(self):
-        for value in ('[]', '[Int(1)]', '[Text("a"), Text("b")]', '[Text(bad)]'):
+        for value in ('[]', '[Int(1)]', '[Text("a"), Int(1)]', '[Text("a"), Text("b"), Text("c")]', '[Text(bad)]'):
             with self.subTest(value=value), self.assertRaises(ValueError) as failure:
-                presto.text_filter_snapshot('---\nsource: test\n---\nSELECT ?\n-- parameters: ' + value)
+                presto.text_snapshot('---\nsource: test\n---\nSELECT ?\n-- parameters: ' + value)
             self.assertEqual(presto.failure_category(failure.exception),
-                             'expected one text snapshot parameter')
+                             'expected one or two text snapshot parameters')
 
     def test_text_binding_uses_prepared_header_without_replacing_placeholders(self):
         sql = "SELECT ? AS value"
