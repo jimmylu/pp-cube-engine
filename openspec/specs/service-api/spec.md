@@ -37,3 +37,9 @@ Dropping the pool SHALL close admission without waiting for compilation. Accepte
 #### Scenario: B0-API-007 Graceful worker shutdown
 - **WHEN** a pool with accepted work is dropped or explicitly shut down
 - **THEN** accepted results remain receivable, explicit shutdown joins the workers, and drop does not wait for compilation
+
+### Requirement: Network service transport
+The service SHALL expose Compile, ValidateModel and GetMeta through gRPC, with compilation dispatched to a fixed-size worker pool outside async runtime threads.
+#### Scenario: B0-API-004 Network operations
+- **WHEN** a gRPC client sends Compile, ValidateModel and GetMeta requests
+- **THEN** the server maps them to the versioned service operations and dispatches compilation off the async runtime threads
