@@ -21,35 +21,25 @@ fn doris_manifest_is_stable_and_complete() {
     assert_eq!(manifest["schema"], 1);
     assert_eq!(manifest["dialect"], "doris");
     let cases = manifest["cases"].as_array().unwrap();
-    let names: Vec<_> = cases.iter().map(|c| c["name"].as_str().unwrap()).collect();
+    let scenario = |id: &str| cases.iter().filter(|c| c["scenario"] == id).count();
     assert_eq!(
-        names,
-        [
-            "day",
-            "week",
-            "month",
-            "quarter",
-            "year",
-            "inDateRange",
-            "notInDateRange",
-            "beforeDate",
-            "beforeOrOnDate",
-            "afterDate",
-            "afterOrOnDate",
-            "security",
-            "dst"
-        ]
+        (
+            cases.len(),
+            scenario("B0-DORIS-010"),
+            scenario("B0-DORIS-002")
+        ),
+        (39, 13, 26)
     );
+    let mut names = std::collections::BTreeSet::new();
     for case in cases {
         let name = case["name"].as_str().unwrap();
-        assert_eq!(case["scenario"], "B0-DORIS-010", "{name}");
+        assert!(names.insert(name), "{name} is declared twice");
         assert!(!case["fixture"].as_array().unwrap().is_empty(), "{name}");
         assert!(
             case["sql"].as_str().unwrap().starts_with("SELECT"),
             "{name}"
         );
         let params = case["params"].as_array().unwrap();
-        assert!(!params.is_empty(), "{name}");
         assert_eq!(
             case["sql"].as_str().unwrap().matches('?').count(),
             params.len(),
@@ -66,9 +56,30 @@ fn doris_manifest_is_stable_and_complete() {
             assert_eq!(row.as_array().unwrap().len(), columns.len(), "{name}");
         }
     }
-    // The security range survives a user OR; the boundary rows decide the total.
-    assert_eq!(cases[11]["params"].as_array().unwrap().len(), 4);
     assert_eq!(cases[0]["rows"][0][0]["timestamp"], "2026-10-01T00:00:00");
+}
+
+// scenario: B0-DORIS-001
+#[test]
+fn doris_cases_match_their_goldens() {
+    let manifest: Value =
+        serde_json::from_str(&pp_cube_conformance::manifest("doris").unwrap()).unwrap();
+    let mut text = String::new();
+    for case in manifest["cases"].as_array().unwrap() {
+        let values: Vec<_> = case["params"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|param| param["value"].to_string())
+            .collect();
+        text.push_str(&format!(
+            "-- {}\n{}\n-- parameters: [{}]\n\n",
+            case["name"].as_str().unwrap(),
+            case["sql"].as_str().unwrap(),
+            values.join(", ")
+        ));
+    }
+    insta::assert_snapshot!("doris_cases", text);
 }
 
 // scenario: B0-EXEC-002

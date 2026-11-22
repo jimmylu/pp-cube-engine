@@ -2,7 +2,50 @@ cubes:
   - name: sales
     sql_table: dw.sales_dtl
     data_source: warehouse
+    joins:
+      - { name: stores, relationship: many_to_one, sql: "{CUBE}.store_cd = {stores.store_cd}" }
     dimensions:
+      - { name: sale_id, sql: "{CUBE}.sale_id", type: number, primary_key: true }
+      - { name: channel_cd, sql: "{CUBE}.channel_cd", type: string }
+      - { name: category_cd, sql: "{CUBE}.category_cd", type: string }
+      - { name: region_cd, sql: "{CUBE}.region_cd", type: string }
+      - { name: is_valid, sql: "{CUBE}.is_valid = 1", type: boolean }
+      - { name: qty, sql: "{CUBE}.qty", type: number }
       - { name: sold_at, sql: "{CUBE}.sold_at", type: time }
+    measures:
+      - { name: row_count, type: count }
+      - { name: order_count, type: count_distinct, sql: "{CUBE}.order_no" }
+      - { name: amount, type: sum, sql: "{CUBE}.amount" }
+      - { name: avg_amount, type: avg, sql: "{CUBE}.amount" }
+      - { name: min_amount, type: min, sql: "{CUBE}.amount" }
+      - { name: max_amount, type: max, sql: "{CUBE}.amount" }
+      - name: toy_amount
+        type: sum
+        sql: "{CUBE}.amount"
+        filters:
+          - sql: "{CUBE}.category_cd = 'TOY'"
+      - { name: amount_per_order, type: number, sql: "{amount} / NULLIF({order_count}, 0)" }
+    segments:
+      - { name: toys, sql: "{CUBE}.category_cd = 'TOY'" }
+  - name: stores
+    sql_table: dw.dim_store
+    data_source: warehouse
+    joins:
+      - { name: regions, relationship: many_to_one, sql: "{CUBE}.region_cd = {regions.region_cd}" }
+    dimensions:
+      - { name: store_cd, sql: "{CUBE}.store_cd", type: string, primary_key: true }
+      - { name: store_name, sql: "{CUBE}.store_name", type: string }
+  - name: regions
+    sql_table: dw.dim_region
+    data_source: warehouse
+    dimensions:
+      - { name: region_cd, sql: "{CUBE}.region_cd", type: string, primary_key: true }
+      - { name: region_name, sql: "{CUBE}.region_name", type: string }
+  # Every query on this cube carries the row restriction of its source.
+  - name: valid_sales
+    sql: SELECT channel_cd, amount FROM dw.sales_dtl WHERE is_valid = 1
+    data_source: warehouse
+    dimensions:
+      - { name: channel_cd, sql: "{CUBE}.channel_cd", type: string }
     measures:
       - { name: amount, type: sum, sql: "{CUBE}.amount" }
