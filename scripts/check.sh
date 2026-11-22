@@ -226,6 +226,15 @@ case "$MODE" in
     check_traceability
     check_harness_only
     ;;
+  doris-container)
+    engine_venv="$(git rev-parse --git-path doris-python)"
+    if [[ ! -x "$engine_venv/bin/python" ]]; then
+      python3 -m venv "$engine_venv"
+    fi
+    "$engine_venv/bin/python" -m pip --disable-pip-version-check install -q -r scripts/engines/doris-requirements.txt
+    "$engine_venv/bin/python" scripts/engines/doris-container.py
+    exit $?
+    ;;
   engines-container)
     python3 scripts/engines/presto-container.py
     exit $?
@@ -239,7 +248,7 @@ case "$MODE" in
     exit 2
     ;;
   *)
-    echo "usage: scripts/check.sh fast|ci|conformance|engines|engines-container" >&2
+    echo "usage: scripts/check.sh fast|ci|conformance|engines|engines-container|doris-container" >&2
     exit 64
     ;;
 esac

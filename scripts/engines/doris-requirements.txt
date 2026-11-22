@@ -1,0 +1,2 @@
+# Native MySQL prepared statements; installed only for the Docker tier.
+mysql-connector-python==9.4.0

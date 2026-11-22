@@ -342,6 +342,7 @@ def deliver(rounds):
             # Real local execution is mandatory before every review. Docker/engine
             # failures stop delivery without asking a model to repair infrastructure.
             check('engines-container')
+            check('doris-container')
             # Service/auth failures must not trigger a code repair or consume model budget.
             report = review()
             if report.get('questions'):
@@ -366,7 +367,7 @@ def deliver(rounds):
                 run('gh', 'pr', 'ready', str(bound['number']), '--repo', repo)
             evidence = state / 'evidence.md'
             evidence.write_text(f'<!-- dev-evidence:{bound["head"]} -->\n'
-                                f'Local CI and local Docker Presto smoke passed; remote t0 passed at `{bound["head"]}`.\n'
+                                f'Local CI and local Docker Presto and Doris smoke passed; remote t0 passed at `{bound["head"]}`.\n'
                                 f'Implemented by {config()["implementer"]}; reviewed by {report["reviewer"]}.\n')
             run('gh', 'pr', 'comment', str(bound['number']), '--repo', repo, '--body-file', str(evidence))
             print('READY: ' + current['url'] + ' @ ' + bound['head'] + '; owner reviews and merges')
