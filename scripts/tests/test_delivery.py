@@ -240,9 +240,11 @@ class DeliveryTests(unittest.TestCase):
                         status='completed' if done else 'in_progress',
                         conclusion='success' if done else None)
         t0, presto, doris = remote('t0', 1), remote('presto-smoke', 2), remote('doris-smoke', 3)
+        cube = remote('cube-core', 4)
+        # Engines that pass are not enough while the Cube Core comparison has not reported.
         responses = iter(json.dumps({'check_runs': rows}) for rows in (
             [], [remote('t0', 1, done=False)], [t0], [t0, presto, remote('doris-smoke', 3, done=False)],
-            [t0, presto, doris]))
+            [t0, presto, doris], [t0, presto, doris, cube]))
 
         def run_result(*args, **kwargs):
             if args[:2] == ('gh', 'api'):
@@ -261,14 +263,14 @@ class DeliveryTests(unittest.TestCase):
              patch.object(dev.time, 'sleep') as sleep:
             dev.deliver()
             # Engine checks that have not appeared yet are waited for, not assumed.
-            self.assertEqual(sleep.call_count, 4)
+            self.assertEqual(sleep.call_count, 5)
             self.assertEqual([call.args for call in check.call_args_list], [('ci',)])
             runner.assert_any_call('gh', 'api',
                                    f'repos/{dev.repo}/commits/a/check-runs?filter=latest&per_page=100')
             runner.assert_any_call('gh', 'pr', 'ready', '1', '--repo', dev.repo)
             evidence = (dev.state / 'evidence.md').read_text()
             self.assertIn('Local CI passed; remote t0 passed', evidence)
-            self.assertIn('Remote engine containers passed: presto-smoke, doris-smoke', evidence)
+            self.assertIn('Remote engine containers passed: presto-smoke, doris-smoke, cube-core', evidence)
             self.assertIn('Local engine containers are on demand and were not run', evidence)
             self.assertIn('Cross-model review is on demand and was not run at this head', evidence)
 

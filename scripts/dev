@@ -352,7 +352,7 @@ def latest_t0(checks):
 
 # Engines run only on GitHub by default. Keep both tuples in step with
 # .github/workflows/engines.yml: its job names and its pull_request path filter.
-ENGINE_CHECKS = ('presto-smoke', 'doris-smoke')
+ENGINE_CHECKS = ('presto-smoke', 'doris-smoke', 'cube-core')
 ENGINE_TRIGGER_PATHS = ('crates/**', 'templates/**', 'scripts/engines/**', 'scripts/check.sh',
                         'scripts/vendor-sync.sh', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml',
                         '.github/workflows/engines.yml')

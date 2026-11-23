@@ -42,9 +42,9 @@ context without changing harness code; repeat the flag for additional files.
 `scripts/dev deliver` is deliberately light. It checkpoints pending edits, runs
 `scripts/check.sh ci` locally, then waits for the remote checks on the exact head:
 `t0` always, `image` and `aarch64` when the diff touches a path that starts the
-`build` workflow (see [verification.md](verification.md)), and `presto-smoke` and
-`doris-smoke` when the diff touches a path that
-starts the `engines` workflow (crates, templates, engine scripts, `scripts/check.sh`,
+`build` workflow (see [verification.md](verification.md)), and `presto-smoke`,
+`doris-smoke` and `cube-core` when the diff touches a path that starts the
+`engines` workflow (crates, templates, engine scripts, `scripts/check.sh`,
 `scripts/vendor-sync.sh`, the Cargo manifests and toolchain, the workflow itself).
 When they pass it marks the PR Ready and posts an evidence comment that says what
 ran and what did not. A failing local or remote check leaves the PR Draft; fix it
