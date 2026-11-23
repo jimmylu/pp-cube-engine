@@ -6,7 +6,7 @@
 | --- | --- | --- | --- |
 | T0 | `scripts/check.sh ci` | Every pull request | Merge |
 | T1 | `scripts/check.sh conformance`: comparison with Cube Core | Nightly, on demand | Milestone |
-| T2 | `scripts/check.sh engines` (prepared Presto) or `scripts/check.sh engines-container` (disposable Docker Presto) | On demand | Milestone |
+| T2 | `scripts/check.sh engines` (prepared Presto), `scripts/check.sh engines-container` (disposable Docker Presto) or `scripts/check.sh doris-container` (disposable Docker Doris) | On demand | Milestone |
 | T3 | Generated SQL on real clusters, run by a person | Outside this repository | Milestone acceptance |
 
 T1 is not built yet and exits 2. T2 has three Presto smoke cases (grouped sum, text equality binding and Tokyo day range); see

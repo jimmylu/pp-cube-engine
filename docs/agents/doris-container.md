@@ -50,8 +50,10 @@ Sources:
 
 The tier first executed nineteen assertions against stored compiler goldens
 with its own fixture (#57). The manifest was integrated beside them (#62,
-closing #59), then grew to cover the whole B0 matrix (#64), which made the
-stored-golden assertions and `scripts/engines/doris-fixture.sql` redundant;
-they are removed. Open: the Presto tier still reads stored goldens (#61).
+closing #59), then grew to cover the whole B0 matrix (#64). The stored-golden
+assertions and `scripts/engines/doris-fixture.sql` are removed. Each of them has
+a manifest case: aggregates, a page inside and a page past the last group,
+measure filter, joined dimension, six pattern operators with a wildcard decoy
+and NULL-keeping negations, and a security pattern beside a user OR. Open: the Presto tier still reads stored goldens (#61).
 Final evidence belongs in SHA-bound PR comments. The owner performs final
 review and merge.
