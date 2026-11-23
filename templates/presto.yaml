@@ -8,6 +8,9 @@
 commit: 486f0d26bab58ab4fe0be0e4cdd39818b35a7870
 # BaseQuery.ts, timestampPrecision; Presto does not override it.
 timestamp_precision: 3
+# Presto's INTERVAL literal: year-month and day-time fields only, so no week
+# and no quarter, although PrestodbQuery.ts writes whatever unit it is given.
+interval_units: [year, month, day, hour, minute, second]
 templates:
   statements/select:
     source: PrestodbQuery.ts
@@ -135,3 +138,36 @@ templates:
   tesseract/join_types_inner:
     source: BaseQuery.ts
     text: "INNER"
+  driver/date_time_cast:
+    source: PrestodbQuery.ts
+    text: "from_iso8601_timestamp({{ value }})"
+  driver/interval_string:
+    source: PrestodbQuery.ts
+    text: "'{{ value }}' {{ unit }}"
+  driver/add_interval:
+    source: PrestodbQuery.ts
+    text: "{{ date }} + interval {{ interval }}"
+  driver/subtract_interval:
+    source: PrestodbQuery.ts
+    text: "{{ date }} - interval {{ interval }}"
+  statements/time_series_select:
+    source: PrestodbQuery.ts
+    text: "SELECT from_iso8601_timestamp(dates.f) date_from, from_iso8601_timestamp(dates.t) date_to \nFROM (\n{% for time_item in seria  %}    select '{{ time_item[0] }}' f, '{{ time_item[1] }}' t \n{% if not loop.last %} UNION ALL\n{% endif %}{% endfor %}) AS dates"
+  statements/generated_time_series_select:
+    source: PrestodbQuery.ts
+    text: "SELECT d AS date_from,\ndate_add('MILLISECOND', -1, d + interval {{ granularity }}) AS date_to\nFROM UNNEST(\nSEQUENCE(CAST(from_iso8601_timestamp({{ start }}) AS TIMESTAMP), CAST(from_iso8601_timestamp({{ end }}) AS TIMESTAMP), INTERVAL {{ granularity }})\n) AS dates(d)"
+  statements/generated_time_series_with_cte_range_source:
+    source: PrestodbQuery.ts
+    text: "SELECT d AS date_from,\ndate_add('MILLISECOND', -1, d + interval {{ granularity }}) AS date_to\nFROM {{ range_source }} CROSS JOIN UNNEST(\nSEQUENCE(CAST({{ range_source }}.{{ min_name }} AS TIMESTAMP), CAST({{ range_source }}.{{ max_name }} AS TIMESTAMP), INTERVAL {{ granularity }})\n) AS dates(d)"
+  statements/time_series_get_range:
+    source: BaseQuery.ts
+    text: "SELECT {{ max_expr }} as {{ quoted_max_name }},\n{{ min_expr }} as {{ quoted_min_name }}\nFROM {{ from_prepared }}\n{% if filter %}WHERE {{ filter }}{% endif %}"
+  expressions/rolling_window_expr_timestamp_cast:
+    source: BaseQuery.ts
+    text: "{{ value }}"
+  functions/MAX:
+    source: BaseQuery.ts
+    text: "MAX({{ args_concat }})"
+  functions/MIN:
+    source: BaseQuery.ts
+    text: "MIN({{ args_concat }})"

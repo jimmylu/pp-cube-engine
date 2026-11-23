@@ -3,6 +3,8 @@
 commit: 486f0d26bab58ab4fe0be0e4cdd39818b35a7870
 # BaseQuery.ts, timestampPrecision; Presto does not override it.
 timestamp_precision: 3
+# The units of Doris DATE_ADD and DATE_SUB.
+interval_units: [year, quarter, month, week, day, hour, minute, second]
 templates:
   statements/select:
     source: BaseQuery.ts
@@ -130,3 +132,21 @@ templates:
   tesseract/join_types_inner:
     source: BaseQuery.ts
     text: "INNER"
+  driver/date_time_cast:
+    source: Doris DATETIMEV2
+    text: "CAST(LEFT(REPLACE({{ value }}, 'T', ' '), 23) AS DATETIMEV2(3))"
+  driver/interval_string:
+    source: Doris DATE_ADD
+    text: "{{ value }} {{ unit | upper }}"
+  driver/add_interval:
+    source: Doris DATE_ADD
+    text: "DATE_ADD({{ date }}, INTERVAL {{ interval }})"
+  driver/subtract_interval:
+    source: Doris DATE_SUB
+    text: "DATE_SUB({{ date }}, INTERVAL {{ interval }})"
+  statements/time_series_select:
+    source: MysqlQuery.ts; Doris DATETIMEV2
+    text: "SELECT CAST(REPLACE(dates.f, 'T', ' ') AS DATETIMEV2(3)) date_from, CAST(REPLACE(dates.t, 'T', ' ') AS DATETIMEV2(3)) date_to \nFROM (\n{% for time_item in seria  %}    select '{{ time_item[0] }}' f, '{{ time_item[1] }}' t \n{% if not loop.last %} UNION ALL\n{% endif %}{% endfor %}) AS dates"
+  expressions/rolling_window_expr_timestamp_cast:
+    source: BaseQuery.ts
+    text: "{{ value }}"

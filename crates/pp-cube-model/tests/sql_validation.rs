@@ -154,15 +154,15 @@ fn physical_column_access_requires_the_owning_cube() {
 fn unsupported_features_accumulate_alongside_sql_faults() {
     for (key, value, path, rule) in [
         (
-            "time_shift",
+            "reduce_by",
             serde_json::json!([]),
-            "/cubes/0/measures/0/time_shift",
+            "/cubes/0/measures/0/reduce_by",
             "unknown-field",
         ),
         (
-            "rolling_window",
+            "case",
             serde_json::json!({}),
-            "/cubes/0/measures/0/rolling_window",
+            "/cubes/0/measures/0/case",
             "unknown-field",
         ),
         (

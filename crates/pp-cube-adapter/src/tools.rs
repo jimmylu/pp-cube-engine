@@ -72,6 +72,59 @@ impl Driver {
     fn function(&self, name: &str, arguments: minijinja::Value) -> Result<String, CubeError> {
         self.dialect.render(name, arguments).map_err(dialect_error)
     }
+
+    /// Adds `interval` to `date` or subtracts it, one unit at a time, coarsest
+    /// first: an interval literal of these engines carries a single unit.
+    fn apply_interval(
+        &self,
+        name: &str,
+        date: String,
+        interval: &str,
+    ) -> Result<String, CubeError> {
+        let mut date = date;
+        for (value, unit) in interval_parts(interval)? {
+            let interval = self.function("driver/interval_string", context! { value, unit })?;
+            date = self.function(name, context! { date, interval })?;
+        }
+        Ok(date)
+    }
+}
+
+/// The parts of an interval such as `1 year 2 month`, one per unit, coarsest
+/// first, as Cube's `splitSqlInterval` (cubejs-backend-shared/src/time.ts) gives them.
+fn interval_parts(interval: &str) -> Result<Vec<(i64, String)>, CubeError> {
+    const UNITS: [&str; 9] = [
+        "year",
+        "quarter",
+        "month",
+        "week",
+        "day",
+        "hour",
+        "minute",
+        "second",
+        "millisecond",
+    ];
+    let malformed = || CubeError::internal(format!("`{interval}` is not an interval"));
+    let words: Vec<&str> = interval.split_whitespace().collect();
+    if words.is_empty() || !words.len().is_multiple_of(2) {
+        return Err(malformed());
+    }
+    let mut parts = Vec::with_capacity(words.len() / 2);
+    for pair in words.chunks(2) {
+        let value: i64 = pair[0].parse().map_err(|_| malformed())?;
+        let unit = pair[1].to_lowercase();
+        let unit = unit.strip_suffix('s').unwrap_or(&unit);
+        let rank = UNITS
+            .iter()
+            .position(|known| *known == unit)
+            .ok_or_else(malformed)?;
+        parts.push((rank, value, unit.to_owned()));
+    }
+    parts.sort_by_key(|(rank, _, _)| *rank);
+    Ok(parts
+        .into_iter()
+        .map(|(_, value, unit)| (value, unit))
+        .collect())
 }
 
 impl DriverTools for Driver {
@@ -107,8 +160,8 @@ impl DriverTools for Driver {
         self.function("driver/time_stamp_cast", context! { value => field })
     }
 
-    fn date_time_cast(&self, _field: String) -> Result<String, CubeError> {
-        unavailable("the dialect function date_time_cast")
+    fn date_time_cast(&self, field: String) -> Result<String, CubeError> {
+        self.function("driver/date_time_cast", context! { value => field })
     }
 
     /// A timestamp of the query's timezone as UTC text, the way Cube's
@@ -133,28 +186,47 @@ impl DriverTools for Driver {
         Ok(self.dialect.reuses_parameters())
     }
 
-    fn subtract_interval(&self, _date: String, _interval: String) -> Result<String, CubeError> {
-        unavailable("the dialect function subtract_interval")
+    fn subtract_interval(&self, date: String, interval: String) -> Result<String, CubeError> {
+        self.apply_interval("driver/subtract_interval", date, &interval)
     }
 
-    fn add_interval(&self, _date: String, _interval: String) -> Result<String, CubeError> {
-        unavailable("the dialect function add_interval")
+    fn add_interval(&self, date: String, interval: String) -> Result<String, CubeError> {
+        self.apply_interval("driver/add_interval", date, &interval)
     }
 
-    fn interval_string(&self, _interval: String) -> Result<String, CubeError> {
-        unavailable("the dialect function interval_string")
+    fn interval_string(&self, interval: String) -> Result<String, CubeError> {
+        let parts = interval_parts(&interval)?;
+        let [(value, unit)] = parts.as_slice() else {
+            return Err(CubeError::internal(format!(
+                "`{interval}` is not an interval of one unit"
+            )));
+        };
+        self.function("driver/interval_string", context! { value, unit })
     }
 
-    fn add_timestamp_interval(
-        &self,
-        _date: String,
-        _interval: String,
-    ) -> Result<String, CubeError> {
-        unavailable("the dialect function add_timestamp_interval")
+    fn add_timestamp_interval(&self, date: String, interval: String) -> Result<String, CubeError> {
+        self.add_interval(date, interval)
     }
 
-    fn interval_and_minimal_time_unit(&self, _interval: String) -> Result<Vec<String>, CubeError> {
-        unavailable("the dialect function interval_and_minimal_time_unit")
+    /// Cube's `intervalAndMinimalTimeUnit` (BaseQuery.ts): the interval as it is
+    /// and the finest unit a difference in it has to be counted in.
+    fn interval_and_minimal_time_unit(&self, interval: String) -> Result<Vec<String>, CubeError> {
+        let lower = interval.to_lowercase();
+        let has = |unit: &str| lower.contains(unit);
+        let unit = if has("second") {
+            "second"
+        } else if has("minute") {
+            "minute"
+        } else if has("hour") {
+            "hour"
+        } else if has("day") || has("week") {
+            "day"
+        } else if has("month") || has("quarter") {
+            "month"
+        } else {
+            "year"
+        };
+        Ok(vec![interval, unit.to_owned()])
     }
 
     fn hll_init(&self, _sql: String) -> Result<String, CubeError> {
@@ -174,7 +246,7 @@ impl DriverTools for Driver {
     }
 
     fn support_generated_series_for_custom_td(&self) -> Result<bool, CubeError> {
-        unavailable("the dialect setting support_generated_series_for_custom_td")
+        Ok(self.dialect.generates_time_series())
     }
 
     fn date_bin(

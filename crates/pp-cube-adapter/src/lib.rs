@@ -12,6 +12,7 @@ mod joins;
 mod options;
 mod schema;
 mod tools;
+mod windows;
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -148,6 +149,7 @@ pub fn plan(
         .map_err(|_| PlanError::User(format!("Timezone `{timezone}` is not known")))?;
     let evaluator = Rc::new(Evaluator::new(model.clone()));
     evaluator.check(query).map_err(PlanError::local)?;
+    windows::check(model, query, dialect)?;
     let joins = Rc::new(Joins::new(model.clone(), query)?);
     let tools = Rc::new(Tools::new(evaluator.clone(), dialect, zone, joins.clone()));
     let security_context = Rc::new(Opaque);

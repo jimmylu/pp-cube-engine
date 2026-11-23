@@ -1,0 +1,74 @@
+---
+source: crates/pp-cube-compile/tests/time_windows.rs
+expression: "queries.each_ref().map(|query| compiled(DialectId::Doris, query)).join(\"\\n\\n\")"
+---
+ WITH 
+time_series AS (  SELECT CAST(REPLACE(dates.f, 'T', ' ') AS DATETIMEV2(3)) date_from, CAST(REPLACE(dates.t, 'T', ' ') AS DATETIMEV2(3)) date_to 
+  FROM (
+      select '2026-10-01T00:00:00.000' f, '2026-10-01T23:59:59.999' t 
+   UNION ALL
+      select '2026-10-02T00:00:00.000' f, '2026-10-02T23:59:59.999' t 
+   UNION ALL
+      select '2026-10-03T00:00:00.000' f, '2026-10-03T23:59:59.999' t 
+  ) AS dates),
+cte_0 AS (  SELECT DATE_TRUNC(CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC'), 'day') `sales__sold_at_day`, sum(`sales`.amount) `sales__amount_7d`  
+  FROM  dw.sales_dtl  AS `sales`
+  WHERE (CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC') >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC') <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC),
+cte_1 AS (  SELECT `time_series`.`date_from` `sales__sold_at_day`, sum(`rolling_source`.`sales__amount_7d`) `sales__amount_7d`  
+  FROM  time_series  AS `time_series`
+  LEFT JOIN  cte_0  AS `rolling_source` ON `rolling_source`.`sales__sold_at_day` > DATE_SUB(`time_series`.`date_to`, INTERVAL 7 DAY) AND `rolling_source`.`sales__sold_at_day` <= `time_series`.`date_to` GROUP BY 1 ORDER BY  1  ASC),
+cte_2 AS (  SELECT DATE_TRUNC(CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC'), 'day') `sales__sold_at_day`, sum(`sales`.amount) `sales__amount_mtd`  
+  FROM  dw.sales_dtl  AS `sales`
+  WHERE (CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC') >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC') <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC),
+cte_3 AS (  SELECT `time_series`.`date_from` `sales__sold_at_day`, sum(`rolling_source`.`sales__amount_mtd`) `sales__amount_mtd`  
+  FROM  time_series  AS `time_series`
+  LEFT JOIN  cte_2  AS `rolling_source` ON `rolling_source`.`sales__sold_at_day` >= DATE_TRUNC(`time_series`.`date_from`, 'month') and `rolling_source`.`sales__sold_at_day` <= `time_series`.`date_to` GROUP BY 1 ORDER BY  1  ASC)
+SELECT `fk_aggregate_keys`.`sales__sold_at_day` `sales__sold_at_day`, `q_0`.`sales__amount_7d` `sales__amount_7d`, `q_1`.`sales__amount_mtd` `sales__amount_mtd`  
+FROM (SELECT DISTINCT `sales__sold_at_day` `sales__sold_at_day`  
+FROM (SELECT DISTINCT `sales__sold_at_day` `sales__sold_at_day`  
+FROM  cte_1  AS `cte_1`
+ UNION ALL 
+SELECT DISTINCT `sales__sold_at_day` `sales__sold_at_day`  
+FROM  cte_3  AS `cte_3`) AS `fk_aggregate_keys_source`) AS `fk_aggregate_keys`
+LEFT JOIN  cte_1  AS `q_0` ON ((`fk_aggregate_keys`.`sales__sold_at_day` = `q_0`.`sales__sold_at_day` OR ((`fk_aggregate_keys`.`sales__sold_at_day` IS NULL) AND (`q_0`.`sales__sold_at_day` IS NULL))))
+LEFT JOIN  cte_3  AS `q_1` ON ((`fk_aggregate_keys`.`sales__sold_at_day` = `q_1`.`sales__sold_at_day` OR ((`fk_aggregate_keys`.`sales__sold_at_day` IS NULL) AND (`q_1`.`sales__sold_at_day` IS NULL)))) ORDER BY  1  ASC
+-- parameters: [Text("2026-09-24T00:00:00.000"), Text("2026-10-03T23:59:59.999"), Text("2026-10-01T00:00:00.000"), Text("2026-10-03T23:59:59.999")]
+
+ WITH 
+time_series AS (  SELECT CAST(REPLACE(dates.f, 'T', ' ') AS DATETIMEV2(3)) date_from, CAST(REPLACE(dates.t, 'T', ' ') AS DATETIMEV2(3)) date_to 
+  FROM (
+      select '2026-09-28T00:00:00.000' f, '2026-10-04T23:59:59.999' t 
+   UNION ALL
+      select '2026-10-05T00:00:00.000' f, '2026-10-11T23:59:59.999' t 
+   UNION ALL
+      select '2026-10-12T00:00:00.000' f, '2026-10-18T23:59:59.999' t 
+  ) AS dates),
+cte_0 AS (  SELECT DATE_TRUNC(CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC'), 'week') `sales__sold_at_week`, sum(`sales`.amount) `sales__amount_2w`  
+  FROM  dw.sales_dtl  AS `sales`
+  WHERE (CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC') >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC') <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC),
+cte_1 AS (  SELECT `time_series`.`date_from` `sales__sold_at_week`, sum(`rolling_source`.`sales__amount_2w`) `sales__amount_2w`  
+  FROM  time_series  AS `time_series`
+  LEFT JOIN  cte_0  AS `rolling_source` ON `rolling_source`.`sales__sold_at_week` > DATE_SUB(`time_series`.`date_to`, INTERVAL 2 WEEK) AND `rolling_source`.`sales__sold_at_week` <= `time_series`.`date_to` GROUP BY 1 ORDER BY  1  ASC)
+SELECT `fk_aggregate`.`sales__sold_at_week` `sales__sold_at_week`, `fk_aggregate`.`sales__amount_2w` `sales__amount_2w`  
+FROM  cte_1  AS `fk_aggregate` ORDER BY  1  ASC
+-- parameters: [Text("2026-09-14T00:00:00.000"), Text("2026-10-18T23:59:59.999")]
+
+ WITH 
+cte_0 AS (  SELECT DATE_TRUNC(CONVERT_TZ((DATE_ADD(`sales`.sold_at, INTERVAL 1 QUARTER)), 'UTC', 'UTC'), 'quarter') `sales__sold_at_quarter`, sum(`sales`.amount) `sales__amount`  
+  FROM  dw.sales_dtl  AS `sales`
+  WHERE ((DATE_ADD(`sales`.sold_at, INTERVAL 1 QUARTER)) >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND (DATE_ADD(`sales`.sold_at, INTERVAL 1 QUARTER)) <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC),
+cte_1 AS (  SELECT `fk_aggregate`.`sales__sold_at_quarter` `sales__sold_at_quarter`, `fk_aggregate`.`sales__amount` `sales__amount_prior_quarter`  
+  FROM  cte_0  AS `fk_aggregate`),
+cte_2 AS (  SELECT DATE_TRUNC(CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC'), 'quarter') `sales__sold_at_quarter`, sum(`sales`.amount) `sales__amount`  
+  FROM  dw.sales_dtl  AS `sales`
+  WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1)
+SELECT `fk_aggregate_keys`.`sales__sold_at_quarter` `sales__sold_at_quarter`, `q_1`.`sales__amount` `sales__amount`, `q_0`.`sales__amount_prior_quarter` `sales__amount_prior_quarter`  
+FROM (SELECT DISTINCT `sales__sold_at_quarter` `sales__sold_at_quarter`  
+FROM (SELECT DISTINCT `sales__sold_at_quarter` `sales__sold_at_quarter`  
+FROM  cte_1  AS `cte_1`
+ UNION ALL 
+SELECT DISTINCT `sales__sold_at_quarter` `sales__sold_at_quarter`  
+FROM  cte_2  AS `cte_2`) AS `fk_aggregate_keys_source`) AS `fk_aggregate_keys`
+LEFT JOIN  cte_1  AS `q_0` ON ((`fk_aggregate_keys`.`sales__sold_at_quarter` = `q_0`.`sales__sold_at_quarter` OR ((`fk_aggregate_keys`.`sales__sold_at_quarter` IS NULL) AND (`q_0`.`sales__sold_at_quarter` IS NULL))))
+LEFT JOIN  cte_2  AS `q_1` ON ((`fk_aggregate_keys`.`sales__sold_at_quarter` = `q_1`.`sales__sold_at_quarter` OR ((`fk_aggregate_keys`.`sales__sold_at_quarter` IS NULL) AND (`q_1`.`sales__sold_at_quarter` IS NULL)))) ORDER BY  1  ASC
+-- parameters: [Text("2026-01-01T00:00:00.000Z"), Text("2026-06-30T23:59:59.999Z"), Text("2026-01-01T00:00:00.000Z"), Text("2026-06-30T23:59:59.999Z")]
