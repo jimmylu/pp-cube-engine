@@ -63,11 +63,36 @@ fn invalid_startup_never_announces_readiness() {
                 &address,
                 "--workers",
                 workers,
+                "--data-source",
+                "warehouse=presto",
             ])
             .output()
             .unwrap();
         assert!(!output.status.success());
         assert!(output.stdout.is_empty());
+    }
+    // The model's data source needs a dialect, and the option must be well formed.
+    for sources in [
+        vec![],
+        vec!["--data-source", "lake=presto"],
+        vec!["--data-source", "warehouse=oracle"],
+        vec!["--data-source", "warehouse"],
+        vec!["--data-source", "=presto"],
+        vec![
+            "--data-source",
+            "warehouse=presto",
+            "--data-source",
+            "warehouse=doris",
+        ],
+    ] {
+        let output = command()
+            .args(["--model", path.to_str().unwrap(), "--version", "v1"])
+            .args(["--digest", "digest", "--listen", "127.0.0.1:0"])
+            .args(&sources)
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "{sources:?}");
+        assert!(output.stdout.is_empty(), "{sources:?}");
     }
     std::fs::remove_file(path).unwrap();
     std::fs::remove_file(invalid).unwrap();
@@ -90,6 +115,10 @@ async fn real_process_serves_operations_and_exits_on_interrupt() {
                 "digest",
                 "--listen",
                 "127.0.0.1:0",
+                "--data-source",
+                "warehouse=presto",
+                "--data-source",
+                "lake=doris",
             ])
             .stdout(Stdio::piped())
             .spawn()
@@ -130,7 +159,7 @@ async fn real_process_serves_operations_and_exits_on_interrupt() {
         .await
         .unwrap()
         .into_inner()
-        .meta_json
+        .cubes
         .is_empty());
     assert!(!client
         .validate_model(ValidateModelRequest {

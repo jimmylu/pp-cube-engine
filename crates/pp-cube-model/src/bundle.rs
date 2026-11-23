@@ -8,10 +8,16 @@ use crate::{validate_model, Model, ValidationIssue};
 /// Registration/selection failures. Digest strings are never used as proof of validity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BundleError {
-    InvalidIdentifier { field: &'static str },
+    InvalidIdentifier {
+        field: &'static str,
+    },
     Model(Vec<ValidationIssue>),
     DuplicateVersion,
     UnknownVersion,
+    /// A host that maps data sources to dialects has no dialect for this one.
+    UnmappedDataSource {
+        data_source: String,
+    },
 }
 
 impl fmt::Display for BundleError {
@@ -21,6 +27,12 @@ impl fmt::Display for BundleError {
             Self::Model(_) => f.write_str("the bundle model could not be validated"),
             Self::DuplicateVersion => f.write_str("the bundle version is already registered"),
             Self::UnknownVersion => f.write_str("the bundle version is not available"),
+            Self::UnmappedDataSource { data_source } => {
+                write!(
+                    f,
+                    "no dialect is configured for data source `{data_source}`"
+                )
+            }
         }
     }
 }

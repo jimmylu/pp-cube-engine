@@ -122,7 +122,7 @@ fn comparison_includes_every_result_field() {
         request_id: String::new(),
     };
     let base = pp_cube_compile::compile(&model, &query, &ctx).unwrap();
-    let mut variants = vec![base.clone(); 5];
+    let mut variants = vec![base.clone(); 6];
     variants[0].sql.push(' ');
     variants[1]
         .parameters
@@ -130,6 +130,12 @@ fn comparison_includes_every_result_field() {
     variants[2].columns.clear();
     variants[3].used_cubes.clear();
     variants[4].fingerprint[0] ^= 1;
+    variants[5]
+        .session_properties
+        .push(pp_cube_compile::SessionProperty {
+            name: "offset_clause_enabled".into(),
+            value: "true".into(),
+        });
     for changed in variants {
         assert_ne!(record(&base), record(&changed));
     }

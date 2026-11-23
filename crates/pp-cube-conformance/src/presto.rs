@@ -6,12 +6,6 @@
 
 use crate::cases::{Fixture, Group};
 
-// scenario: B0-PRESTO-017
-/// PrestoDB rejects the OFFSET clause ("Offset support is not enabled") unless
-/// the session enables it. The planner's Presto SQL uses OFFSET for a query
-/// offset, so a caller that passes offsets must set this property.
-pub const SESSION: &[(&str, &str)] = &[("offset_clause_enabled", "true")];
-
 const SCHEMA: &str = "CREATE SCHEMA IF NOT EXISTS memory.dw";
 const NO_SALES: &str = "DROP TABLE IF EXISTS memory.dw.sales_dtl";
 const NO_STORES: &str = "DROP TABLE IF EXISTS memory.dw.dim_store";

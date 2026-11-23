@@ -5,13 +5,16 @@ Run one validated model version on an explicit local socket:
 ```sh
 cargo run -p pp-cube-service -- \
   --model model.yaml --version v1 --digest local-model \
-  --listen 127.0.0.1:50051 --workers 2 --queue 16
+  --listen 127.0.0.1:50051 --data-source warehouse=doris \
+  --workers 2 --queue 16
 ```
 
 The model file accepts UTF-8 YAML or JSON. Version and digest are required nonblank
 identifiers; digest is opaque caller metadata, not a verified content hash. The
 listen address must be a literal loopback address. Port zero chooses a free port.
 Worker and queue capacities must be positive; their defaults are 2 and 16.
+`--data-source name=dialect` is repeatable and names the dialect (`presto` or
+`doris`) that serves each data source; every data source of the model needs one.
 
 After validation and binding, stdout prints `listening <actual-address>`.
 Startup failure writes a diagnostic to stderr and exits unsuccessfully. Ctrl-C
@@ -19,6 +22,14 @@ stops the server gracefully. Clients use `ppcube.engine.v1.CubeEngine` from
 `proto/engine.proto`: Compile, ValidateModel and GetMeta. Compile names exactly
 the startup version and supplies dialect, timezone and trusted security filters.
 The service compiles SQL without executing it.
+
+A compiled response carries the SQL, one typed value per placeholder to bind in
+order, the output columns, the cubes and tables read, a fingerprint and the
+engine session properties the SQL needs: apply every one before executing (on
+Presto a query with an offset needs `offset_clause_enabled=true`). SQL is
+returned only when the requested dialect serves every data source the query
+reads. Every response for an available version names the kernel version, the
+upstream pin and the model version and digest.
 
 This process is for trusted local callers, who can choose security context. It
 has no authentication or TLS. To integrate remote access, use the library's

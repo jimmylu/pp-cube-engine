@@ -47,14 +47,12 @@ pub fn manifest(dialect: &str) -> Result<String, String> {
             DialectId::Doris,
             dialect,
             MODEL,
-            &[],
             &dialect_cases(doris::fixture, doris::scenario),
         ),
         "presto" => render(
             DialectId::Presto,
             dialect,
             MODEL,
-            presto::SESSION,
             &dialect_cases(presto::fixture, presto::scenario),
         ),
         other => Err(format!("unknown dialect `{other}`")),
@@ -86,13 +84,12 @@ fn dialect_cases(
 
 /// Compiles `cases` against `model_yaml`. Any case that cannot be compiled or
 /// represented fails the whole manifest and is named in the error.
-/// `session` lists the engine session properties the compiled SQL needs; the
-/// kernel cannot set them, so whoever executes the SQL must.
+/// The manifest's `session` is the union of the session properties the compile
+/// results declare, so a tier sets exactly what the kernel says its SQL needs.
 pub fn render(
     dialect: DialectId,
     label: &str,
     model_yaml: &str,
-    session: &[(&str, &str)],
     cases: &[Case],
 ) -> Result<String, String> {
     if cases.is_empty() {
@@ -101,6 +98,7 @@ pub fn render(
     let model =
         Arc::new(pp_cube_model::load_yaml(model_yaml).map_err(|error| format!("model: {error}"))?);
     let mut names = std::collections::BTreeSet::new();
+    let mut session = serde_json::Map::new();
     let mut entries = Vec::with_capacity(cases.len());
     for case in cases {
         let fail = |reason: String| format!("case `{}`: {reason}", case.name);
@@ -131,6 +129,16 @@ pub fn render(
             .map(parameter)
             .collect::<Result<Vec<_>, _>>()
             .map_err(fail)?;
+        for property in compiled.session_properties {
+            if let Some(other) = session.insert(property.name.clone(), json!(property.value)) {
+                if other != json!(property.value) {
+                    return Err(fail(format!(
+                        "session property `{}` has two values",
+                        property.name
+                    )));
+                }
+            }
+        }
         entries.push(json!({
             "name": case.name,
             "scenario": case.scenario,
@@ -141,10 +149,6 @@ pub fn render(
             "rows": case.rows,
         }));
     }
-    let session: serde_json::Map<String, Value> = session
-        .iter()
-        .map(|(name, value)| ((*name).to_owned(), json!(value)))
-        .collect();
     let document = json!({
         "schema": SCHEMA,
         "dialect": label,

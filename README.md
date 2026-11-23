@@ -6,7 +6,12 @@ The kernel compiles; it does not execute. Running the SQL, access decisions and 
 
 ## Status
 
-Bootstrap. The repository holds the engineering environment only; there is no product code yet.
+In development; not yet released. The B0 baseline compiles for Presto and Apache
+Doris, and forty shared cases are executed on both engines for every relevant
+pull request. A gRPC service exposes Compile, ValidateModel and GetMeta
+([crates/pp-cube-service](crates/pp-cube-service/README.md)). Apache Druid, the
+B1 baseline, comparison with Cube Core and production packaging are not built.
+Implemented behaviour is recorded in [openspec/specs](openspec/specs).
 
 ## Approach
 
@@ -18,9 +23,9 @@ Bootstrap. The repository holds the engineering environment only; there is no pr
 
 Most of the code is written by coding agents, under these controls:
 
-- Every change starts as a spec proposal and is implemented only after the proposal is approved.
+- Every change carries a spec proposal, its implementation and its tests in one pull request, sized as one capability.
 - `main` accepts changes only through pull requests. A pull request merges only after the `t0` check passes and the repository owner approves the `owner-approval` check.
-- The model that reviews a pull request comes from a different vendor than the model that wrote it.
+- Review by a second model, from a different vendor than the one that wrote the change, is run when the owner asks for it.
 
 ## Contributing
 

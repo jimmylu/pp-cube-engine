@@ -11,8 +11,12 @@ use pp_cube_adapter::{plan, PlanError};
 use pp_cube_dialect::dialect;
 use pp_cube_model::{validate_model, Filter, Model, Query, ValidationIssue};
 
+pub use fingerprint::UPSTREAM_PIN;
 pub use pp_cube_adapter::{OutputColumn, Parameter, UsedCube};
-pub use pp_cube_dialect::DialectId;
+pub use pp_cube_dialect::{DialectId, SessionProperty};
+
+/// The version of the kernel that produced a result; part of every fingerprint.
+pub const KERNEL_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// What a compilation needs besides the model and the query.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +42,9 @@ pub struct Compiled {
     pub fingerprint: [u8; 32],
     pub sql: String,
     pub parameters: Vec<Parameter>,
+    /// Engine session settings this SQL needs, which the executor must apply.
+    /// Empty for most queries; decided by the dialect and the query alone.
+    pub session_properties: Vec<SessionProperty>,
 }
 
 /// Caller-facing errors contain no planner SQL or physical source diagnostics.
@@ -103,6 +110,7 @@ pub fn compile(
             fingerprint,
             sql: planned.sql,
             parameters: planned.parameters,
+            session_properties: dialect.session_properties(query.offset.is_some()),
         }),
         Err(error) => Err(error.into()),
     }
