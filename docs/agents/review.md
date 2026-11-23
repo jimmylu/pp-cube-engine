@@ -13,7 +13,7 @@ Keep the reviewer without tools. Supply a packet pinned to the PR binding, with 
 contracts, active or archived change artifacts, seed transfer policy, traceability
 script and public crate roots. Include the pinned diff. Deleted files exist only
 on the base side. Preserve whitespace for line citations. Vendor source remains
-excluded. Packets above 500 KB fail explicitly rather than silently truncating.
+excluded. Packets above 750 KB fail explicitly rather than silently truncating.
 An omitted implementation dependency can still require context clarification.
 
 The other choices were changing the reviewer alone (leaves missing evidence) or
@@ -172,3 +172,18 @@ With bundle/model supplemental context, the complete #46 packet is 403,185 bytes
 at product head b6ac814. No model acceptance is inferred from this size check.
 After owner merge, resume #46 delivery with the updated controller and full
 context; its model review and final-head acceptance remain required.
+
+## Packet limit raised to 750 KB
+
+The owner asked for the review threshold to be relaxed after #64 stopped at the
+500 KB cap. That pull request added one dev-dependency edge: `Cargo.lock`
+travels whole at base and head (about 160 KB), the fixed contract documents and
+crate roots take about 250 KB, and a 700-line change with its snapshot brought
+the numbered packet to about 525 KB. The cap is now 750 KB for both the raw and
+the numbered packet. Everything else is unchanged: complete files, no
+truncation, no omitted lockfile, exact line citations, and an explicit failure
+above the cap. Earlier sections that mention 500 KB describe the cap as it was.
+
+The alternative, sending `Cargo.lock` only as a diff, was not taken: an earlier
+harness change deliberately kept the lockfile whole so dependency findings can
+cite pinned lines. A packet near the cap is still a prompt to consider a split.
