@@ -66,6 +66,26 @@ fn date_text(date: &str) -> String {
     }
 }
 
+/// The range of a time dimension as Cube's API layer hands it to the planner: a
+/// date is the first millisecond of its day at the start and the last at the
+/// end. The planner completes a bare date itself where it filters, but it
+/// builds the time series of a rolling window from these texts as they are.
+fn day_start(date: &str) -> String {
+    if date.len() == "YYYY-MM-DD".len() {
+        format!("{date}T00:00:00.000")
+    } else {
+        date_text(date)
+    }
+}
+
+fn day_end(date: &str) -> String {
+    if date.len() == "YYYY-MM-DD".len() {
+        format!("{date}T23:59:59.999")
+    } else {
+        date_text(date)
+    }
+}
+
 fn filter_item(filter: &Filter) -> FilterItem {
     let mut item = FilterItem {
         or: None,
@@ -115,7 +135,7 @@ fn time_dimension(time_dimension: &TimeDimension) -> base_query_options::TimeDim
         date_range: time_dimension
             .date_range
             .as_ref()
-            .map(|range| vec![date_text(range.from.as_str()), date_text(range.to.as_str())]),
+            .map(|range| vec![day_start(range.from.as_str()), day_end(range.to.as_str())]),
     }
 }
 

@@ -132,6 +132,136 @@ fn quantity(name: &'static str, operator: &str, amount: u32) -> Declared {
     passing(name, &filter, amount)
 }
 
+/// A case on the retail fixture in UTC over days of `sales.sold_at`: the first
+/// column of every row is the day.
+fn daily(
+    name: &'static str,
+    measures: &[&str],
+    range: [&str; 2],
+    rows: &[(&str, &[Value])],
+) -> Declared {
+    let quoted: Vec<_> = measures.iter().map(|m| format!(r#""sales.{m}""#)).collect();
+    let query = format!(
+        r#"{{"measures":[{}],"timeDimensions":[{{"dimension":"sales.sold_at","granularity":"day","dateRange":["{}","{}"]}}],"order":[["sales.sold_at","asc"]]}}"#,
+        quoted.join(","),
+        range[0],
+        range[1]
+    );
+    let mut columns = vec!["sales__sold_at_day".to_owned()];
+    columns.extend(measures.iter().map(|m| format!("sales__{m}")));
+    Declared {
+        name,
+        group: Group::Matrix,
+        fixture: Fixture::Retail,
+        query,
+        timezone: "UTC",
+        security: "",
+        columns,
+        rows: rows
+            .iter()
+            .map(|(day, values)| {
+                let mut row = vec![midnight(day)];
+                row.extend(values.iter().cloned());
+                row
+            })
+            .collect(),
+    }
+}
+
+/// Rolling windows, period to date and time shifts. The retail sales are one a
+/// day from 1 to 6 October: 10, 20, 5, 7, 11 and 99.
+fn windows() -> Vec<Declared> {
+    vec![
+        // Each day with the two before it; the seventh has no sale of its own.
+        daily(
+            "rolling_trailing",
+            &["amount_3d"],
+            ["2026-10-01", "2026-10-07"],
+            &[
+                ("2026-10-01", &[json!(10)]),
+                ("2026-10-02", &[json!(30)]),
+                ("2026-10-03", &[json!(35)]),
+                ("2026-10-04", &[json!(32)]),
+                ("2026-10-05", &[json!(23)]),
+                ("2026-10-06", &[json!(117)]),
+                ("2026-10-07", &[json!(110)]),
+            ],
+        ),
+        // The sales of 1 and 2 October are one order: counted over the window's
+        // rows it is one, where adding each day's count would give two.
+        daily(
+            "rolling_distinct_count",
+            &["orders_2d"],
+            ["2026-10-02", "2026-10-03"],
+            &[("2026-10-02", &[json!(1)]), ("2026-10-03", &[json!(2)])],
+        ),
+        // The month starts before the range does.
+        daily(
+            "month_to_date",
+            &["amount_mtd"],
+            ["2026-10-04", "2026-10-06"],
+            &[
+                ("2026-10-04", &[json!(42)]),
+                ("2026-10-05", &[json!(53)]),
+                ("2026-10-06", &[json!(152)]),
+            ],
+        ),
+        // Without a granularity there is one window, ending where the range ends.
+        retail(
+            "rolling_at_range_end",
+            r#"{"measures":["sales.amount_3d"],"timeDimensions":[{"dimension":"sales.sold_at","dateRange":["2026-10-01","2026-10-04"]}]}"#,
+            &["sales__amount_3d"],
+            json!([[32]]),
+        ),
+        // A month without sales before the first has nothing so far; one after keeps the total.
+        retail(
+            "running_total_by_month",
+            r#"{"measures":["sales.amount_so_far"],"timeDimensions":[{"dimension":"sales.sold_at","granularity":"month","dateRange":["2026-09-01","2026-11-30"]}],"order":[["sales.sold_at","asc"]]}"#,
+            &["sales__sold_at_month", "sales__amount_so_far"],
+            json!([
+                [midnight("2026-09-01"), null],
+                [midnight("2026-10-01"), 152],
+                [midnight("2026-11-01"), 152]
+            ]),
+        ),
+        daily(
+            "prior_day",
+            &["amount", "amount_prior_day"],
+            ["2026-10-02", "2026-10-04"],
+            &[
+                ("2026-10-02", &[json!(20), json!(10)]),
+                ("2026-10-03", &[json!(5), json!(20)]),
+                ("2026-10-04", &[json!(7), json!(5)]),
+            ],
+        ),
+        daily(
+            "change_from_prior_day",
+            &["amount_change"],
+            ["2026-10-02", "2026-10-04"],
+            &[
+                ("2026-10-02", &[json!(10)]),
+                ("2026-10-03", &[json!(-15)]),
+                ("2026-10-04", &[json!(2)]),
+            ],
+        ),
+        // The security filter restricts the rows a window is summed over: C1 sold
+        // on the first two days only.
+        Declared {
+            security: r#"{"filters":[{"member":"sales.channel_cd","operator":"equals","values":["C1"]}]}"#,
+            ..daily(
+                "security_rolling",
+                &["amount_3d"],
+                ["2026-10-01", "2026-10-03"],
+                &[
+                    ("2026-10-01", &[json!(10)]),
+                    ("2026-10-02", &[json!(30)]),
+                    ("2026-10-03", &[json!(30)]),
+                ],
+            )
+        },
+    ]
+}
+
 fn temporal() -> Vec<Declared> {
     let range = r#"["2026-10-01","2026-10-31"]"#;
     let day = r#"["2026-10-01"]"#;
@@ -154,6 +284,19 @@ fn temporal() -> Vec<Declared> {
                 "security",
                 r#"{"or":[{"member":"sales.sold_at","operator":"beforeDate","values":["2026-10-01"]},{"member":"sales.sold_at","operator":"afterOrOnDate","values":["2026-10-01"]}]}"#,
                 27,
+            )
+        },
+        // Days are Tokyo's: 1 October holds the sale of 20, and its window reaches
+        // back to the sale of 10 in the last millisecond of September.
+        Declared {
+            group: Group::Temporal,
+            fixture: Fixture::TokyoOctober,
+            timezone: "Asia/Tokyo",
+            ..daily(
+                "rolling_tokyo",
+                &["amount_2d"],
+                ["2026-10-01", "2026-10-02"],
+                &[("2026-10-01", &[json!(30)]), ("2026-10-02", &[json!(20)])],
             )
         },
         Declared {
@@ -437,5 +580,6 @@ fn matrix() -> Vec<Declared> {
 pub fn declared() -> Vec<Declared> {
     let mut cases = temporal();
     cases.extend(matrix());
+    cases.extend(windows());
     cases
 }

@@ -18,8 +18,14 @@ versions even when the SQL does not.
 - A measure beside one of a cube joined one_to_one, and a formula over measures
   of both, in one SELECT.
 
+- Rolling windows and period to date: `rolling_window` on a measure, with
+  `trailing`, `leading` and `offset`, or `type: to_date` and a granularity.
+- Time shifts: `multi_stage` number measures with `time_shift`, and formulas
+  over shifted and unshifted measures.
+
 **Changed**
 - SQL may begin with `WITH`. The result is still one statement.
+- The Rust type `Measure` has three more public fields.
 
 **Breaking**
 - A filter on a count of a cube reached through a many_to_one join returns
@@ -27,7 +33,7 @@ versions even when the SQL does not.
   contradict the selected count.
 
 **Evidence**
-- Fifty shared cases on Presto 0.293, Doris 4.1.3 and against Cube Core 1.8.28.
+- Fifty-nine shared cases on Presto 0.293, Doris 4.1.3 and against Cube Core 1.8.28.
 
 ## 0.1.0
 

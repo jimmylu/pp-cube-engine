@@ -20,7 +20,9 @@ use cubesqlplanner::cube_bridge::granularity_definition::{
 use cubesqlplanner::cube_bridge::join_item_definition::{
     JoinItemDefinition, JoinItemDefinitionStatic,
 };
-use cubesqlplanner::cube_bridge::measure_definition::{MeasureDefinition, MeasureDefinitionStatic};
+use cubesqlplanner::cube_bridge::measure_definition::{
+    MeasureDefinition, MeasureDefinitionStatic, RollingWindow, TimeShiftReference,
+};
 use cubesqlplanner::cube_bridge::member_order_by::MemberOrderBy;
 use cubesqlplanner::cube_bridge::member_sql::MemberSql;
 use cubesqlplanner::cube_bridge::multi_stage_filter::MultiStageFilterReferences;
@@ -531,15 +533,42 @@ impl MeasureDef {
             MeasureType::Max => "max",
             MeasureType::Number => "number",
         };
+        let cube_name = &model.cubes[cube].name;
+        let definition = &model.cubes[cube].measures[measure];
+        // As Cube's compiler hands them over: the window as written, a shift with
+        // its time dimension as a full path.
+        let rolling_window = definition
+            .rolling_window
+            .as_ref()
+            .map(|window| RollingWindow {
+                trailing: window.trailing.clone(),
+                leading: window.leading.clone(),
+                offset: window.offset.clone(),
+                rolling_type: window.window_type.clone(),
+                granularity: window.granularity.clone(),
+            });
+        let shifts = definition
+            .time_shift
+            .iter()
+            .map(|shift| TimeShiftReference {
+                interval: Some(shift.interval.clone()),
+                name: None,
+                shift_type: Some(shift.shift_type.clone()),
+                time_dimension: shift
+                    .time_dimension
+                    .as_ref()
+                    .map(|dimension| format!("{cube_name}.{dimension}")),
+            });
+        let shifts: Vec<_> = shifts.collect();
         let statics = MeasureDefinitionStatic {
             measure_type: measure_type.to_owned(),
             owned_by_cube: None,
-            multi_stage: None,
+            multi_stage: definition.multi_stage,
             reduce_by_references: None,
             add_group_by_references: None,
             group_by_references: None,
-            time_shift_references: None,
-            rolling_window: None,
+            time_shift_references: (!shifts.is_empty()).then_some(shifts),
+            rolling_window,
             included: None,
         };
         Self {

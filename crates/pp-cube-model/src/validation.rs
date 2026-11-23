@@ -82,7 +82,9 @@ fn fields(kind: &str) -> (&str, &str, &[(&str, &str)]) {
         "model" => ("cubes", "", &[("cubes", "cube")]),
         "cube" => ("name data_source", "sql_table sql sql_alias title description public meta joins dimensions measures segments", &[("joins","join"),("dimensions","dimension"),("measures","measure"),("segments","segment")]),
         "dimension" => ("name sql type", "primary_key title description public meta", &[]),
-        "measure" => ("name type", "sql filters title description public meta format", &[("filters","filter")]),
+        "measure" => ("name type", "sql filters title description public meta format rolling_window multi_stage time_shift", &[("filters","filter"),("time_shift","time_shift")]),
+        "rolling_window" => ("", "trailing leading offset type granularity", &[]),
+        "time_shift" => ("interval type", "time_dimension", &[]),
         "join" => ("name relationship sql", "", &[]),
         "segment" => ("name sql", "", &[]),
         _ => ("sql", "", &[]),
@@ -126,6 +128,8 @@ fn shape(v: &Value, at: &str, kind: &str, out: &mut Vec<ValidationIssue>) {
             } else {
                 issue(out, &here, "type", "Expected a list");
             }
+        } else if key == "rolling_window" && !val.is_null() {
+            shape(val, &here, "rolling_window", out);
         } else if key == "meta" {
             if crate::meta::deserialize(val.clone()).is_err() {
                 issue(out, &here, "type", "Metadata cannot be preserved exactly");
@@ -137,7 +141,19 @@ fn shape(v: &Value, at: &str, kind: &str, out: &mut Vec<ValidationIssue>) {
             continue;
         } else {
             let valid = match key {
-                "public" | "primary_key" => val.as_bool().is_some(),
+                "public" | "primary_key" | "multi_stage" => val.as_bool().is_some(),
+                "type" if kind == "rolling_window" => val.as_str() == Some("to_date"),
+                "type" if kind == "time_shift" => {
+                    val.as_str().is_some_and(|s| ["prior", "next"].contains(&s))
+                }
+                "offset" => val.as_str().is_some_and(|s| ["start", "end"].contains(&s)),
+                "granularity" => val
+                    .as_str()
+                    .is_some_and(|s| ["day", "week", "month", "quarter", "year"].contains(&s)),
+                "interval" => val.as_str().is_some_and(interval),
+                "trailing" | "leading" => val
+                    .as_str()
+                    .is_some_and(|s| s == "unbounded" || interval(s)),
                 "type" if kind == "dimension" => val
                     .as_str()
                     .is_some_and(|s| ["string", "number", "boolean", "time"].contains(&s)),
@@ -164,6 +180,105 @@ fn shape(v: &Value, at: &str, kind: &str, out: &mut Vec<ValidationIssue>) {
         }
     }
 }
+/// `<n> <unit>`: a positive whole number of days, weeks, months, quarters or years.
+fn interval(text: &str) -> bool {
+    let mut parts = text.split(' ');
+    let (Some(count), Some(unit), None) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    count.len() <= 4
+        && !count.starts_with('0')
+        && count.bytes().all(|b| b.is_ascii_digit())
+        && !count.is_empty()
+        && ["day", "week", "month", "quarter", "year"].contains(&unit)
+}
+
+/// The rules that span the fields of a rolling or shifted measure.
+fn windows(cube: &Value, measure: &Value, at: &str, out: &mut Vec<ValidationIssue>) {
+    let set = |key: &str| measure.get(key).is_some_and(|v| !v.is_null());
+    let kind = text(measure, "type");
+    let multi_stage = measure.get("multi_stage").and_then(Value::as_bool) == Some(true);
+    if let Some(window) = measure.get("rolling_window").filter(|v| v.is_mapping()) {
+        let has = |key: &str| window.get(key).is_some_and(|v| !v.is_null());
+        let here = path(at, "rolling_window");
+        if kind == Some("number") {
+            issue(
+                out,
+                &here,
+                "window",
+                "A number measure cannot have a rolling window",
+            );
+        }
+        let to_date = has("type");
+        let bounded = has("trailing") || has("leading") || has("offset");
+        if to_date && (bounded || !has("granularity")) {
+            issue(
+                out,
+                &here,
+                "window",
+                "A to_date window has a granularity and no bounds",
+            );
+        }
+        if !to_date && (has("granularity") || !(has("trailing") || has("leading"))) {
+            issue(
+                out,
+                &here,
+                "window",
+                "A window needs trailing or leading, or type to_date",
+            );
+        }
+        if multi_stage || set("time_shift") {
+            issue(
+                out,
+                &here,
+                "window",
+                "A rolling window cannot be multi-stage or shifted",
+            );
+        }
+    }
+    if multi_stage && kind.is_some_and(|kind| kind != "number") {
+        issue(
+            out,
+            &path(at, "multi_stage"),
+            "multi-stage",
+            "Only a number measure can be multi-stage",
+        );
+    }
+    let shifts = items(measure, "time_shift");
+    if !shifts.is_empty() && !multi_stage {
+        issue(
+            out,
+            &path(at, "time_shift"),
+            "multi-stage",
+            "A time shift needs multi_stage: true",
+        );
+    }
+    if shifts.len() > 1 {
+        issue(
+            out,
+            &path(at, "time_shift"),
+            "time-shift",
+            "One time shift per measure is supported",
+        );
+    }
+    for (k, shift) in shifts.iter().enumerate() {
+        let Some(name) = text(shift, "time_dimension") else {
+            continue;
+        };
+        let known = items(cube, "dimensions")
+            .iter()
+            .any(|d| text(d, "name") == Some(name) && text(d, "type") == Some("time"));
+        if !known {
+            issue(
+                out,
+                &format!("{at}/time_shift/{k}/time_dimension"),
+                "time-shift",
+                "A time shift names a time dimension of its own cube",
+            );
+        }
+    }
+}
+
 fn semantics(value: &Value, out: &mut Vec<ValidationIssue>) {
     let cubes = items(value, "cubes");
     let mut names = BTreeMap::new();
@@ -216,6 +331,9 @@ fn semantics(value: &Value, out: &mut Vec<ValidationIssue>) {
                             "Member name is repeated",
                         );
                     }
+                }
+                if group == "measures" {
+                    windows(cube, member, &at, out);
                 }
                 if group == "measures"
                     && text(member, "type").is_some_and(|t| t != "count")

@@ -1,4 +1,4 @@
-//! Contract types: a Cube data model narrowed to the B0 baseline.
+//! Contract types: a Cube data model narrowed to the baseline.
 //!
 //! Plain data. A field or value outside the baseline does not deserialize.
 
@@ -84,6 +84,46 @@ pub struct Measure {
     #[serde(default, deserialize_with = "crate::meta::deserialize")]
     pub meta: Option<Value>,
     pub format: Option<String>,
+    /// Aggregates over a window of time ending at each row's period.
+    /// Absent fields are not written, so a model without them keeps its digest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rolling_window: Option<RollingWindow>,
+    /// Computed from other measures after they are aggregated. Needed by `time_shift`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub multi_stage: Option<bool>,
+    /// Reads the measures it is computed from at another time.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub time_shift: Vec<TimeShift>,
+}
+
+/// The window of a rolling measure: `trailing` and `leading` as `<n> <unit>` or
+/// `unbounded`, or `type: to_date` with the `granularity` the period starts at.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RollingWindow {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trailing: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leading: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset: Option<String>,
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub window_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub granularity: Option<String>,
+}
+
+/// One shift of a multi-stage measure: `interval` as `<n> <unit>`, `type` prior
+/// or next, along `time_dimension` of the measure's cube or, when absent, along
+/// the time dimension of the query.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TimeShift {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_dimension: Option<String>,
+    pub interval: String,
+    #[serde(rename = "type")]
+    pub shift_type: String,
 }
 
 impl<'de> Deserialize<'de> for Measure {

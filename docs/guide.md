@@ -8,7 +8,9 @@ implemented behaviour is recorded in [openspec/specs](../openspec/specs).
 ## The three inputs
 
 - **Model**: Cube's data model in YAML or JSON, narrowed to the baseline. A
-  field outside it is an error, never ignored. Validate before use.
+  field outside it is an error, never ignored. Validate before use. A measure
+  may roll over time (`rolling_window`, also `type: to_date`) or be another
+  measure at another time (`multi_stage` with `time_shift`).
 - **Query**: Cube's REST query format: measures, dimensions, segments, filters,
   time dimensions with absolute date ranges, order, limit, offset, timezone.
 - **Context**: the dialect, a default timezone, a request id, and the security
@@ -100,7 +102,7 @@ No failure returns SQL, and no message contains table names or SQL text.
 
 For every execution case, Cube Core 1.8.28 (the release of the pinned upstream
 commit) was asked for the SQL of the same model and query on Presto. Its SQL
-and parameters equal the kernel's in all fifty cases, with one difference:
+and parameters equal the kernel's in all fifty-nine cases, with one difference:
 
 - **Default row limit.** Cube's API adds `LIMIT 10000` to a query that sets no
   limit. The kernel adds none: a query without a limit compiles without one.
@@ -136,10 +138,26 @@ Queries over several facts were compared the same way, forty-nine in all:
   distinct keys but compares the count of joined rows in the filter, so a
   filtered result can contradict its own column.
 
+Rolling windows, period to date and time shifts were compared in fifty-three
+more queries. What both compile is the same SQL. The kernel refuses, naming the
+measure, some queries Cube compiles:
+
+- **No time dimension.** Cube returns a windowed measure as a total over all
+  time and a shifted measure unshifted. So it does for a shift along a time
+  dimension the query does not have.
+- **Weeks and quarters on Presto.** Cube writes `interval '1' week`, which
+  Presto rejects. A window or shift of weeks or quarters, and a rolling window
+  by week or quarter, are unsupported on Presto.
+- **A rolling range that starts inside a period, on Presto.** Cube's series
+  starts where the date range starts, so a range from the 15th by month gives
+  periods from the 15th. Start the range at the start of a day, month or year.
+
 Cube Core has no Doris dialect, so Doris output is accepted by execution only.
+On Doris the periods of a rolling window are written out one by one, aligned
+to the granularity: every unit and any range compile, but rolling by a
+granularity needs a date range.
 
 ## Not supported yet
 
-Apache Druid, time shifts, rolling windows, period-to-date, views, ungrouped
-queries, approximate distinct counts, custom granularities and relative date
+Apache Druid, views, ungrouped queries, approximate distinct counts, custom granularities and relative date
 ranges. See [performance](performance.md) for latency figures.

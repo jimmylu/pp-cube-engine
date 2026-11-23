@@ -95,6 +95,9 @@ fn optional_measure_fields_are_loaded_as_written() {
         public: Some(true),
         meta: Some(json!({"unit": "each"})),
         format: Some("currency".into()),
+        rolling_window: None,
+        multi_stage: None,
+        time_shift: vec![],
     };
 
     assert_eq!(yaml_model().cubes[0].measures[2], expected);

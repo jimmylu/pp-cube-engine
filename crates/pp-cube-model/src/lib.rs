@@ -12,7 +12,7 @@ mod reference;
 pub use load::{load_json, load_query, load_yaml, LoadError, Position};
 pub use model::{
     Cube, Dimension, DimensionType, Join, Measure, MeasureFilter, MeasureType, Model, Relationship,
-    Segment,
+    RollingWindow, Segment, TimeShift,
 };
 pub use query::{
     Condition, DateRange, DateValue, Direction, Filter, Granularity, Operator, Order, Query,
