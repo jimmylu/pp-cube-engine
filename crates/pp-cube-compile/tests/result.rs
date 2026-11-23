@@ -222,3 +222,37 @@ fn out_of_baseline_cte_is_not_reported_as_a_physical_table() {
     let dialect = pp_cube_dialect::dialect(DialectId::Presto).unwrap();
     assert!(pp_cube_adapter::plan(&model, &query, dialect, "UTC").is_err());
 }
+
+// scenario: B0-RESULT-003
+// scenario: B0-PRESTO-017
+#[test]
+fn session_properties_follow_the_dialect_and_the_offset() {
+    let model = Arc::new(load_yaml(include_str!("fixtures/sales.yaml")).unwrap());
+    let plain = load_query(r#"{"measures":["sales.amount"],"limit":5}"#).unwrap();
+    let paged = load_query(r#"{"measures":["sales.amount"],"limit":5,"offset":10}"#).unwrap();
+    let properties = |dialect, query| {
+        let ctx = CompileContext {
+            dialect,
+            ..context()
+        };
+        let result = compile(&model, query, &ctx).unwrap();
+        // The property is declared exactly when the SQL uses the clause that needs it.
+        assert_eq!(
+            result.sql.contains("OFFSET"),
+            query.offset.is_some(),
+            "{dialect:?}"
+        );
+        result
+            .session_properties
+            .into_iter()
+            .map(|p| (p.name, p.value))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        properties(DialectId::Presto, &paged),
+        [("offset_clause_enabled".to_owned(), "true".to_owned())]
+    );
+    assert!(properties(DialectId::Presto, &plain).is_empty());
+    assert!(properties(DialectId::Doris, &paged).is_empty());
+    assert!(properties(DialectId::Doris, &plain).is_empty());
+}

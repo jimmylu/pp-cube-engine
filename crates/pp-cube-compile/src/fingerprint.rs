@@ -4,14 +4,15 @@ use pp_cube_model::{Model, Query};
 use sha2::{Digest, Sha256};
 
 // Update with vendor upgrades; the repository-only test checks the gitlink.
-const UPSTREAM_PIN: &str = "486f0d26bab58ab4fe0be0e4cdd39818b35a7870";
+/// The upstream planner commit this kernel is built against.
+pub const UPSTREAM_PIN: &str = "486f0d26bab58ab4fe0be0e4cdd39818b35a7870";
 
 pub(crate) fn fingerprint(
     model: &Model,
     query: &Query,
     ctx: &CompileContext,
 ) -> Result<[u8; 32], CompileError> {
-    identity(model, query, ctx, env!("CARGO_PKG_VERSION"), UPSTREAM_PIN)
+    identity(model, query, ctx, crate::KERNEL_VERSION, UPSTREAM_PIN)
 }
 fn identity(
     model: &Model,
@@ -27,10 +28,7 @@ fn identity(
         "pp-cube-fingerprint-v1",
         digest.as_slice(),
         query,
-        match ctx.dialect {
-            crate::DialectId::Presto => "presto",
-            crate::DialectId::Doris => "doris",
-        },
+        ctx.dialect.name(),
         ctx.timezone,
         ctx.security_filters,
         version,

@@ -207,6 +207,11 @@ The planner's errors are of two kinds, user errors and internal errors. The faca
 
 ### 6.8 `pp-cube-service`: the service
 
+The listing below is the original draft. The implemented contract is
+`crates/pp-cube-service/proto/engine.proto`: it adds typed parameters, structured
+used cubes, session properties, a failure-kind enum, a response identity and
+typed metadata.
+
 ```proto
 syntax = "proto3";
 

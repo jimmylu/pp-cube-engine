@@ -150,3 +150,9 @@ add-presto-b0-acceptance adds forty Presto execution cases that carry
 B0-PRESTO-003. The requirement stays proposed here, reworded to literal expected
 rows as Doris was, until the Presto tier (a harness path) runs the manifest and
 passes on GitHub. B0-PRESTO-002 (T1) is untouched.
+
+## Presto execution acceptance transfer
+B0-PRESTO-003 moves to complete-compile-contract as its own requirement, after
+the Presto tier ran the manifest on GitHub (#72). The remaining seed requirement
+is reduced to the Cube Core comparison, B0-PRESTO-002 (T1). Druid deltas stay
+proposed; the owner paused new dialects on 2026-11-23.

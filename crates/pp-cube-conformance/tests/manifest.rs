@@ -156,26 +156,18 @@ fn unusable_requests_emit_no_manifest() {
         DialectId::Doris,
         "doris",
         model,
-        &[],
         std::slice::from_ref(&good)
     )
     .is_ok());
-    let error = render(DialectId::Doris, "doris", model, &[], &[]).unwrap_err();
+    let error = render(DialectId::Doris, "doris", model, &[]).unwrap_err();
     assert!(error.contains("`doris` has no execution cases"), "{error}");
     let broken = Case {
         name: "broken",
         query: r#"{"measures":["sales.missing"]}"#.into(),
         ..good.clone()
     };
-    let error = render(
-        DialectId::Doris,
-        "doris",
-        model,
-        &[],
-        &[good.clone(), broken],
-    )
-    .unwrap_err();
+    let error = render(DialectId::Doris, "doris", model, &[good.clone(), broken]).unwrap_err();
     assert!(error.contains("`broken`"), "{error}");
-    let error = render(DialectId::Doris, "doris", model, &[], &[good.clone(), good]).unwrap_err();
+    let error = render(DialectId::Doris, "doris", model, &[good.clone(), good]).unwrap_err();
     assert!(error.contains("duplicate"), "{error}");
 }

@@ -1,18 +1,130 @@
 syntax = "proto3";
 package ppcube.engine.v1;
+
+// Compiles Cube queries into SQL and parameters. Never executes SQL.
 service CubeEngine {
   rpc Compile(CompileRequest) returns (CompileResponse);
   rpc ValidateModel(ValidateModelRequest) returns (ValidateModelResponse);
   rpc GetMeta(GetMetaRequest) returns (GetMetaResponse);
 }
-message CompileRequest { string model_version = 1; string query_json = 2; string dialect = 3; string timezone = 4; repeated string security_filters_json = 5; string request_id = 6; }
-message CompileResponse { oneof result { Compiled compiled = 1; CompileFailure failure = 2; } }
-// params are JSON scalar strings in placeholder order, not SQL literals.
-message Compiled { string sql = 1; repeated string params = 2; repeated OutputColumn columns = 3; repeated string used_tables = 4; bytes fingerprint = 5; }
-message OutputColumn { string alias = 1; string member = 2; string type = 3; optional string granularity = 4; }
-message CompileFailure { string kind = 1; string message = 2; }
+
+// What produced a response: fixed for a running service and a model version.
+message Identity {
+  string kernel_version = 1;
+  string upstream_pin = 2;
+  string model_version = 3;
+  // The caller-supplied digest of the model version; opaque to the service.
+  string model_digest = 4;
+}
+
+message CompileRequest {
+  string model_version = 1;
+  string query_json = 2;             // Cube query format
+  string dialect = 3;                // presto | doris; must serve every data source the query reads
+  string timezone = 4;
+  repeated string security_filters_json = 5;  // one Cube filter each, appended as top-level AND entries
+  string request_id = 6;
+}
+
+message CompileResponse {
+  oneof result {
+    Compiled compiled = 1;
+    CompileFailure failure = 2;
+  }
+  Identity identity = 3;
+}
+
+message Compiled {
+  string sql = 1;
+  // One value per placeholder, in placeholder order. Bind them; never splice them into the SQL.
+  repeated Parameter params = 2;
+  repeated OutputColumn columns = 3;
+  repeated UsedCube used_cubes = 4;
+  bytes fingerprint = 5;
+  // Engine session settings the SQL needs. The executor must apply every one.
+  repeated SessionProperty session_properties = 6;
+}
+
+message Parameter {
+  oneof value {
+    string text = 1;
+    double number = 2;
+    bool boolean = 3;
+    Null null = 4;
+  }
+}
+message Null {}
+
+message OutputColumn {
+  string alias = 1;
+  string member = 2;
+  string type = 3;                   // string | number | boolean | time
+  optional string granularity = 4;
+}
+
+message UsedCube {
+  string name = 1;
+  string data_source = 2;
+  repeated Table tables = 3;
+}
+// A qualified table name as its components, without quoting.
+message Table { repeated string path = 1; }
+
+message SessionProperty {
+  string name = 1;
+  string value = 2;
+}
+
+enum FailureKind {
+  FAILURE_KIND_UNSPECIFIED = 0;
+  FAILURE_KIND_MODEL = 1;        // the model is invalid or outside the baseline
+  FAILURE_KIND_QUERY = 2;        // the caller can correct the query
+  FAILURE_KIND_UNSUPPORTED = 3;  // recognized, but beyond the baseline or the dialect
+  FAILURE_KIND_INTERNAL = 4;
+}
+message CompileFailure {
+  FailureKind kind = 1;
+  string message = 2;              // member names and rules only
+}
+
 message ValidateModelRequest { bytes model_bundle = 1; }
 message ValidateModelResponse { repeated ModelIssue issues = 1; }
 message ModelIssue { string path = 1; string rule = 2; string message = 3; }
+
 message GetMetaRequest { string model_version = 1; }
-message GetMetaResponse { string meta_json = 1; }
+// Public cubes and members only. Never SQL or physical tables.
+message GetMetaResponse {
+  repeated CubeMeta cubes = 1;
+  Identity identity = 2;
+}
+message CubeMeta {
+  string name = 1;
+  optional string title = 2;
+  optional string description = 3;
+  string data_source = 4;
+  repeated MeasureMeta measures = 5;
+  repeated DimensionMeta dimensions = 6;
+  repeated string segments = 7;
+  repeated JoinMeta joins = 8;       // to public cubes only
+  optional string meta_json = 9;     // the model's `meta`, as written
+}
+message MeasureMeta {
+  string name = 1;
+  string type = 2;
+  optional string title = 3;
+  optional string description = 4;
+  optional string format = 5;
+  optional string meta_json = 6;
+}
+message DimensionMeta {
+  string name = 1;
+  string type = 2;
+  optional string title = 3;
+  optional string description = 4;
+  bool primary_key = 5;
+  optional string meta_json = 6;
+}
+message JoinMeta {
+  string cube = 1;
+  string relationship = 2;           // many_to_one | one_to_one
+}

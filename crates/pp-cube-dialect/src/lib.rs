@@ -17,6 +17,30 @@ pub enum DialectId {
     Doris,
 }
 
+impl DialectId {
+    /// The name callers use for this dialect in requests and configuration.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Presto => "presto",
+            Self::Doris => "doris",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        [Self::Presto, Self::Doris]
+            .into_iter()
+            .find(|id| id.name() == name)
+    }
+}
+
+/// An engine session setting the compiled SQL needs. The kernel cannot set it;
+/// whoever executes the SQL must.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SessionProperty {
+    pub name: String,
+    pub value: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DialectError {
     /// The dialect has no template of that name yet.
@@ -54,6 +78,7 @@ pub struct Dialect {
     sources: HashMap<String, String>,
     engine: Environment<'static>,
     reuses_parameters: bool,
+    offset_session: &'static [(&'static str, &'static str)],
     timestamp_precision: u32,
 }
 
@@ -82,6 +107,8 @@ static PRESTO: LazyLock<Result<Dialect, DialectError>> = LazyLock::new(|| {
         "presto",
         include_str!("../../../templates/presto.yaml"),
         false,
+        // PrestoDB answers "Offset support is not enabled" to the OFFSET clause otherwise.
+        &[("offset_clause_enabled", "true")],
     )
 });
 
@@ -90,6 +117,7 @@ static DORIS: LazyLock<Result<Dialect, DialectError>> = LazyLock::new(|| {
         "doris",
         include_str!("../../../templates/doris.yaml"),
         false,
+        &[],
     )
 });
 
@@ -106,6 +134,7 @@ impl Dialect {
         name: &'static str,
         data: &str,
         reuses_parameters: bool,
+        offset_session: &'static [(&'static str, &'static str)],
     ) -> Result<Self, DialectError> {
         let file: DataFile = serde_norway::from_str(data).map_err(|error| DialectError::Data {
             dialect: name,
@@ -127,6 +156,7 @@ impl Dialect {
             sources,
             engine,
             reuses_parameters,
+            offset_session,
             timestamp_precision: file.timestamp_precision,
         })
     }
@@ -162,6 +192,19 @@ impl Dialect {
     /// Whether one bound value may be referred to by several placeholders.
     pub fn reuses_parameters(&self) -> bool {
         self.reuses_parameters
+    }
+
+    /// The session properties SQL for a query needs on this engine; `offset`
+    /// says whether the query sets an offset. Empty when it needs none.
+    pub fn session_properties(&self, offset: bool) -> Vec<SessionProperty> {
+        let needed = if offset { self.offset_session } else { &[] };
+        needed
+            .iter()
+            .map(|(name, value)| SessionProperty {
+                name: (*name).to_owned(),
+                value: (*value).to_owned(),
+            })
+            .collect()
     }
 
     pub fn timestamp_precision(&self) -> u32 {

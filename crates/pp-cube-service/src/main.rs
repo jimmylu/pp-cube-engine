@@ -9,7 +9,21 @@ use std::{collections::BTreeMap, io::Write, net::SocketAddr, sync::Arc};
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let mut options = BTreeMap::new();
+    let mut data_sources = BTreeMap::new();
     while let Some(key) = args.next() {
+        if key == "--data-source" {
+            // Repeatable: `--data-source warehouse=doris`.
+            let value = args.next().ok_or("missing option value")?;
+            let (name, dialect) = value
+                .split_once('=')
+                .ok_or("--data-source takes name=dialect")?;
+            let dialect = pp_cube_compile::DialectId::from_name(dialect)
+                .ok_or("--data-source dialect must be presto or doris")?;
+            if name.trim().is_empty() || data_sources.insert(name.to_owned(), dialect).is_some() {
+                return Err("blank or duplicate data source".into());
+            }
+            continue;
+        }
         if ![
             "--model",
             "--version",
@@ -33,7 +47,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let required = |name| {
         options
             .get(name)
-            .ok_or("required options: --model --version --digest --listen")
+            .ok_or("required options: --model --version --digest --listen --data-source")
     };
     let address: SocketAddr = required("--listen")?.parse()?;
     if !address.ip().is_loopback() {
@@ -53,7 +67,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         pp_cube_model::load_yaml(&text)?
     };
-    let mut core = CubeService::default();
+    let mut core = CubeService::new(data_sources);
     core.register(
         required("--version")?.clone(),
         required("--digest")?.clone(),

@@ -1,8 +1,8 @@
 //! Host-mounted gRPC transport for trusted callers; no listener or authentication defaults.
 use crate::{CompilePool, CubeService, PoolError, ServiceError};
-use pp_cube_compile::{CompileContext, CompileError, DialectId, Parameter};
+use pp_cube_compile::{CompileContext, CompileError, DialectId, Parameter as CompiledParameter};
 use pp_cube_model::{load_query, BundleError};
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 use tonic::{Request, Response, Status};
 
 pub mod wire {
@@ -31,13 +31,34 @@ fn bundle_error(error: BundleError) -> Status {
         _ => internal(),
     }
 }
-fn failure(kind: &str, message: String) -> Response<CompileResponse> {
+fn failure(kind: FailureKind, message: String, identity: Identity) -> Response<CompileResponse> {
     Response::new(CompileResponse {
         result: Some(compile_response::Result::Failure(CompileFailure {
             kind: kind.into(),
             message,
         })),
+        identity: Some(identity),
     })
+}
+fn identity(core: &CubeService, version: &str) -> Result<Identity, Status> {
+    let identity = core.identity(version).map_err(bundle_error)?;
+    Ok(Identity {
+        kernel_version: identity.kernel_version.into(),
+        upstream_pin: identity.upstream_pin.into(),
+        model_version: identity.model_version,
+        model_digest: identity.model_digest,
+    })
+}
+fn label<T: serde::Serialize>(value: T) -> Result<String, Status> {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .ok_or_else(internal)
+}
+fn meta_json(value: Option<serde_json::Value>) -> Result<Option<String>, Status> {
+    value
+        .map(|value| serde_json::to_string(&value).map_err(|_| internal()))
+        .transpose()
 }
 #[tonic::async_trait]
 impl cube_engine_server::CubeEngine for GrpcService {
@@ -60,12 +81,23 @@ impl cube_engine_server::CubeEngine for GrpcService {
                     .filters,
             );
         }
-        let dialect = match request.dialect.as_str() {
-            "presto" => DialectId::Presto,
-            "doris" => DialectId::Doris,
-            "druid" => return Ok(failure("unsupported", "dialect is not implemented".into())),
+        // An unavailable version is NotFound before anything else is said about the request.
+        let identity = identity(&self.core, &request.model_version)?;
+        let dialect = match (
+            DialectId::from_name(&request.dialect),
+            request.dialect.as_str(),
+        ) {
+            (Some(dialect), _) => dialect,
+            (None, "druid") => {
+                return Ok(failure(
+                    FailureKind::Unsupported,
+                    "dialect is not implemented".into(),
+                    identity,
+                ))
+            }
             _ => return Err(Status::invalid_argument("unknown dialect")),
         };
+        let version = request.model_version.clone();
         let context = CompileContext {
             request_id: request.request_id,
             dialect,
@@ -81,14 +113,19 @@ impl cube_engine_server::CubeEngine for GrpcService {
                 let params = result
                     .parameters
                     .into_iter()
-                    .map(|p| match p {
-                        Parameter::Text(v) => serde_json::to_string(&v).map_err(|_| internal()),
-                        Parameter::Bool(v) => Ok(v.to_string()),
-                        Parameter::Null => Ok("null".into()),
-                        Parameter::Number(v) if v.is_finite() => Ok(v.to_string()),
-                        Parameter::Number(_) => Err(internal()),
+                    .map(|p| {
+                        let value = match p {
+                            CompiledParameter::Text(v) => parameter::Value::Text(v),
+                            CompiledParameter::Bool(v) => parameter::Value::Boolean(v),
+                            CompiledParameter::Null => parameter::Value::Null(Null {}),
+                            CompiledParameter::Number(v) if v.is_finite() => {
+                                parameter::Value::Number(v)
+                            }
+                            CompiledParameter::Number(_) => return Err(internal()),
+                        };
+                        Ok(Parameter { value: Some(value) })
                     })
-                    .collect::<Result<Vec<_>, _>>()?;
+                    .collect::<Result<Vec<_>, Status>>()?;
                 let columns = result
                     .columns
                     .into_iter()
@@ -96,38 +133,56 @@ impl cube_engine_server::CubeEngine for GrpcService {
                         Ok(OutputColumn {
                             alias: c.alias,
                             member: c.member,
-                            r#type: serde_json::to_value(c.semantic_type)
-                                .map_err(|_| internal())?
-                                .as_str()
-                                .ok_or_else(internal)?
-                                .to_owned(),
+                            r#type: label(c.semantic_type)?,
                             granularity: c.granularity,
                         })
                     })
                     .collect::<Result<Vec<_>, Status>>()?;
-                let used_tables: BTreeSet<_> = result
+                let used_cubes = result
                     .used_cubes
                     .into_iter()
-                    .flat_map(|c| c.physical_tables.into_iter().map(|p| p.join(".")))
-                    .collect();
+                    .map(|c| {
+                        Ok(UsedCube {
+                            data_source: self
+                                .core
+                                .data_source(&version, &c.name)
+                                .ok_or_else(internal)?,
+                            name: c.name,
+                            tables: c
+                                .physical_tables
+                                .into_iter()
+                                .map(|path| Table { path })
+                                .collect(),
+                        })
+                    })
+                    .collect::<Result<Vec<_>, Status>>()?;
                 Ok(Response::new(CompileResponse {
                     result: Some(compile_response::Result::Compiled(Compiled {
                         sql: result.sql,
                         params,
                         columns,
-                        used_tables: used_tables.into_iter().collect(),
+                        used_cubes,
                         fingerprint: result.fingerprint.to_vec(),
+                        session_properties: result
+                            .session_properties
+                            .into_iter()
+                            .map(|p| SessionProperty {
+                                name: p.name,
+                                value: p.value,
+                            })
+                            .collect(),
                     })),
+                    identity: Some(identity),
                 }))
             }
             Err(PoolError::Compile(ServiceError::Compile(error))) => {
                 let kind = match &error {
-                    CompileError::Model(_) => "model",
-                    CompileError::Query(_) => "query",
-                    CompileError::Unsupported(_) => "unsupported",
-                    CompileError::Internal { .. } => "internal",
+                    CompileError::Model(_) => FailureKind::Model,
+                    CompileError::Query(_) => FailureKind::Query,
+                    CompileError::Unsupported(_) => FailureKind::Unsupported,
+                    CompileError::Internal { .. } => FailureKind::Internal,
                 };
-                Ok(failure(kind, error.to_string()))
+                Ok(failure(kind, error.to_string(), identity))
             }
             Err(PoolError::Compile(ServiceError::Bundle(error))) => Err(bundle_error(error)),
             Err(error) => Err(pool_status(error)),
@@ -166,12 +221,65 @@ impl cube_engine_server::CubeEngine for GrpcService {
     ) -> Result<Response<GetMetaResponse>, Status> {
         let core = Arc::clone(&self.core);
         let version = request.into_inner().model_version;
+        let identity = identity(&self.core, &version)?;
         let meta = tokio::task::spawn_blocking(move || core.get_meta(&version))
             .await
             .map_err(|_| internal())?
             .map_err(bundle_error)?;
+        let cubes = meta
+            .into_iter()
+            .map(|c| {
+                Ok(CubeMeta {
+                    name: c.name,
+                    title: c.title,
+                    description: c.description,
+                    data_source: c.data_source,
+                    measures: c
+                        .measures
+                        .into_iter()
+                        .map(|m| {
+                            Ok(MeasureMeta {
+                                name: m.name,
+                                r#type: label(m.member_type)?,
+                                title: m.title,
+                                description: m.description,
+                                format: m.format,
+                                meta_json: meta_json(m.meta)?,
+                            })
+                        })
+                        .collect::<Result<_, Status>>()?,
+                    dimensions: c
+                        .dimensions
+                        .into_iter()
+                        .map(|d| {
+                            Ok(DimensionMeta {
+                                name: d.name,
+                                r#type: label(d.member_type)?,
+                                title: d.title,
+                                description: d.description,
+                                primary_key: d.primary_key,
+                                meta_json: meta_json(d.meta)?,
+                            })
+                        })
+                        .collect::<Result<_, Status>>()?,
+                    segments: c.segments,
+                    joins: c
+                        .joins
+                        .into_iter()
+                        .map(|j| {
+                            Ok(JoinMeta {
+                                cube: j.cube,
+                                relationship: label(j.relationship)?,
+                            })
+                        })
+                        .collect::<Result<_, Status>>()?,
+                    meta_json: meta_json(c.meta)?,
+                })
+            })
+            .collect::<Result<Vec<_>, Status>>()?;
         Ok(Response::new(GetMetaResponse {
-            meta_json: serde_json::to_string(&meta).map_err(|_| internal())?,
+            cubes,
+            identity: Some(identity),
         }))
     }
 }
