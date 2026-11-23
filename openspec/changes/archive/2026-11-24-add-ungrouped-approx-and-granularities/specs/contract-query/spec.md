@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Date operators and granularities
-The kernel SHALL accept timeDimensions in Cube's query format, each naming a time dimension with a granularity, a dateRange or both. Date operators SHALL be inDateRange, notInDateRange, beforeDate, beforeOrOnDate, afterDate and afterOrOnDate, and SHALL fit time dimensions only. Predefined granularities SHALL be day, week, month, quarter and year. Recognized second, minute and hour granularities SHALL return unsupported. Any other name SHALL be taken as one the time dimension declares; text that cannot be such a name SHALL be a query input error.
+The kernel SHALL accept timeDimensions in Cube's query format, each naming a time dimension with a granularity, a dateRange or both. Date operators SHALL be inDateRange, notInDateRange, beforeDate, beforeOrOnDate, afterDate and afterOrOnDate, on time dimensions only. Predefined granularities SHALL be day, week, month, quarter and year; second, minute and hour SHALL return unsupported. Another name SHALL be one the time dimension declares; text that is not a name SHALL be an input error.
 #### Scenario: B0-QUERY-001 Supported query options
 - **WHEN** queries exercise each date operator and each B0 granularity above on a time dimension
 - **THEN** each compiles to the predicate or time truncation that pinned Cube semantics define for it

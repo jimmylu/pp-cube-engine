@@ -30,13 +30,13 @@ The kernel SHALL refuse a filter that names an unknown member, uses an operator 
 - **THEN** compilation returns a query error naming the member or rule
 
 ### Requirement: Date operators and granularities
-The kernel SHALL accept timeDimensions in Cube's query format, each naming a time dimension with a granularity, a dateRange or both. Date operators SHALL be inDateRange, notInDateRange, beforeDate, beforeOrOnDate, afterDate and afterOrOnDate, and SHALL fit time dimensions only. B0 granularities SHALL be day, week, month, quarter and year. Recognized second, minute and hour granularities SHALL return unsupported; unknown names SHALL be query input errors.
+The kernel SHALL accept timeDimensions in Cube's query format, each naming a time dimension with a granularity, a dateRange or both. Date operators SHALL be inDateRange, notInDateRange, beforeDate, beforeOrOnDate, afterDate and afterOrOnDate, on time dimensions only. Predefined granularities SHALL be day, week, month, quarter and year; second, minute and hour SHALL return unsupported. Another name SHALL be one the time dimension declares; text that is not a name SHALL be an input error.
 #### Scenario: B0-QUERY-001 Supported query options
 - **WHEN** queries exercise each date operator and each B0 granularity above on a time dimension
 - **THEN** each compiles to the predicate or time truncation that pinned Cube semantics define for it
 #### Scenario: B0-QUERY-008 Unrecognized granularity
-- **WHEN** a query uses an unknown granularity such as fortnight
-- **THEN** the query input is refused with an error naming the granularity rule
+- **WHEN** a query writes a granularity that cannot be a name, and another names a granularity such as fortnight that its time dimension does not declare
+- **THEN** the first is refused where the query is read with an error naming the granularity rule, and the second is a query error naming the granularity and the dimension
 
 ### Requirement: Checks before compilation
 Model validation SHALL precede query checks; invalid bundles return model issues. With a valid bundle, recognized Cube query features outside B0 SHALL return unsupported.
@@ -45,10 +45,10 @@ Model validation SHALL precede query checks; invalid bundles return model issues
 - **THEN** the first returns model issues and the second returns unsupported, neither with SQL
 
 ### Requirement: Recognized boundary inputs
-Query loading SHALL preserve ungrouped booleans, timeDimensions.compareDateRange lists of absolute date-range pairs, and second, minute and hour granularities for compilation-time classification. ungrouped false SHALL preserve ordinary grouped compilation. Unknown fields, unknown granularity names and malformed field types SHALL remain input errors.
+Query loading SHALL preserve ungrouped booleans, timeDimensions.compareDateRange lists of absolute date-range pairs, and second, minute and hour granularities for compilation-time classification. ungrouped false SHALL preserve ordinary grouped compilation. Unknown fields, text that cannot name a granularity and malformed field types SHALL remain input errors.
 #### Scenario: B0-QUERY-011 Boundary input classification
-- **WHEN** inputs exercise ungrouped true and false, compareDateRange with absolute pairs, all three sub-day granularities, an unknown field and granularity, a non-boolean ungrouped and a malformed comparison range
-- **THEN** recognized well-typed inputs load; false compiles as grouped; other recognized boundary inputs return unsupported; unknown and malformed inputs fail loading
+- **WHEN** inputs exercise ungrouped false, compareDateRange with absolute pairs, all three sub-day granularities, an unknown field, a granularity that is not a name, a non-boolean ungrouped and a malformed comparison range
+- **THEN** recognized well-typed inputs load; false compiles as grouped; compareDateRange and sub-day granularities return unsupported; unknown and malformed inputs fail loading
 
 ### Requirement: Absolute closed time ranges
 The kernel SHALL reject relative date ranges with a query error and compile absolute date ranges as closed intervals, extending date-only start values to 00:00:00.000 and date-only end values to 23:59:59.999 in the effective timezone. A date value SHALL be a date, or a date and a time, without a zone.
@@ -64,3 +64,9 @@ The kernel SHALL accept a timezone in the query and require one in the compile c
 #### Scenario: B0-QUERY-010 Query and context timezone
 - **WHEN** a month granularity with an October dateRange is compiled with a timezone ahead of UTC in the context only, and again with a different timezone in the query
 - **THEN** the first SQL converts the time dimension and shifts the bounds by the context's timezone, and the second by the query's
+
+### Requirement: Declared granularities and ungrouped in queries
+A query SHALL keep a granularity that is not predefined by its name, written back as written, and `ungrouped: true` as a query to compile. Neither SHALL be refused before compilation.
+#### Scenario: B1-QUERY-001 Granularity by name
+- **WHEN** an ungrouped query names a declared granularity and a predefined one, and is serialized and read again
+- **THEN** both granularities and the ungrouped flag are preserved, no feature is reported unsupported, and text that cannot be a name fails loading

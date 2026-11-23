@@ -32,8 +32,12 @@ Evidence, on the working tree that became the implementation commit:
   `engines-container` was not run locally.
 - Existing SQL is unchanged: the manifest goldens gained six blocks and lost
   no line; no existing compile golden changed.
-- `check fast`, `check ci` and the remote checks are recorded on the pull
-  request. Cross-model review: not run.
+- `check fast: PASSED — 4 steps, 0 skipped, 499s @ 7453433+dirty`; after
+  archiving, `check ci: PASSED — 15 steps, 0 skipped, 493s @ 290ea31+dirty`.
+  The first two runs after archiving failed at the `openspec` step: the synced
+  "Date operators and granularities" requirement was over the length limit;
+  its wording was shortened, nothing else.
+- Remote checks are recorded on the pull request. Cross-model review: not run.
 
 Open:
 - Views.

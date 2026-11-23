@@ -20,9 +20,9 @@
 ## 4. Evidence
 
 - [x] 4.1 Add six execution cases for both dialects; verify existing cases' SQL is unchanged.
-- [ ] 4.2 Run `conformance` and `doris-container` locally; record the lines in notes.md.
-- [ ] 4.3 Update `README.md`, `docs/guide.md`, `CHANGELOG.md`; verify `openspec validate --all --strict` and traceability.
-- [ ] 4.4 Run `scripts/check.sh ci`; record the last line in notes.md.
+- [x] 4.2 Run `conformance` and `doris-container` locally; record the lines in notes.md.
+- [x] 4.3 Update `README.md`, `docs/guide.md`, `CHANGELOG.md`; verify `openspec validate --all --strict` and traceability.
+- [x] 4.4 Run `scripts/check.sh ci`; record the last line in notes.md.
 
 ## Workflow follow-up
 
