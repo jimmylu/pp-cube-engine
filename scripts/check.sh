@@ -5,8 +5,9 @@
 #   scripts/check.sh fast          before every commit
 #   scripts/check.sh ci            before a pull request; this is the t0 check
 #   scripts/check.sh conformance   comparison with Cube Core (not built yet)
-#   scripts/check.sh engines       Presto smoke case on a prepared engine
-#   scripts/check.sh engines-container  disposable pinned Presto smoke case
+#   scripts/check.sh engines       live-compiled manifest on a prepared Presto
+#   scripts/check.sh engines-container  the same on a disposable pinned Presto
+#   scripts/check.sh doris-container    live-compiled manifest on a disposable pinned Doris
 #
 # BASE_REF (default origin/main) is the branch a change is compared against.
 

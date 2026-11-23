@@ -16,9 +16,9 @@ SPEC = importlib.util.spec_from_file_location('presto_container', ROOT / 'script
 PRESTO = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PRESTO)
 docker = PRESTO.docker
-EMITTER = ('cargo', 'run', '-q', '--locked', '-p', 'pp-cube-conformance',
-           '--bin', 'execution-cases', '--', 'doris')
-CASE_KEYS = {'name', 'scenario', 'fixture', 'sql', 'params', 'columns', 'rows'}
+MANIFEST_SPEC = importlib.util.spec_from_file_location('engine_manifest', ROOT / 'scripts/engines/manifest.py')
+MANIFEST = importlib.util.module_from_spec(MANIFEST_SPEC)
+MANIFEST_SPEC.loader.exec_module(MANIFEST)
 
 
 def verify(cursor, sql, params, columns, rows):
@@ -30,14 +30,10 @@ def verify(cursor, sql, params, columns, rows):
 
 
 def compiled_cases(emit=subprocess.run):
-    """Compiles the conformance cases now; the kernel itself never executes them."""
-    output = emit(EMITTER, cwd=ROOT, text=True, stdout=subprocess.PIPE, timeout=900, check=True)
-    manifest = json.loads(output.stdout)
-    cases = manifest.get('cases')
-    if manifest.get('schema') != 1 or manifest.get('dialect') != 'doris' or not cases:
+    """The Doris manifest; this tier sets no session property, so it accepts none."""
+    cases, session = MANIFEST.compiled_manifest('doris', emit)
+    if session:
         raise ValueError('unsupported execution manifest')
-    if any(set(case) != CASE_KEYS or not case['fixture'] for case in cases):
-        raise ValueError('malformed execution case')
     return cases
 
 
@@ -143,8 +139,8 @@ def main():
         # Never publish endpoints, driver/server responses or business input.
         print('check doris-container: FAILED — ' + type(error).__name__, file=sys.stderr)
         return 1
-    scenarios = ', '.join(sorted({case['scenario'] for case in cases}))
-    print('check doris-container: PASSED — Doris 4.1.3, %d live-compiled manifest cases (%s)' % (len(cases), scenarios))
+    print('check doris-container: PASSED — Doris 4.1.3, %d live-compiled manifest cases (%s)'
+          % (len(cases), MANIFEST.scenarios(cases)))
     return 0
 
 

@@ -39,7 +39,9 @@ class DorisTests(unittest.TestCase):
         del partial['rows']
         unloaded = dict(self.manifest()['cases'][0], fixture=[])
         for changes in [{'schema': 2}, {'dialect': 'presto'}, {'cases': []}, {'cases': [partial]},
-                        {'cases': [unloaded]}]:
+                        {'cases': [unloaded]}, {'session': {'offset_clause_enabled': 'true'}},
+                        {'session': ['x']}, {'session': {'a': 1}}, {'session': {'a b': 'x'}},
+                        {'session': {'a': 'x,y=z'}}]:
             emit = Mock(return_value=Mock(stdout=json.dumps(self.manifest(**changes))))
             with self.assertRaises(ValueError):
                 doris.compiled_cases(emit)

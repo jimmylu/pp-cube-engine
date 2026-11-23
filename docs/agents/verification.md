@@ -9,10 +9,12 @@
 | T2 | `scripts/check.sh engines` (prepared Presto), `scripts/check.sh engines-container` (disposable Docker Presto) or `scripts/check.sh doris-container` (disposable Docker Doris) | GitHub `engines` workflow on pull requests that can affect engines; locally on demand | Milestone |
 | T3 | Generated SQL on real clusters, run by a person | Outside this repository | Milestone acceptance |
 
-T1 is not built yet and exits 2. T2 has three Presto smoke cases (grouped sum, text equality binding and Tokyo day range); see
-[engines.md](engines.md) for fixture setup and limits. It exits 2 without PRESTO_URL,
-not a passing or complete T2 result. The container mode requires a Docker daemon,
-provisions its own fixture and needs no PRESTO_URL. Doris smoke execution is available through `scripts/check.sh doris-container`, which runs the live-compiled execution manifest on a disposable engine; see [doris-container.md](doris-container.md). Druid execution is not built.
+T1 is not built yet and exits 2. The Presto and Doris tiers execute the live-compiled
+execution manifest of `pp-cube-conformance`, the same cases on both engines; see
+[engines.md](engines.md) and [doris-container.md](doris-container.md). `engines` exits 2
+without PRESTO_URL, which is not a passing result. The container modes need a Docker
+daemon and the pinned Rust toolchain and provision their own fixtures. Druid execution
+is not built.
 `scripts/dev deliver` requires local `ci`, remote `t0` and, when the `engines` workflow is
 triggered, remote `presto-smoke` and `doris-smoke`. It starts no local container and runs
 no review; see [delivery.md](delivery.md). T0 remains Docker-free.
