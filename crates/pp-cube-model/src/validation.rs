@@ -81,7 +81,8 @@ fn fields(kind: &str) -> (&str, &str, &[(&str, &str)]) {
     match kind {
         "model" => ("cubes", "", &[("cubes", "cube")]),
         "cube" => ("name data_source", "sql_table sql sql_alias title description public meta joins dimensions measures segments", &[("joins","join"),("dimensions","dimension"),("measures","measure"),("segments","segment")]),
-        "dimension" => ("name sql type", "primary_key title description public meta", &[]),
+        "dimension" => ("name sql type", "primary_key title description public meta granularities", &[("granularities","granularity")]),
+        "granularity" => ("name interval", "origin offset", &[]),
         "measure" => ("name type", "sql filters title description public meta format rolling_window multi_stage time_shift", &[("filters","filter"),("time_shift","time_shift")]),
         "rolling_window" => ("", "trailing leading offset type granularity", &[]),
         "time_shift" => ("interval type", "time_dimension", &[]),
@@ -146,7 +147,18 @@ fn shape(v: &Value, at: &str, kind: &str, out: &mut Vec<ValidationIssue>) {
                 "type" if kind == "time_shift" => {
                     val.as_str().is_some_and(|s| ["prior", "next"].contains(&s))
                 }
+                "offset" if kind == "granularity" => val.as_str().is_some_and(interval),
                 "offset" => val.as_str().is_some_and(|s| ["start", "end"].contains(&s)),
+                "origin" => val
+                    .as_str()
+                    .is_some_and(|s| crate::query::DateValue::try_from(s.to_owned()).is_ok()),
+                "name" if kind == "granularity" => val.as_str().is_some_and(|s| {
+                    crate::Granularity::is_custom_name(s)
+                        && ![
+                            "second", "minute", "hour", "day", "week", "month", "quarter", "year",
+                        ]
+                        .contains(&s)
+                }),
                 "granularity" => val
                     .as_str()
                     .is_some_and(|s| ["day", "week", "month", "quarter", "year"].contains(&s)),
@@ -161,6 +173,7 @@ fn shape(v: &Value, at: &str, kind: &str, out: &mut Vec<ValidationIssue>) {
                     [
                         "count",
                         "count_distinct",
+                        "count_distinct_approx",
                         "sum",
                         "avg",
                         "min",
@@ -201,12 +214,12 @@ fn windows(cube: &Value, measure: &Value, at: &str, out: &mut Vec<ValidationIssu
     if let Some(window) = measure.get("rolling_window").filter(|v| v.is_mapping()) {
         let has = |key: &str| window.get(key).is_some_and(|v| !v.is_null());
         let here = path(at, "rolling_window");
-        if kind == Some("number") {
+        if matches!(kind, Some("number" | "count_distinct_approx")) {
             issue(
                 out,
                 &here,
                 "window",
-                "A number measure cannot have a rolling window",
+                "This measure type cannot have a rolling window",
             );
         }
         let to_date = has("type");
@@ -279,6 +292,51 @@ fn windows(cube: &Value, measure: &Value, at: &str, out: &mut Vec<ValidationIssu
     }
 }
 
+/// The rules that span the fields of a dimension's granularities.
+fn granularities(dimension: &Value, at: &str, out: &mut Vec<ValidationIssue>) {
+    let declared = items(dimension, "granularities");
+    if !declared.is_empty() && text(dimension, "type").is_some_and(|kind| kind != "time") {
+        let here = path(at, "granularities");
+        issue(
+            out,
+            &here,
+            "granularity",
+            "Only a time dimension has granularities",
+        );
+    }
+    let mut names = BTreeSet::new();
+    for (k, granularity) in declared.iter().enumerate() {
+        let here = format!("{at}/granularities/{k}");
+        if text(granularity, "name").is_some_and(|name| !names.insert(name)) {
+            issue(
+                out,
+                &path(&here, "name"),
+                "duplicate-name",
+                "Granularity name is repeated",
+            );
+        }
+        let has = |key: &str| granularity.get(key).is_some_and(|v| !v.is_null());
+        // Periods of more than one unit are counted from somewhere; without an
+        // origin that would be the start of the year the query is compiled in.
+        let one_unit = text(granularity, "interval").is_none_or(|i| i.starts_with("1 "));
+        if has("origin") && has("offset") {
+            issue(
+                out,
+                &here,
+                "granularity",
+                "A granularity has an origin or an offset, not both",
+            );
+        } else if !one_unit && !has("origin") {
+            issue(
+                out,
+                &here,
+                "granularity",
+                "An interval of several units needs an origin",
+            );
+        }
+    }
+}
+
 fn semantics(value: &Value, out: &mut Vec<ValidationIssue>) {
     let cubes = items(value, "cubes");
     let mut names = BTreeMap::new();
@@ -334,6 +392,9 @@ fn semantics(value: &Value, out: &mut Vec<ValidationIssue>) {
                 }
                 if group == "measures" {
                     windows(cube, member, &at, out);
+                }
+                if group == "dimensions" {
+                    granularities(member, &at, out);
                 }
                 if group == "measures"
                     && text(member, "type").is_some_and(|t| t != "count")

@@ -21,7 +21,7 @@ pub struct Query {
     /// Top-level filters all hold together.
     #[serde(default)]
     pub filters: Vec<Filter>,
-    /// Cube's detail-query switch. B0 accepts the field but not `true`.
+    /// Cube's detail-query switch: rows as they are, measures unaggregated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ungrouped: Option<bool>,
     /// In the sequence it was written, whichever of Cube's two forms was used.
@@ -53,10 +53,10 @@ pub struct TimeDimension {
     pub compare_date_range: Option<Vec<DateRange>>,
 }
 
-/// Recognized Cube granularities. B0 compiles day, week, month, quarter and year;
-/// second, minute and hour deserialize but are rejected as unsupported.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
+/// A granularity of a time dimension: one of Cube's predefined ones, or one the
+/// dimension declares under `granularities`. Day, week, month, quarter and year
+/// compile; second, minute and hour load but are rejected as unsupported.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Granularity {
     Second,
     Minute,
@@ -66,6 +66,41 @@ pub enum Granularity {
     Month,
     Quarter,
     Year,
+    /// Declared by the time dimension; whether it is, is a query rule.
+    Custom(String),
+}
+
+impl Granularity {
+    /// The name as a query writes it.
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Second => "second",
+            Self::Minute => "minute",
+            Self::Hour => "hour",
+            Self::Day => "day",
+            Self::Week => "week",
+            Self::Month => "month",
+            Self::Quarter => "quarter",
+            Self::Year => "year",
+            Self::Custom(name) => name,
+        }
+    }
+
+    /// Whether `name` can name a granularity a dimension declares.
+    pub fn is_custom_name(name: &str) -> bool {
+        let mut bytes = name.bytes();
+        bytes
+            .next()
+            .is_some_and(|b| b.is_ascii_lowercase() || b == b'_')
+            && bytes.all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+            && name.len() <= 64
+    }
+}
+
+impl Serialize for Granularity {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.name())
+    }
 }
 
 impl<'de> Deserialize<'de> for Granularity {
@@ -89,8 +124,11 @@ impl<'de> Deserialize<'de> for Granularity {
                     "month" => Ok(Granularity::Month),
                     "quarter" => Ok(Granularity::Quarter),
                     "year" => Ok(Granularity::Year),
+                    name if Granularity::is_custom_name(name) => {
+                        Ok(Granularity::Custom(name.to_owned()))
+                    }
                     _ => Err(E::custom(format_args!(
-                        "unknown granularity `{value}`; B0 granularities are `day`, `week`, `month`, `quarter`, `year`"
+                        "`{value}` is not a granularity name; predefined granularities are `day`, `week`, `month`, `quarter`, `year`"
                     ))),
                 }
             }
@@ -101,12 +139,9 @@ impl<'de> Deserialize<'de> for Granularity {
 }
 
 impl Query {
-    /// Names recognized Cube features that are intentionally outside B0.
-    pub fn unsupported_b0_features(&self) -> Vec<&'static str> {
+    /// Names recognized Cube features the kernel does not compile.
+    pub fn unsupported_features(&self) -> Vec<&'static str> {
         let mut features = Vec::new();
-        if self.ungrouped == Some(true) {
-            features.push("ungrouped detail output");
-        }
         if self
             .time_dimensions
             .iter()

@@ -56,7 +56,6 @@ fn invalid_inputs_keep_precedence_in_a_query_over_two_cubes_measures() {
 fn recognized_out_of_b0_features_are_unsupported_after_model_validation() {
     let model = load_yaml(include_str!("fixtures/retail.yaml")).unwrap();
     let boundary_queries = [
-        r#"{"ungrouped":true}"#,
         r#"{"timeDimensions":[{"dimension":"sales.sold_at","compareDateRange":[["2025-10-01","2025-10-31"]]}]}"#,
         r#"{"timeDimensions":[{"dimension":"sales.sold_at","granularity":"second"}]}"#,
         r#"{"timeDimensions":[{"dimension":"sales.sold_at","granularity":"minute"}]}"#,

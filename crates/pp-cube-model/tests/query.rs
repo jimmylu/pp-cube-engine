@@ -228,7 +228,7 @@ fn recognized_boundary_features_load_and_round_trip() {
 fn malformed_boundary_fields_and_unknown_names_are_rejected() {
     for text in [
         r#"{"ungrouped":"true"}"#,
-        r#"{"timeDimensions":[{"dimension":"sales.sold_at","granularity":"fortnight"}]}"#,
+        r#"{"timeDimensions":[{"dimension":"sales.sold_at","granularity":"Fort Night"}]}"#,
         r#"{"timeDimensions":[{"dimension":"sales.sold_at","compareDateRange":["2025-10-01"]}]}"#,
         r#"{"unknownBoundary":true}"#,
     ] {
@@ -238,13 +238,13 @@ fn malformed_boundary_fields_and_unknown_names_are_rejected() {
 
 // scenario: B0-QUERY-008
 #[test]
-fn unknown_granularity_is_rejected_where_it_is_written_naming_the_b0_rule() {
-    let granularity = "fortnight";
+fn malformed_granularity_is_rejected_where_it_is_written_naming_the_rule() {
+    let granularity = "Fort Night";
     let text = format!(
         "{{\"timeDimensions\": [\n  {{\"dimension\": \"sales.sold_at\", \"granularity\": \"{granularity}\"}}\n]}}"
     );
 
-    let error = load_query(&text).expect_err("the granularity is unknown");
+    let error = load_query(&text).expect_err("the granularity is not a name");
 
     assert_eq!(
         (
@@ -252,7 +252,7 @@ fn unknown_granularity_is_rejected_where_it_is_written_naming_the_b0_rule() {
             error.message.contains(granularity),
             error
                 .message
-                .contains("B0 granularities are `day`, `week`, `month`, `quarter`, `year`"),
+                .contains("predefined granularities are `day`, `week`, `month`, `quarter`, `year`"),
         ),
         (Some(2), true, true),
         "{granularity}: {}",

@@ -241,21 +241,29 @@ impl DriverTools for Driver {
         unavailable("the dialect function hll_cardinality_merge")
     }
 
-    fn count_distinct_approx(&self, _sql: String) -> Result<String, CubeError> {
-        unavailable("the dialect function count_distinct_approx")
+    fn count_distinct_approx(&self, sql: String) -> Result<String, CubeError> {
+        self.function("driver/count_distinct_approx", context! { sql })
     }
 
     fn support_generated_series_for_custom_td(&self) -> Result<bool, CubeError> {
         Ok(self.dialect.generates_time_series())
     }
 
+    /// The start of the period of `interval` counted from `origin` that holds
+    /// `source`. As in `PrestodbQuery.ts`, the interval has one unit.
     fn date_bin(
         &self,
-        _interval: String,
-        _source: String,
-        _origin: String,
+        interval: String,
+        source: String,
+        origin: String,
     ) -> Result<String, CubeError> {
-        unavailable("the dialect function date_bin")
+        let parts = interval_parts(&interval)?;
+        let [(count, unit)] = parts.as_slice() else {
+            return Err(CubeError::internal(format!(
+                "`{interval}` is not an interval of one unit"
+            )));
+        };
+        self.function("driver/date_bin", context! { count, unit, source, origin })
     }
 
     fn as_any(self: Rc<Self>) -> Rc<dyn Any> {

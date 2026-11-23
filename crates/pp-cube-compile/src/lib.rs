@@ -108,7 +108,7 @@ impl PreparedModel {
         query: &Query,
         context: &CompileContext,
     ) -> Result<Compiled, CompileError> {
-        if let Some(feature) = query.unsupported_b0_features().first() {
+        if let Some(feature) = query.unsupported_features().first() {
             return Err(CompileError::Unsupported(format!(
                 "The recognized Cube feature `{feature}` is outside B0"
             )));

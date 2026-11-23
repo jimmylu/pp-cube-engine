@@ -33,8 +33,8 @@ use cubesqlplanner::cube_bridge::struct_with_sql_member::StructWithSqlMember;
 use cubesqlplanner::cube_bridge::timeshift_definition::TimeShiftDefinition;
 use cubesqlplanner::cube_bridge::view_filter_definition::ViewFilterDefinition;
 use pp_cube_model::{
-    Condition, Cube, DateValue, DimensionType, Filter, Join, MeasureType, Model, Operator, Query,
-    Relationship, TimeDimension,
+    Condition, Cube, CustomGranularity, DateValue, DimensionType, Filter, Granularity, Join,
+    MeasureType, Model, Operator, Query, Relationship, TimeDimension,
 };
 
 use crate::expression::Expression;
@@ -152,6 +152,24 @@ impl Evaluator {
         for filter in &query.filters {
             self.check_filter(filter)?;
         }
+        // Rows that are not grouped have no aggregate to compare, as in Cube.
+        if query.ungrouped == Some(true) {
+            let mut pending: Vec<&Filter> = query.filters.iter().collect();
+            while let Some(filter) = pending.pop() {
+                match filter {
+                    Filter::And(filters) | Filter::Or(filters) => pending.extend(filters),
+                    Filter::Condition(condition) => {
+                        if matches!(self.member_kind(&condition.member)?, MemberKind::Measure) {
+                            return Err(CubeError::user(format!(
+                                "Filter member `{}` is a measure; an ungrouped query cannot be \
+                                 filtered on a measure",
+                                condition.member
+                            )));
+                        }
+                    }
+                }
+            }
+        }
         for time_dimension in &query.time_dimensions {
             self.check_time_dimension(time_dimension)?;
         }
@@ -173,6 +191,14 @@ impl Evaluator {
         Ok(())
     }
 
+    /// The granularity `name` that the dimension at `member` declares.
+    fn custom_granularity(&self, member: &str, name: &str) -> Option<&CustomGranularity> {
+        let (cube, dimension) = member.split_once('.')?;
+        let cube = self.model.cube(cube)?;
+        let dimension = cube.dimensions.iter().find(|d| d.name == dimension)?;
+        dimension.granularities.iter().find(|g| g.name == name)
+    }
+
     fn check_time_dimension(&self, time_dimension: &TimeDimension) -> Result<(), CubeError> {
         let member = &time_dimension.dimension;
         let kind = self.member_kind(member)?;
@@ -187,6 +213,13 @@ impl Evaluator {
             return Err(CubeError::user(format!(
                 "Time dimension `{member}` asks for neither a granularity nor a date range"
             )));
+        }
+        if let Some(Granularity::Custom(name)) = &time_dimension.granularity {
+            if self.custom_granularity(member, name).is_none() {
+                return Err(CubeError::user(format!(
+                    "Granularity `{name}` is not one `{member}` declares"
+                )));
+            }
         }
         Ok(())
     }
@@ -388,8 +421,8 @@ impl CubeEvaluator for Evaluator {
         Ok(self.model.cube(&name).is_some())
     }
 
-    // The planner asks for the predefined granularities too, and the query
-    // type admits no other.
+    // The planner asks for the predefined granularities too. The path is the
+    // cube, the dimension, `granularities` and the name.
     fn resolve_granularity(
         &self,
         path: Vec<String>,
@@ -399,13 +432,25 @@ impl CubeEvaluator for Evaluator {
                 "a granularity without a path".to_owned(),
             ));
         };
-        Ok(Rc::new(PredefinedGranularity(
-            GranularityDefinitionStatic {
+        let declared = match path.as_slice() {
+            [cube, dimension, _, name] => {
+                self.custom_granularity(&format!("{cube}.{dimension}"), name)
+            }
+            _ => None,
+        };
+        let statics = match declared {
+            Some(custom) => GranularityDefinitionStatic {
+                interval: custom.interval.clone(),
+                origin: custom.origin.clone(),
+                offset: custom.offset.clone(),
+            },
+            None => GranularityDefinitionStatic {
                 interval: format!("1 {granularity}"),
                 origin: None,
                 offset: None,
             },
-        )))
+        };
+        Ok(Rc::new(PredefinedGranularity(statics)))
     }
 
     // The baseline has no pre-aggregations; the planner asks on every query.
@@ -527,6 +572,7 @@ impl MeasureDef {
         let measure_type = match model.cubes[cube].measures[measure].measure_type {
             MeasureType::Count => "count",
             MeasureType::CountDistinct => "countDistinct",
+            MeasureType::CountDistinctApprox => "countDistinctApprox",
             MeasureType::Sum => "sum",
             MeasureType::Avg => "avg",
             MeasureType::Min => "min",
@@ -735,6 +781,7 @@ impl JoinItemDefinition for JoinDef {
     }
 }
 
+/// A granularity given by its interval, origin and offset, never by an expression.
 struct PredefinedGranularity(GranularityDefinitionStatic);
 
 impl GranularityDefinition for PredefinedGranularity {

@@ -150,3 +150,9 @@ templates:
   expressions/rolling_window_expr_timestamp_cast:
     source: BaseQuery.ts
     text: "{{ value }}"
+  driver/count_distinct_approx:
+    source: Doris APPROX_COUNT_DISTINCT
+    text: "APPROX_COUNT_DISTINCT({{ sql }})"
+  driver/date_bin:
+    source: Doris *_FLOOR
+    text: "{{ unit | upper }}_FLOOR({{ source }}, {{ count }}, CAST('{{ origin | replace('T', ' ') }}' AS DATETIMEV2(3)))"

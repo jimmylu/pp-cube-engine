@@ -171,3 +171,9 @@ templates:
   functions/MIN:
     source: BaseQuery.ts
     text: "MIN({{ args_concat }})"
+  driver/count_distinct_approx:
+    source: PrestodbQuery.ts
+    text: "approx_distinct({{ sql }})"
+  driver/date_bin:
+    source: PrestodbQuery.ts
+    text: "date_add('{{ unit }}',\n      floor(\n        date_diff('{{ unit }}', CAST(from_iso8601_timestamp('{{ origin }}') AS TIMESTAMP), {{ source }}) / {{ count }}\n      ) * {{ count }},\n      CAST(from_iso8601_timestamp('{{ origin }}') AS TIMESTAMP)\n    )"

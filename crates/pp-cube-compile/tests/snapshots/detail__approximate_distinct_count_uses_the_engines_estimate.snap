@@ -1,0 +1,25 @@
+---
+source: crates/pp-cube-compile/tests/detail.rs
+expression: "[APPROXIMATE,\nr#\"{\"measures\": [\"sales.buyers_approx\", \"stores.floor_area\"], \"dimensions\": [\"stores.store_name\"]}\"#,].map(|query|\ncompiled(DialectId::Presto, query)).join(\"\\n\\n\")"
+---
+SELECT "sales".channel_cd "sales__channel_cd", approx_distinct("sales".buyer_id) "sales__buyers_approx", sum("sales".amount) / NULLIF(approx_distinct("sales".buyer_id), 0) "sales__per_buyer"  
+FROM  dw.sales_dtl  AS "sales" GROUP BY 1
+HAVING (approx_distinct("sales".buyer_id) > CAST(? AS DOUBLE)) ORDER BY  1  ASC
+-- parameters: [Text("1")]
+
+ WITH 
+cte_0 AS (  SELECT "stores".store_name "stores__store_name", approx_distinct("sales".buyer_id) "sales__buyers_approx"  
+  FROM  dw.sales_dtl  AS "sales"
+  LEFT JOIN  dw.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd GROUP BY 1),
+cte_1 AS (  SELECT "stores".store_name "stores__store_name", sum("stores".floor_area) "stores__floor_area"  
+  FROM  dw.dim_store  AS "stores" GROUP BY 1)
+SELECT "fk_aggregate_keys"."stores__store_name" "stores__store_name", "q_0"."sales__buyers_approx" "sales__buyers_approx", "q_1"."stores__floor_area" "stores__floor_area"  
+FROM (SELECT DISTINCT "stores__store_name" "stores__store_name"  
+FROM (SELECT DISTINCT "stores__store_name" "stores__store_name"  
+FROM  cte_0  AS "cte_0"
+ UNION ALL 
+SELECT DISTINCT "stores__store_name" "stores__store_name"  
+FROM  cte_1  AS "cte_1") AS "fk_aggregate_keys_source") AS "fk_aggregate_keys"
+LEFT JOIN  cte_0  AS "q_0" ON (("fk_aggregate_keys"."stores__store_name" = "q_0"."stores__store_name" OR (("fk_aggregate_keys"."stores__store_name" IS NULL) AND ("q_0"."stores__store_name" IS NULL))))
+LEFT JOIN  cte_1  AS "q_1" ON (("fk_aggregate_keys"."stores__store_name" = "q_1"."stores__store_name" OR (("fk_aggregate_keys"."stores__store_name" IS NULL) AND ("q_1"."stores__store_name" IS NULL)))) ORDER BY  2  DESC
+-- parameters: []

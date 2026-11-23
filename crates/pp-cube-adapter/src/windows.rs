@@ -84,7 +84,7 @@ fn windowed<'m>(model: &'m Model, query: &Query) -> Vec<Windowed<'m>> {
     found
 }
 
-fn unit_of(granularity: Granularity) -> Option<&'static str> {
+fn unit_of(granularity: &Granularity) -> Option<&'static str> {
     match granularity {
         Granularity::Day => Some("day"),
         Granularity::Week => Some("week"),
@@ -92,12 +92,13 @@ fn unit_of(granularity: Granularity) -> Option<&'static str> {
         Granularity::Quarter => Some("quarter"),
         Granularity::Year => Some("year"),
         Granularity::Second | Granularity::Minute | Granularity::Hour => None,
+        Granularity::Custom(_) => None,
     }
 }
 
 /// Whether `text`, a date or a timestamp of the query, is the first instant of
 /// a period of `granularity`.
-fn starts_period(text: &str, granularity: Granularity) -> bool {
+fn starts_period(text: &str, granularity: &Granularity) -> bool {
     let (day, time) = text.split_at(text.len().min("YYYY-MM-DD".len()));
     let midnight = time
         .bytes()
@@ -163,9 +164,19 @@ pub(crate) fn check(model: &Model, query: &Query, dialect: &Dialect) -> Result<(
         return Ok(());
     };
     for time_dimension in &query.time_dimensions {
-        let Some(granularity) = time_dimension.granularity else {
+        let Some(granularity) = &time_dimension.granularity else {
             continue;
         };
+        // The periods of a declared granularity are counted from an origin the
+        // time series does not know.
+        if let Granularity::Custom(name) = granularity {
+            return Err(PlanError::Unsupported(format!(
+                "Measure `{}` has a rolling window, and it cannot roll by `{name}`, a \
+                 granularity `{}` declares",
+                rolling.name(),
+                time_dimension.dimension
+            )));
+        }
         if !dialect.generates_time_series() {
             // The periods are written out one by one, so their range has to be known.
             if time_dimension.date_range.is_none() {

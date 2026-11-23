@@ -1,0 +1,34 @@
+---
+source: crates/pp-cube-compile/tests/detail.rs
+expression: "queries.each_ref().map(|query| compiled(DialectId::Doris, query)).join(\"\\n\\n\")"
+---
+SELECT `sales`.sale_id `sales__sale_id`, `sales`.amount `sales__amount`, CASE WHEN (`sales`.sale_id) IS NOT NULL THEN 1 END `sales__sale_count`, CASE WHEN (`sales`.buyer_id) IS NOT NULL THEN 1 END `sales__buyers`, CASE WHEN (`sales`.category_cd = 'TOY') THEN `sales`.amount END `sales__toy_amount`  
+FROM  dw.sales_dtl  AS `sales` ORDER BY  2  DESC
+-- parameters: []
+
+SELECT `sales`.sale_id `sales__sale_id`, `stores`.store_name `stores__store_name`, DATE_TRUNC(CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC'), 'day') `sales__sold_at_day`, `sales`.amount `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+LEFT JOIN  dw.dim_store  AS `stores` ON `sales`.store_cd = `stores`.store_cd
+WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) AND (`sales`.channel_cd = ?) ORDER BY  1  ASC
+LIMIT 5 OFFSET 5
+-- parameters: [Text("2026-10-01T00:00:00.000Z"), Text("2026-10-31T23:59:59.999Z"), Text("C1")]
+
+SELECT `sales`.channel_cd `sales__channel_cd`, APPROX_COUNT_DISTINCT(`sales`.buyer_id) `sales__buyers_approx`, sum(`sales`.amount) / NULLIF(APPROX_COUNT_DISTINCT(`sales`.buyer_id), 0) `sales__per_buyer`  
+FROM  dw.sales_dtl  AS `sales` GROUP BY 1
+HAVING (APPROX_COUNT_DISTINCT(`sales`.buyer_id) > CAST(? AS DOUBLE)) ORDER BY  1  ASC
+-- parameters: [Text("1")]
+
+SELECT MONTH_FLOOR(CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC'), 6, CAST('2026-01-01 00:00:00.000' AS DATETIMEV2(3))) `sales__sold_at_half_year`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: [Text("2026-01-01T00:00:00.000Z"), Text("2026-12-31T23:59:59.999Z")]
+
+SELECT WEEK_FLOOR(CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC'), 2, CAST('2025-12-29 00:00:00.000' AS DATETIMEV2(3))) `sales__sold_at_fortnight`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: [Text("2026-01-01T00:00:00.000Z"), Text("2026-12-31T23:59:59.999Z")]
+
+SELECT DATE_ADD(DATE_TRUNC(DATE_SUB(CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC'), INTERVAL 3 MONTH), 'year'), INTERVAL 3 MONTH) `sales__sold_at_fiscal_year`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: [Text("2026-01-01T00:00:00.000Z"), Text("2026-12-31T23:59:59.999Z")]
