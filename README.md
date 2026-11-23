@@ -13,6 +13,8 @@ pull request. A gRPC service exposes Compile, ValidateModel and GetMeta
 B1 baseline, comparison with Cube Core and production packaging are not built.
 Implemented behaviour is recorded in [openspec/specs](openspec/specs).
 
+Start with [the guide](docs/guide.md); latency figures are in [performance](docs/performance.md).
+
 ## Approach
 
 - The contract is Cube's data model and query format, narrowed to a baseline and not extended.

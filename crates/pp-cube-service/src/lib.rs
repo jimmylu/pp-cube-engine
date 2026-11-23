@@ -1,11 +1,11 @@
 //! Synchronous versioned service core. Does not execute SQL or start a server.
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     fmt,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-use pp_cube_compile::{CompileContext, CompileError, Compiled, DialectId};
+use pp_cube_compile::{CompileContext, CompileError, Compiled, DialectId, PreparedModel};
 use pp_cube_model::{
     BundleError, DimensionType, MeasureType, Model, ModelBundle, ModelCatalog, Query, Relationship,
     ValidationIssue,
@@ -86,12 +86,19 @@ pub struct Identity {
     pub model_digest: String,
 }
 
+/// The available versions, each with its model prepared once for compilation.
+#[derive(Debug, Default)]
+struct Versions {
+    bundles: ModelCatalog,
+    prepared: HashMap<String, Arc<PreparedModel>>,
+}
+
 /// Owns available validated versions. Visibility controls discovery, not authorization.
 /// Calls are synchronous; a network host must arrange its own worker dispatch.
 #[derive(Debug, Default)]
 pub struct CubeService {
-    /// Readers clone a bundle handle and release the lock before compiling.
-    catalog: RwLock<ModelCatalog>,
+    /// Readers clone a handle and release the lock before compiling.
+    catalog: RwLock<Versions>,
     /// Which dialect serves each data source. A deployment fact, not model content.
     data_sources: BTreeMap<String, DialectId>,
     /// How many versions may be available at once; `None` is unbounded.
@@ -115,14 +122,14 @@ impl CubeService {
 
     // A panic while holding the lock cannot leave the map half-updated: every
     // write is one insert or one remove.
-    fn read(&self) -> RwLockReadGuard<'_, ModelCatalog> {
+    fn read(&self) -> RwLockReadGuard<'_, Versions> {
         self.catalog.read().unwrap_or_else(|e| e.into_inner())
     }
-    fn write(&self) -> RwLockWriteGuard<'_, ModelCatalog> {
+    fn write(&self) -> RwLockWriteGuard<'_, Versions> {
         self.catalog.write().unwrap_or_else(|e| e.into_inner())
     }
     fn bundle(&self, version: &str) -> Result<Arc<ModelBundle>, BundleError> {
-        self.read().get(version)
+        self.read().bundles.get(version)
     }
 
     /// Make a model version available, validating it first. A version is immutable:
@@ -136,17 +143,14 @@ impl CubeService {
         model: Model,
         expected_digest: Option<&str>,
     ) -> Result<Published, BundleError> {
-        // Validation precedes the digest so an invalid model reports its issues.
-        let issues = pp_cube_model::validate_model(&model);
-        if !issues.is_empty() {
-            return Err(BundleError::Model(issues));
-        }
+        // The bundle validates, so an invalid model reports its issues before anything
+        // is said about its digest.
         let digest = pp_cube_compile::model_digest(&model)
             .map_err(|_| BundleError::InvalidIdentifier { field: "digest" })?;
+        let bundle = ModelBundle::new(version, digest.clone(), model)?;
         if expected_digest.is_some_and(|expected| expected != digest) {
             return Err(BundleError::DigestMismatch);
         }
-        let bundle = ModelBundle::new(version, digest, model)?;
         if let Some(cube) = bundle
             .model()
             .cubes
@@ -157,8 +161,14 @@ impl CubeService {
                 data_source: cube.data_source.clone(),
             });
         }
-        let mut catalog = self.write();
-        match catalog.get(bundle.version()) {
+        // Validate and digest once here, outside the lock, so no compilation has to.
+        let prepared = match PreparedModel::new(Arc::clone(bundle.model())) {
+            Ok(prepared) => Arc::new(prepared),
+            Err(CompileError::Model(issues)) => return Err(BundleError::Model(issues)),
+            Err(_) => return Err(BundleError::InvalidIdentifier { field: "digest" }),
+        };
+        let mut versions = self.write();
+        match versions.bundles.get(bundle.version()) {
             Ok(existing) if existing.digest() == bundle.digest() => Ok(Published {
                 bundle: existing,
                 created: false,
@@ -167,25 +177,34 @@ impl CubeService {
             Err(_)
                 if self
                     .max_versions
-                    .is_some_and(|limit| catalog.bundles().len() >= limit) =>
+                    .is_some_and(|limit| versions.bundles.bundles().len() >= limit) =>
             {
                 Err(BundleError::CatalogFull)
             }
-            Err(_) => Ok(Published {
-                bundle: catalog.register(bundle)?,
-                created: true,
-            }),
+            Err(_) => {
+                let bundle = versions.bundles.register(bundle)?;
+                versions
+                    .prepared
+                    .insert(bundle.version().to_owned(), prepared);
+                Ok(Published {
+                    bundle,
+                    created: true,
+                })
+            }
         }
     }
 
     /// Stop offering a version. Compilations that already selected it finish on it.
     pub fn retire(&self, version: &str) -> Result<Arc<ModelBundle>, BundleError> {
-        self.write().retire(version)
+        let mut versions = self.write();
+        versions.prepared.remove(version);
+        versions.bundles.retire(version)
     }
 
     /// Available versions with their content digests, ordered by version.
     pub fn versions(&self) -> Vec<(String, String)> {
         self.read()
+            .bundles
             .bundles()
             .iter()
             .map(|bundle| (bundle.version().to_owned(), bundle.digest().to_owned()))
@@ -216,11 +235,14 @@ impl CubeService {
         query: &Query,
         context: &CompileContext,
     ) -> Result<Compiled, ServiceError> {
-        let bundle = self.bundle(version).map_err(ServiceError::Bundle)?;
-        let compiled = pp_cube_compile::compile(bundle.model(), query, context)
+        // The lock is released before planning; the handle keeps the version alive.
+        let prepared = self.read().prepared.get(version).cloned();
+        let prepared = prepared.ok_or(ServiceError::Bundle(BundleError::UnknownVersion))?;
+        let compiled = prepared
+            .compile(query, context)
             .map_err(ServiceError::Compile)?;
         for used in &compiled.used_cubes {
-            let source = bundle
+            let source = prepared
                 .model()
                 .cube(&used.name)
                 .map(|cube| cube.data_source.as_str());

@@ -1,0 +1,12 @@
+# The build needs only the manifests, the crates, the dialect templates and the
+# pinned upstream sources. Run scripts/vendor-sync.sh before building.
+*
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!crates
+!templates
+!vendor
+vendor/cube/.git
+!LICENSE
+!NOTICE
