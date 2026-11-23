@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resumable local delivery controller; no model output is executed as shell code."""
+"""Resumable local delivery controller. Delivery runs no model; review is on demand."""
 import argparse
 import base64
 import hashlib
@@ -13,9 +13,23 @@ import tempfile
 import time
 
 
+def idempotent_network_call(args):
+    """Reads and pushes that are safe to repeat after a dropped connection."""
+    return (args[:2] in (('gh', 'api'), ('git', 'fetch'), ('git', 'push'), ('git', 'ls-remote'))
+            or args[:3] in (('gh', 'pr', 'list'), ('gh', 'pr', 'view'), ('gh', 'repo', 'view')))
+
+
 def run(*args, cwd=None, capture=True, input=None, strip=True):
-    p = subprocess.run(args, cwd=cwd, text=True, encoding='utf-8', errors='backslashreplace', input=input,
-                       stdout=subprocess.PIPE if capture else None, check=True)
+    attempts = 3 if idempotent_network_call(args) else 1
+    for attempt in range(attempts):
+        try:
+            p = subprocess.run(args, cwd=cwd, text=True, encoding='utf-8', errors='backslashreplace',
+                               input=input, stdout=subprocess.PIPE if capture else None, check=True)
+            break
+        except subprocess.CalledProcessError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(5)
     return (p.stdout.strip() if strip else p.stdout) if capture else ''
 
 
@@ -325,65 +339,74 @@ def review():
     return report
 
 
-def latest_t0(checks):
-    runs = [c for c in checks if c['name'] == 't0' and c['app']['slug'] == 'github-actions']
+def latest_check(checks, name):
+    runs = [c for c in checks if c['name'] == name and c['app']['slug'] == 'github-actions']
     latest = max(runs, key=lambda c: c['id']) if runs else None
     return [latest['conclusion'].upper() if latest['status'] == 'completed'
             and latest['conclusion'] else 'PENDING'] if latest else []
 
 
-def deliver(rounds):
+def latest_t0(checks):
+    return latest_check(checks, 't0')
+
+
+# Engines run only on GitHub by default. Keep both tuples in step with
+# .github/workflows/engines.yml: its job names and its pull_request path filter.
+ENGINE_CHECKS = ('presto-smoke', 'doris-smoke')
+ENGINE_TRIGGER_PATHS = ('crates/**', 'templates/**', 'scripts/engines/**', 'scripts/check.sh',
+                        'scripts/vendor-sync.sh', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml',
+                        '.github/workflows/engines.yml')
+
+
+def engines_expected(bound):
+    """Whether GitHub starts the engine workflow for this diff."""
+    changed = git('diff', '--no-renames', '--name-only', '-z',
+                  bound['base'] + '...' + bound['head']).split('\0')[:-1]
+    return any(path.startswith(pattern[:-2]) if pattern.endswith('/**') else path == pattern
+               for path in changed for pattern in ENGINE_TRIGGER_PATHS)
+
+
+def deliver():
+    """Local CI, then the remote checks, then Ready. No model runs here: cross-model
+    review is `scripts/dev review`, started by a person when they want one."""
     publish('fix: resume pending delivery changes')
-    for attempt in range(rounds + 1):
-        bound = binding()
-        try:
-            check('ci')
-        except subprocess.CalledProcessError as e:
-            failure = f'Local CI failed: {e}. Inspect output and rerun checks.'
-        else:
-            # Real local execution is mandatory before every review. Docker/engine
-            # failures stop delivery without asking a model to repair infrastructure.
-            check('engines-container')
-            check('doris-container')
-            # Service/auth failures must not trigger a code repair or consume model budget.
-            report = review()
-            if report.get('questions'):
-                raise ValueError('Review needs context clarification; no code repair attempted: ' + json.dumps(report['questions']))
-            failure = json.dumps({'findings': report['findings'], 'questions': report.get('questions', [])}) if (report['findings'] or report.get('questions')) else ''
-        if not failure:
-            deadline = time.monotonic() + 2700
-            while True:
-                checks = json.loads(run('gh', 'api', f'repos/{repo}/commits/{bound["head"]}/check-runs?check_name=t0&filter=latest'))
-                result = latest_t0(checks['check_runs'])
-                if result == ['SUCCESS']:
-                    break
-                if result and result != ['PENDING']:
-                    raise ValueError(f'Remote t0 failed ({result[0]}); PR remains Draft')
-                if time.monotonic() > deadline:
-                    raise ValueError('Remote t0 timed out; resume deliver later')
-                time.sleep(20)
-            if binding() != bound:
-                raise ValueError('Evidence stale before ready transition')
-            current = pr()
-            if current['isDraft']:
-                run('gh', 'pr', 'ready', str(bound['number']), '--repo', repo)
-            evidence = state / 'evidence.md'
-            evidence.write_text(f'<!-- dev-evidence:{bound["head"]} -->\n'
-                                f'Local CI and local Docker Presto and Doris smoke passed; remote t0 passed at `{bound["head"]}`.\n'
-                                f'Implemented by {config()["implementer"]}; reviewed by {report["reviewer"]}.\n')
-            run('gh', 'pr', 'comment', str(bound['number']), '--repo', repo, '--body-file', str(evidence))
-            print('READY: ' + current['url'] + ' @ ' + bound['head'] + '; owner reviews and merges')
-            return
-        if attempt == rounds:
-            raise ValueError('Repair budget exhausted; PR remains Draft. ' + failure)
-        before = identity()
-        model('implementer', 'Fix these findings within the current change scope. Do not push, '
-              'merge, alter gates or remove failing tests. Leave edits in the worktree.\n' + failure)
-        if identity() != before:
-            raise ValueError('Repair runner unexpectedly committed; inspect before continuing')
-        if not git('status', '--porcelain'):
-            raise ValueError('Repair runner made no changes')
-        publish('fix: address automated delivery findings')
+    bound = binding()
+    check('ci')
+    engines = engines_expected(bound)
+    required = ('t0',) + (ENGINE_CHECKS if engines else ())
+    deadline = time.monotonic() + 2700
+    while True:
+        checks = json.loads(run('gh', 'api', f'repos/{repo}/commits/{bound["head"]}/check-runs?filter=latest&per_page=100'))
+        results = {name: latest_check(checks['check_runs'], name) for name in required}
+        for name, result in results.items():
+            if result and result not in (['SUCCESS'], ['PENDING']):
+                raise ValueError(f'Remote {name} failed ({result[0]}); PR remains Draft')
+        if all(result == ['SUCCESS'] for result in results.values()):
+            break
+        if time.monotonic() > deadline:
+            raise ValueError('Remote checks timed out; resume deliver later')
+        time.sleep(20)
+    if binding() != bound:
+        raise ValueError('Evidence stale before ready transition')
+    current = pr()
+    if current['isDraft']:
+        run('gh', 'pr', 'ready', str(bound['number']), '--repo', repo)
+    cached = state / 'review.json'
+    reviewed = json.loads(cached.read_text()) if cached.exists() else {}
+    evidence = state / 'evidence.md'
+    evidence.write_text(
+        f'<!-- dev-evidence:{bound["head"]} -->\n'
+        f'Local CI passed; remote t0 passed at `{bound["head"]}`.\n'
+        + ('Remote engine containers passed: ' + ', '.join(ENGINE_CHECKS) + '.\n' if engines else
+           'Remote engine containers were not triggered: no engine-relevant path changed.\n')
+        + 'Local engine containers are on demand and were not run by delivery.\n'
+        + (f'Cross-model review on demand at this head by {reviewed["reviewer"]}: '
+           f'{len(reviewed.get("findings", []))} findings, {len(reviewed.get("questions", []))} questions.\n'
+           if reviewed.get('head') == bound['head'] and reviewed.get('reviewer') else
+           'Cross-model review is on demand and was not run at this head.\n')
+        + f'Implemented by {config()["implementer"]}.\n')
+    run('gh', 'pr', 'comment', str(bound['number']), '--repo', repo, '--body-file', str(evidence))
+    print('READY: ' + current['url'] + ' @ ' + bound['head'] + '; owner reviews and merges')
 
 
 def main():
@@ -399,7 +422,6 @@ def main():
     parser.add_argument('--reviewer', help='different-vendor/model identity')
     parser.add_argument('--implementer-command', help='JSON argv array; receives prompt on stdin')
     parser.add_argument('--reviewer-command', help='JSON argv array; no-tools/read-only process')
-    parser.add_argument('--rounds', type=int, default=2)
     parser.add_argument('--review-context', action='append', default=[],
                         help='extra tracked file to include at base/head; repeatable')
     args = parser.parse_args()
@@ -446,9 +468,7 @@ def main():
         elif args.action == 'review':
             print(json.dumps(review(), indent=2))
         else:
-            if not 0 <= args.rounds <= 5:
-                raise ValueError('Repair rounds must be between 0 and 5')
-            deliver(args.rounds)
+            deliver()
     finally:
         lock.unlink()
 

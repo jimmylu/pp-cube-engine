@@ -1,0 +1,80 @@
+# Real engine execution. Delivery no longer starts containers locally by default,
+# so these jobs are where compiled SQL meets Presto and Doris before merge.
+# The path filter and job names are mirrored in scripts/dev (ENGINE_TRIGGER_PATHS,
+# ENGINE_CHECKS); scripts/tests/test_delivery.py keeps them in step.
+name: engines
+
+on:
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'templates/**'
+      - 'scripts/engines/**'
+      - 'scripts/check.sh'
+      - 'scripts/vendor-sync.sh'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.github/workflows/engines.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engines-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  presto-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Execute pinned engine smoke case
+        shell: bash
+        run: |
+          set -o pipefail
+          echo "SHA: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          scripts/check.sh engines-container > /tmp/presto-evidence.txt 2>&1
+          result=$?
+          cat /tmp/presto-evidence.txt
+          cat /tmp/presto-evidence.txt >> "$GITHUB_STEP_SUMMARY"
+          exit "$result"
+
+  doris-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the pinned upstream
+        run: scripts/vendor-sync.sh
+
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      # Doris backends refuse to start with the default mapping limit or with swap.
+      - name: Prepare the host for Doris
+        run: |
+          sudo sysctl -w vm.max_map_count=2000000
+          sudo swapoff -a
+
+      - name: Execute the live-compiled manifest on pinned Doris
+        shell: bash
+        run: |
+          set -o pipefail
+          echo "SHA: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          scripts/check.sh doris-container > /tmp/doris-evidence.txt 2>&1
+          result=$?
+          cat /tmp/doris-evidence.txt
+          cat /tmp/doris-evidence.txt >> "$GITHUB_STEP_SUMMARY"
+          exit "$result"

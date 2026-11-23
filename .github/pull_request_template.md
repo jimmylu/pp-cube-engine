@@ -8,6 +8,7 @@
 
 ## Evidence
 
+- Remote checks on the pushed commit: `t0`, and `presto-smoke` / `doris-smoke` when triggered.
 - `scripts/check.sh ci` summary line, run on the pushed commit:
 
   ```text
@@ -21,8 +22,8 @@
 | Role | Tool | Model |
 | --- | --- | --- |
 | Implemented by | | |
-| Reviewed by | | |
+| Reviewed by (only when the owner asked for a cross-model review) | | |
 
-The reviewing model's vendor differs from the implementing model's vendor.
+When a review ran, the reviewing model's vendor differs from the implementing model's vendor.
 
 ## Open points for the owner

@@ -23,7 +23,7 @@ Harness work is the exception: it has no change folder and lives on `harness/<to
 | Explore | `openspec-explore` | Optional: think a problem through before proposing | — |
 | Propose | `openspec-propose` | Create the change folder on `change/<change-id>` and continue in the same Draft PR | Agent verifies scope; ask owner only for a decision |
 | Apply | `openspec-apply-change` | Implement in that Draft PR; name the change id and scenario ids covered | — |
-| Review | `openspec-verify-change`, then the reviewer | A model from a different vendor than the implementer's reviews and posts a report as a comment. Fixes go back to the implementer | `t0` green, then final owner approval |
+| Review | `openspec-verify-change`; `scripts/dev review` on demand | The owner reviews the Ready pull request. A second model, from a different vendor than the implementer's, reviews only when the owner asks; it posts a report as a comment | `t0` and triggered engine checks green, then final owner approval |
 | Archive | `openspec-archive-change` | Before final review in the same Draft PR: sync the implemented spec delta into `openspec/specs/` and the folder moves to `openspec/changes/archive/` | — |
 
 A user-authorized ordinary change carries proposal, implementation and final archive in one Draft PR. Separate proposal approval is needed only for unresolved owner decisions. After archiving, main specs describe implemented behavior.
@@ -47,9 +47,10 @@ Hand over at a commit, with `tasks.md` and `notes.md` current. The next agent st
 
 Read delivery.md before starting a delivery session. A complete verified slice is committed
 and pushed with `scripts/dev checkpoint --message "..."`; this creates or updates one Draft PR.
-`scripts/dev deliver` runs CI, another vendor's review and at most two repair rounds, then
-marks it Ready. The owner approves and merges. Report SHA, push status and PR URL each time.
-Around 400 lines is a scope review prompt, never a reason to leave known correctness bugs behind.
+`scripts/dev deliver` runs local CI, waits for remote `t0` and the triggered engine checks, then
+marks it Ready. It runs no model; cross-model review is `scripts/dev review`, on demand. The owner approves and merges. Report SHA, push status and PR URL each time.
+A change is one capability of about 2–3 working days (up to 4–5); there is no line limit.
+Test-case and framework rework goes into one dedicated pull request, not into each capability change.
 Create an issue for an independent defect, cross-change dependency, after-baseline work or
 an owner-only decision. Fix routine test/review findings in the current PR without new issues.
 Reviewers never edit the implementation worktree; the controller records their report on the PR.

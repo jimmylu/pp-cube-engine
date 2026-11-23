@@ -36,10 +36,13 @@ or real clusters (T3).
 
 ## Delivery
 
-The delivery controller runs local CI, Presto Docker and Doris Docker on every
-round before cross-vendor review. T0 remains Docker-free. Engine or Docker
-failure leaves the PR Draft. Cleanup failure also fails the run. SIGKILL can
-leave a uniquely named cube-doris- container requiring manual removal.
+Delivery does not start this tier locally. The `doris-smoke` job of the `engines`
+workflow runs it on GitHub for every pull request that can affect it, after
+raising `vm.max_map_count` and disabling swap on the runner, and
+`scripts/dev deliver` requires it when triggered. Run the tier locally when
+developing cases or debugging a failure. T0 remains Docker-free. Cleanup failure
+fails the run. SIGKILL can leave a uniquely named cube-doris- container requiring
+manual removal.
 
 Sources:
 - Official image source: https://github.com/apache/doris/tree/master/docker

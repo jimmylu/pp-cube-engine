@@ -39,18 +39,30 @@ Read [review.md](review.md) for the evidence, history and context-question contr
 Use `scripts/dev deliver --review-context path/to/tracked/file` to supplement missing
 context without changing harness code; repeat the flag for additional files.
 
-`deliver --rounds 2` checks local CI, runs the real local Docker Presto and Doris smoke,
-then gets cross-vendor review and publishes its SHA-bound
-report, repairs findings, checkpoints, and repeats. Exhaustion leaves a Draft PR and a
-visible blocker. A model failure or invalid reply cannot become a passing review.
-A working local Docker daemon with amd64 support/emulation is required. Every
-round runs `scripts/check.sh ci` followed by `scripts/check.sh engines-container` and `scripts/check.sh doris-container`
-before review; Docker or engine failure stops delivery without a model repair.
-Remote engine success does not substitute for this local execution.
-Remote t0 must pass for the exact reviewed head before Ready. It never waits for owner
-approval itself. The final gate runs only for a Ready PR. Owner approval stays in the
-existing protected environment; switching its authorization mechanism is a separate
-administrative migration, not a prerequisite to automated development.
+`scripts/dev deliver` is deliberately light. It checkpoints pending edits, runs
+`scripts/check.sh ci` locally, then waits for the remote checks on the exact head:
+`t0` always, and `presto-smoke` and `doris-smoke` when the diff touches a path that
+starts the `engines` workflow (crates, templates, engine scripts, `scripts/check.sh`,
+`scripts/vendor-sync.sh`, the Cargo manifests and toolchain, the workflow itself).
+When they pass it marks the PR Ready and posts an evidence comment that says what
+ran and what did not. A failing local or remote check leaves the PR Draft; fix it
+and run `deliver` again. It never waits for owner approval itself.
+
+Delivery runs no model and starts no container (owner decision, 2026-11-23):
+
+- **Cross-model review is on demand.** Run `scripts/dev review` only when the owner
+  asks for one. It posts a SHA-bound report; findings are fixed in the session and
+  re-checked by another `review` only if the owner wants that. There is no
+  automatic repair loop. A review that exists for the delivered head is mentioned
+  in the evidence comment; none is required for Ready.
+- **Engine containers run on GitHub.** The `engines` workflow executes the Presto
+  smoke and the live-compiled Doris manifest for every pull request that can affect
+  them, and `deliver` requires both to pass when they are triggered. Run
+  `scripts/check.sh engines-container` or `doris-container` locally when debugging
+  an engine failure or developing engine cases; they are not part of default checks.
+
+Idempotent GitHub reads, fetches and pushes are retried twice after a dropped
+connection. Owner approval stays in the existing protected environment.
 
 A lock under the worktree's Git directory prevents simultaneous controllers. A crash can
 leave it behind: inspect its PID before removing it. Resume the same command afterward;
@@ -65,8 +77,9 @@ commit just to record the successful check of that same commit.
 Routine check/review findings are fixed within the PR. Create an issue only for a separate
 bug, a cross-change dependency, an after-baseline request, or an owner-only decision;
 reuse the existing issue for the same blocker. Do not weaken gates to get a passing run.
-Around 400 lines prompts scope review; keep independently verifiable behavior and fixes
-together. Archive only implemented, meaningfully tested scenarios in the final PR.
+Size a change by work, not lines: one capability, about 2–3 working days, up to 4–5
+when needed (AGENTS.md rule 8). Collect test-case and test-framework rework into one
+dedicated pull request instead of repeating it across capability changes (rule 9). Archive only implemented, meaningfully tested scenarios in the final PR.
 
 Workflow changes require a publication credential with workflow write permission.
 The owner bootstraps that identity once; it must not bypass main protection or approve
@@ -85,6 +98,9 @@ as not run if unavailable. Simulated tests do not prove external service integra
   https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request_target
 
 ## Rollout state
+
+History up to 2026-11-22. Review and repair rounds described below were removed
+from delivery on 2026-11-23; the section above is current.
 
 The owner authorized all three delivery phases, including removal of the gate's t0
 polling. The controller requires successful local CI, cross-vendor review and remote

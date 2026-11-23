@@ -44,8 +44,9 @@ class DeliveryTests(unittest.TestCase):
                 self.assertEqual(child_env['MODEL_PROFILE'], 'dummy-model-profile')
                 self.assertTrue(all(os.environ[name] == environment[name] for name in tokens))
 
-    def test_deliver_resumes_with_uncommitted_repair(self):
+    def test_deliver_resumes_pending_changes_and_runs_only_local_ci(self):
         current = {'url': 'https://example.test/1', 'isDraft': True}
+        failed = dict(id=1, name='t0', app={'slug': 'github-actions'}, status='completed', conclusion='failure')
 
         def git_result(*args):
             if args == ('status', '--porcelain'):
@@ -60,12 +61,14 @@ class DeliveryTests(unittest.TestCase):
              patch.object(dev, 'git', side_effect=git_result) as git, \
              patch.object(dev, 'check') as check, \
              patch.object(dev, 'binding', return_value={'head': 'abc'}), \
-             patch.object(dev, 'review', return_value={'findings': ['remaining bug']}):
-            # Stop after the first review, without invoking a model or GitHub.
-            with self.assertRaisesRegex(ValueError, 'budget exhausted'):
-                dev.deliver(0)
+             patch.object(dev, 'engines_expected', return_value=False), \
+             patch.object(dev, 'run', return_value=json.dumps({'check_runs': [failed]})):
+            # Stop at the first remote result, without GitHub.
+            with self.assertRaisesRegex(ValueError, 'Remote t0 failed'):
+                dev.deliver()
             git.assert_any_call('commit', '-m', 'fix: resume pending delivery changes')
-            self.assertEqual([call.args for call in check.call_args_list], [('fast',), ('ci',), ('engines-container',), ('doris-container',)])
+            # No engine container runs locally by default.
+            self.assertEqual([call.args for call in check.call_args_list], [('fast',), ('ci',)])
 
     def test_scope_rejects_product_edit_on_harness_branch(self):
         with patch.object(dev, 'git', side_effect=['crates/model.rs', '']):
@@ -82,41 +85,72 @@ class DeliveryTests(unittest.TestCase):
              patch.object(dev, 'git', return_value=''):
             self.assertIsNone(dev.remote_sha())
 
-    def test_local_engine_failure_blocks_review_and_ready(self):
-        modes = []
-
-        def check(mode):
-            modes.append(mode)
-            if mode == 'engines-container':
-                raise subprocess.CalledProcessError(1, ['scripts/check.sh', mode])
+    def test_local_ci_failure_blocks_remote_wait_and_ready(self):
+        def fail(mode):
+            raise subprocess.CalledProcessError(1, ['scripts/check.sh', mode])
 
         with patch.object(dev, 'publish'), \
              patch.object(dev, 'binding', return_value={'head': 'a'}), \
-             patch.object(dev, 'check', side_effect=check), \
-             patch.object(dev, 'review') as review, \
+             patch.object(dev, 'check', side_effect=fail) as check, \
              patch.object(dev, 'run') as runner, \
              patch.object(dev, 'model') as model:
             with self.assertRaises(subprocess.CalledProcessError):
-                dev.deliver(2)
-            self.assertEqual(modes, ['ci', 'engines-container'])
-            review.assert_not_called()
+                dev.deliver()
+            self.assertEqual([call.args for call in check.call_args_list], [('ci',)])
             runner.assert_not_called()
             model.assert_not_called()
             self.assertFalse((dev.state / 'evidence.md').exists())
 
-    def test_doris_failure_blocks_review_and_ready(self):
-        def fail_doris(mode):
-            if mode == 'doris-container':
-                raise subprocess.CalledProcessError(1, ['check', mode])
+    def test_remote_engine_failure_blocks_ready(self):
+        def remote(name, conclusion, number):
+            return dict(id=number, name=name, app={'slug': 'github-actions'},
+                        status='completed', conclusion=conclusion)
+        checks = {'check_runs': [remote('t0', 'success', 1), remote('presto-smoke', 'success', 2),
+                                 remote('doris-smoke', 'failure', 3)]}
         with patch.object(dev, 'publish'), \
              patch.object(dev, 'binding', return_value={'head': 'a'}), \
-             patch.object(dev, 'check', side_effect=fail_doris), \
-             patch.object(dev, 'review') as review, \
-             patch.object(dev, 'run') as runner:
-            with self.assertRaises(subprocess.CalledProcessError):
-                dev.deliver(0)
-            review.assert_not_called()
-            runner.assert_not_called()
+             patch.object(dev, 'check'), \
+             patch.object(dev, 'engines_expected', return_value=True), \
+             patch.object(dev, 'run', return_value=json.dumps(checks)) as runner:
+            with self.assertRaisesRegex(ValueError, 'Remote doris-smoke failed'):
+                dev.deliver()
+            runner.assert_called_once()
+            self.assertFalse((dev.state / 'evidence.md').exists())
+
+    def test_engine_expectation_matches_the_workflow(self):
+        workflow = (Path(__file__).parents[2] / '.github/workflows/engines.yml').read_text()
+        paths = workflow.split('    paths:\n', 1)[1].split('  workflow_dispatch:', 1)[0]
+        self.assertEqual(tuple(line.strip()[3:-1] for line in paths.splitlines() if line.strip()),
+                         dev.ENGINE_TRIGGER_PATHS)
+        for name in dev.ENGINE_CHECKS:
+            self.assertIn('\n  ' + name + ':\n', workflow)
+        bound = {'base': 'a', 'head': 'b'}
+        for changed, expected in [
+                ('crates/pp-cube-dialect/src/lib.rs', True), ('templates/doris.yaml', True),
+                ('scripts/engines/doris-container.py', True), ('scripts/check.sh', True),
+                ('Cargo.lock', True), ('.github/workflows/engines.yml', True),
+                ('docs/agents/delivery.md\0scripts/dev', False),
+                ('openspec/specs/dialect-doris/spec.md', False), ('scripts/check.sh.bak', False)]:
+            with self.subTest(changed=changed), \
+                 patch.object(dev, 'git', return_value=changed + '\0') as git:
+                self.assertIs(dev.engines_expected(bound), expected)
+                git.assert_called_once_with('diff', '--no-renames', '--name-only', '-z', 'a...b')
+
+    def test_idempotent_network_calls_are_retried_and_others_are_not(self):
+        done = subprocess.CompletedProcess([], 0, stdout='ok\n')
+        failure = subprocess.CalledProcessError(1, ['gh'])
+        with patch.object(dev.subprocess, 'run', side_effect=[failure, failure, done]) as process, \
+             patch.object(dev.time, 'sleep') as sleep:
+            self.assertEqual(dev.run('gh', 'api', 'repos/x'), 'ok')
+            self.assertEqual((process.call_count, sleep.call_count), (3, 2))
+        for command in (('gh', 'pr', 'comment', '1'), ('gh', 'pr', 'create'), ('gh', 'pr', 'ready', '1'),
+                        ('git', 'commit', '-m', 'x'), ('scripts/check.sh', 'ci')):
+            with self.subTest(command=command), \
+                 patch.object(dev.subprocess, 'run', side_effect=failure) as process, \
+                 patch.object(dev.time, 'sleep') as sleep:
+                with self.assertRaises(subprocess.CalledProcessError):
+                    dev.run(*command)
+                self.assertEqual((process.call_count, sleep.call_count), (1, 0))
 
     def test_pending_snapshot_blocks_checkpoint(self):
         with patch.object(dev, 'git', side_effect=['crates/a.snap.new', '']):
@@ -143,47 +177,68 @@ class DeliveryTests(unittest.TestCase):
                 with patch.object(dev, 'publish'), \
                      patch.object(dev, 'binding', return_value={'head': 'a'}), \
                      patch.object(dev, 'check'), \
-                     patch.object(dev, 'review', return_value={'findings': []}), \
+                     patch.object(dev, 'engines_expected', return_value=False), \
                      patch.object(dev, 'run', return_value=json.dumps(checks)) as runner, \
                      patch.object(dev.time, 'sleep', side_effect=AssertionError('unexpected polling')), \
                      patch.object(dev, 'model') as model:
                     with self.assertRaisesRegex(ValueError, 'Remote t0 failed'):
-                        dev.deliver(0)
+                        dev.deliver()
                     runner.assert_called_once()
                     model.assert_not_called()
                     self.assertFalse((dev.state / 'evidence.md').exists())
 
     def test_remote_missing_and_pending_checks_wait_for_success(self):
-        pending = dict(id=1, name='t0', app={'slug': 'github-actions'},
-                       status='in_progress', conclusion=None)
-        success = dict(pending, status='completed', conclusion='success')
-        responses = iter(json.dumps({'check_runs': rows})
-                         for rows in ([], [pending], [success]))
+        def remote(name, number, done=True):
+            return dict(id=number, name=name, app={'slug': 'github-actions'},
+                        status='completed' if done else 'in_progress',
+                        conclusion='success' if done else None)
+        t0, presto, doris = remote('t0', 1), remote('presto-smoke', 2), remote('doris-smoke', 3)
+        responses = iter(json.dumps({'check_runs': rows}) for rows in (
+            [], [remote('t0', 1, done=False)], [t0], [t0, presto, remote('doris-smoke', 3, done=False)],
+            [t0, presto, doris]))
 
         def run_result(*args, **kwargs):
             if args[:2] == ('gh', 'api'):
                 return next(responses)
             return ''
 
-        def review_after_local_checks():
-            self.assertEqual([call.args[0] for call in check.call_args_list],
-                             ['ci', 'engines-container', 'doris-container'])
-            return {'findings': [], 'reviewer': 'other/model'}
-
         with patch.object(dev, 'publish'), \
              patch.object(dev, 'binding', return_value={'head': 'a', 'number': 1}), \
              patch.object(dev, 'check') as check, \
-             patch.object(dev, 'review', side_effect=review_after_local_checks), \
+             patch.object(dev, 'engines_expected', return_value=True), \
+             patch.object(dev, 'review', side_effect=AssertionError('review is on demand')), \
+             patch.object(dev, 'model', side_effect=AssertionError('delivery runs no model')), \
              patch.object(dev, 'config', return_value={'implementer': 'example/model'}), \
              patch.object(dev, 'pr', return_value={'isDraft': True, 'url': 'https://example.test/1'}), \
              patch.object(dev, 'run', side_effect=run_result) as runner, \
              patch.object(dev.time, 'sleep') as sleep:
-            dev.deliver(0)
-            self.assertEqual(sleep.call_count, 2)
+            dev.deliver()
+            # Engine checks that have not appeared yet are waited for, not assumed.
+            self.assertEqual(sleep.call_count, 4)
+            self.assertEqual([call.args for call in check.call_args_list], [('ci',)])
             runner.assert_any_call('gh', 'api',
-                                   f'repos/{dev.repo}/commits/a/check-runs?check_name=t0&filter=latest')
+                                   f'repos/{dev.repo}/commits/a/check-runs?filter=latest&per_page=100')
             runner.assert_any_call('gh', 'pr', 'ready', '1', '--repo', dev.repo)
-            self.assertIn('remote t0 passed', (dev.state / 'evidence.md').read_text())
+            evidence = (dev.state / 'evidence.md').read_text()
+            self.assertIn('Local CI passed; remote t0 passed', evidence)
+            self.assertIn('Remote engine containers passed: presto-smoke, doris-smoke', evidence)
+            self.assertIn('Local engine containers are on demand and were not run', evidence)
+            self.assertIn('Cross-model review is on demand and was not run at this head', evidence)
+
+    def test_evidence_reports_untriggered_engines_and_an_on_demand_review(self):
+        t0 = dict(id=1, name='t0', app={'slug': 'github-actions'}, status='completed', conclusion='success')
+        dev.save(dev.state / 'review.json', {'head': 'a', 'reviewer': 'other/model',
+                                             'findings': [], 'questions': ['q']})
+        with patch.object(dev, 'publish'), \
+             patch.object(dev, 'binding', return_value={'head': 'a', 'number': 1}), \
+             patch.object(dev, 'check'), patch.object(dev, 'engines_expected', return_value=False), \
+             patch.object(dev, 'config', return_value={'implementer': 'example/model'}), \
+             patch.object(dev, 'pr', return_value={'isDraft': False, 'url': 'https://example.test/1'}), \
+             patch.object(dev, 'run', return_value=json.dumps({'check_runs': [t0]})):
+            dev.deliver()
+        evidence = (dev.state / 'evidence.md').read_text()
+        self.assertIn('Remote engine containers were not triggered', evidence)
+        self.assertIn('Cross-model review on demand at this head by other/model: 0 findings, 1 questions', evidence)
 
     def test_atomic_state_roundtrip(self):
         p = dev.state / 'evidence.json'
@@ -250,26 +305,6 @@ class DeliveryTests(unittest.TestCase):
                 runner.assert_not_called()
                 self.assertFalse((dev.state / 'review.json').exists())
                 self.assertFalse((dev.state / 'review.md').exists())
-
-    def test_budget_exhaustion_leaves_pr_draft(self):
-        with patch.object(dev, 'publish'), patch.object(dev, 'binding', return_value={'head': 'a'}), \
-             patch.object(dev, 'check'), patch.object(dev, 'review', return_value={'findings': ['bug']}), \
-             patch.object(dev, 'model') as model:
-            with self.assertRaisesRegex(ValueError, 'budget exhausted'):
-                dev.deliver(0)
-            model.assert_not_called()
-
-
-
-class ReviewQuestionTests(unittest.TestCase):
-    def test_context_questions_block_without_code_repair(self):
-        with patch.object(dev, 'publish'), patch.object(dev, 'binding', return_value={'head': 'a'}), \
-             patch.object(dev, 'check'), \
-             patch.object(dev, 'review', return_value={'findings': [], 'questions': ['Need full type']}), \
-             patch.object(dev, 'model') as model:
-            with self.assertRaisesRegex(ValueError, 'context clarification'):
-                dev.deliver(2)
-            model.assert_not_called()
 
 
 if __name__ == '__main__':
