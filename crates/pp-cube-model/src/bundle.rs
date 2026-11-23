@@ -14,6 +14,8 @@ pub enum BundleError {
     Model(Vec<ValidationIssue>),
     DuplicateVersion,
     UnknownVersion,
+    /// The content does not have the digest its publisher expected.
+    DigestMismatch,
     /// A host that maps data sources to dialects has no dialect for this one.
     UnmappedDataSource {
         data_source: String,
@@ -27,6 +29,9 @@ impl fmt::Display for BundleError {
             Self::Model(_) => f.write_str("the bundle model could not be validated"),
             Self::DuplicateVersion => f.write_str("the bundle version is already registered"),
             Self::UnknownVersion => f.write_str("the bundle version is not available"),
+            Self::DigestMismatch => {
+                f.write_str("the bundle content does not match the expected digest")
+            }
             Self::UnmappedDataSource { data_source } => {
                 write!(
                     f,
@@ -103,6 +108,21 @@ impl ModelCatalog {
                 Ok(bundle)
             }
         }
+    }
+
+    /// Stop offering a version. Handles already given out keep their bundle, so work
+    /// in progress finishes on the version it selected.
+    pub fn retire(&mut self, version: &str) -> Result<Arc<ModelBundle>, BundleError> {
+        self.bundles
+            .remove(version)
+            .ok_or(BundleError::UnknownVersion)
+    }
+
+    /// Every available bundle, ordered by version.
+    pub fn bundles(&self) -> Vec<Arc<ModelBundle>> {
+        let mut bundles: Vec<_> = self.bundles.values().cloned().collect();
+        bundles.sort_by(|a, b| a.version.cmp(&b.version));
+        bundles
     }
 
     pub fn get(&self, version: &str) -> Result<Arc<ModelBundle>, BundleError> {

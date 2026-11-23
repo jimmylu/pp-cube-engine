@@ -69,3 +69,38 @@ fn exact_selection_duplicate_rejection_and_handle_lifetime() {
     Arc::make_mut(&mut detached).cubes.clear();
     assert_eq!(first.model().as_ref(), &original);
 }
+
+// scenario: B0-MODEL-009
+#[test]
+fn a_catalog_lists_versions_in_order_and_retires_without_revoking_handles() {
+    let mut catalog = ModelCatalog::default();
+    for version in ["v2", "v10", "v1"] {
+        catalog
+            .register(ModelBundle::new(version, "digest", model(version)).unwrap())
+            .unwrap();
+    }
+    let versions = |catalog: &ModelCatalog| {
+        catalog
+            .bundles()
+            .iter()
+            .map(|bundle| bundle.version().to_owned())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(versions(&catalog), ["v1", "v10", "v2"]);
+    let held = catalog.get("v1").unwrap();
+    let retired = catalog.retire("v1").unwrap();
+    assert!(std::sync::Arc::ptr_eq(&held, &retired));
+    // The handle keeps its content; the catalog no longer offers the version.
+    assert_eq!(held.model().cubes.len(), 1);
+    assert_eq!(catalog.get("v1").unwrap_err(), BundleError::UnknownVersion);
+    assert_eq!(
+        catalog.retire("v1").unwrap_err(),
+        BundleError::UnknownVersion
+    );
+    assert_eq!(versions(&catalog), ["v10", "v2"]);
+    // A retired version can be registered again.
+    catalog
+        .register(ModelBundle::new("v1", "other", model("again")).unwrap())
+        .unwrap();
+    assert_eq!(catalog.get("v1").unwrap().digest(), "other");
+}

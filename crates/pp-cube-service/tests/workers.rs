@@ -6,10 +6,10 @@ use std::sync::Arc;
 // scenario: B0-API-005
 #[test]
 fn async_results_preserve_versions_errors_and_security_context() {
-    let mut service = CubeService::new([("warehouse".to_owned(), DialectId::Presto)]);
+    let service = CubeService::new([("warehouse".to_owned(), DialectId::Presto)]);
     for version in ["v1", "v2"] {
         let model = load_yaml(&format!("cubes:\n- name: sales\n  sql_table: dw.{version}\n  data_source: warehouse\n  dimensions:\n  - {{name: region, type: string, sql: '{{CUBE}}.region'}}\n  measures:\n  - {{name: amount, type: sum, sql: '{{CUBE}}.amount'}}\n")).unwrap();
-        service.register(version, "digest", model).unwrap();
+        service.publish(version, model, None).unwrap();
     }
     let service = Arc::new(service);
     let pool = CompilePool::new(Arc::clone(&service), 2, 8).unwrap();
