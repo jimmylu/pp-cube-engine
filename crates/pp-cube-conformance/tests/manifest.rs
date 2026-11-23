@@ -61,12 +61,9 @@ fn doris_manifest_is_stable_and_complete() {
     assert_eq!(cases[0]["rows"][0][0]["timestamp"], "2026-10-01T00:00:00");
 }
 
-// scenario: B0-EXEC-003
-// scenario: B0-DORIS-001
-#[test]
-fn doris_cases_match_their_goldens() {
+fn golden_text(dialect: &str) -> String {
     let manifest: Value =
-        serde_json::from_str(&pp_cube_conformance::manifest("doris").unwrap()).unwrap();
+        serde_json::from_str(&pp_cube_conformance::manifest(dialect).unwrap()).unwrap();
     let mut text = String::new();
     for case in manifest["cases"].as_array().unwrap() {
         let values: Vec<_> = case["params"]
@@ -82,13 +79,63 @@ fn doris_cases_match_their_goldens() {
             values.join(", ")
         ));
     }
-    insta::assert_snapshot!("doris_cases", text);
+    text
+}
+
+// scenario: B0-EXEC-003
+// scenario: B0-DORIS-001
+#[test]
+fn doris_cases_match_their_goldens() {
+    insta::assert_snapshot!("doris_cases", golden_text("doris"));
+}
+
+// scenario: B0-EXEC-004
+// scenario: B0-PRESTO-017
+#[test]
+fn presto_shares_the_doris_cases_and_matches_its_goldens() {
+    let manifest = |dialect: &str| -> Value {
+        serde_json::from_str(&pp_cube_conformance::manifest(dialect).unwrap()).unwrap()
+    };
+    let (doris, presto) = (manifest("doris"), manifest("presto"));
+    let (doris_cases, presto_cases) = (
+        doris["cases"].as_array().unwrap(),
+        presto["cases"].as_array().unwrap(),
+    );
+    assert_eq!(presto_cases.len(), 40);
+    assert_eq!(doris_cases.len(), presto_cases.len());
+    // Same questions and the same answers on both engines; only SQL and fixtures differ.
+    for (doris, presto) in doris_cases.iter().zip(presto_cases) {
+        let name = presto["name"].as_str().unwrap();
+        for field in ["name", "columns", "rows"] {
+            assert_eq!(doris[field], presto[field], "{name}: {field}");
+        }
+        assert_eq!(presto["scenario"], "B0-PRESTO-003", "{name}");
+        assert_ne!(doris["sql"], presto["sql"], "{name}");
+        assert!(presto["sql"].as_str().unwrap().contains('"'), "{name}");
+        assert!(
+            presto["fixture"][0].as_str().unwrap().contains("memory.dw"),
+            "{name}"
+        );
+    }
+    // Doris needs no session property; Presto pagination needs exactly this one.
+    assert_eq!(doris["session"], serde_json::json!({}));
+    assert_eq!(
+        presto["session"],
+        serde_json::json!({"offset_clause_enabled": "true"})
+    );
+    let paginated: Vec<_> = presto_cases
+        .iter()
+        .filter(|case| case["sql"].as_str().unwrap().contains("\nOFFSET "))
+        .map(|case| case["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(paginated, ["order_limit_offset", "page_past_last_group"]);
+    insta::assert_snapshot!("presto_cases", golden_text("presto"));
 }
 
 // scenario: B0-EXEC-002
 #[test]
 fn unusable_requests_emit_no_manifest() {
-    for (dialect, named) in [("presto", "presto"), ("oracle", "oracle")] {
+    for (dialect, named) in [("druid", "druid"), ("oracle", "oracle")] {
         let output = emit(dialect);
         assert!(!output.status.success(), "{dialect}");
         assert!(output.stdout.is_empty(), "{dialect}");
@@ -109,16 +156,26 @@ fn unusable_requests_emit_no_manifest() {
         DialectId::Doris,
         "doris",
         model,
+        &[],
         std::slice::from_ref(&good)
     )
     .is_ok());
+    let error = render(DialectId::Doris, "doris", model, &[], &[]).unwrap_err();
+    assert!(error.contains("`doris` has no execution cases"), "{error}");
     let broken = Case {
         name: "broken",
         query: r#"{"measures":["sales.missing"]}"#.into(),
         ..good.clone()
     };
-    let error = render(DialectId::Doris, "doris", model, &[good.clone(), broken]).unwrap_err();
+    let error = render(
+        DialectId::Doris,
+        "doris",
+        model,
+        &[],
+        &[good.clone(), broken],
+    )
+    .unwrap_err();
     assert!(error.contains("`broken`"), "{error}");
-    let error = render(DialectId::Doris, "doris", model, &[good.clone(), good]).unwrap_err();
+    let error = render(DialectId::Doris, "doris", model, &[], &[good.clone(), good]).unwrap_err();
     assert!(error.contains("duplicate"), "{error}");
 }

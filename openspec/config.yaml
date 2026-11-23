@@ -19,8 +19,9 @@ rules:
     - Follow pinned Cube behavior; report contradictions instead of hiding them.
   design:
     - Explain decisions, alternatives, validation and unresolved risks.
-    - Keep harness changes separate; keep each PR near or below 400 changed lines.
+    - Keep harness changes separate. One change is one independently usable capability of about 2-3 working days, up to 4-5; no line limit.
   tasks:
-    - Size each task to at most two hours and include its verification method.
+    - Give every task its verification method; group tasks by the capability they deliver, not by a time box.
+    - Carry only the tests the capability needs; batch rework of existing tests or the test framework into one dedicated change.
     - Tests name implemented scenario ids; no placeholder tests to satisfy tracing.
     - Record session results and remaining work in notes.md.
