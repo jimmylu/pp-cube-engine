@@ -250,3 +250,282 @@ async fn real_process_serves_operations_and_exits_on_interrupt() {
     std::fs::remove_file(path).unwrap();
     std::fs::remove_file(second).unwrap();
 }
+
+fn scratch(name: &str) -> std::path::PathBuf {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    std::env::temp_dir().join(format!(
+        "pp-host-{}-{}-{name}",
+        std::process::id(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ))
+}
+/// A self-signed certificate for `localhost`, made by the system's openssl.
+fn certificate() -> (std::path::PathBuf, std::path::PathBuf) {
+    let (cert, key, config) = (
+        scratch("cert.pem"),
+        scratch("key.pem"),
+        scratch("openssl.cnf"),
+    );
+    // An end-entity certificate: rustls refuses a CA certificate presented by a server.
+    std::fs::write(
+        &config,
+        "[req]\ndistinguished_name=dn\nx509_extensions=ext\nprompt=no\n[dn]\nCN=localhost\n\
+         [ext]\nsubjectAltName=DNS:localhost,IP:127.0.0.1\nbasicConstraints=critical,CA:FALSE\n",
+    )
+    .unwrap();
+    let made = Command::new("openssl")
+        .args([
+            "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2",
+        ])
+        .arg("-config")
+        .arg(&config)
+        .arg("-keyout")
+        .arg(&key)
+        .arg("-out")
+        .arg(&cert)
+        .output()
+        .expect("openssl is needed to make a test certificate");
+    assert!(
+        made.status.success(),
+        "{}",
+        String::from_utf8_lossy(&made.stderr)
+    );
+    std::fs::remove_file(config).unwrap();
+    (cert, key)
+}
+const READ: &str = "reader-token-0123456789";
+const ADMIN: &str = "admin-token-0123456789";
+
+// scenario: B0-API-020
+#[test]
+fn a_host_beyond_loopback_must_be_encrypted_and_authenticated() {
+    let path = model();
+    let (cert, key) = certificate();
+    let (read, short) = (scratch("read"), scratch("short"));
+    std::fs::write(&read, format!("{READ}\n")).unwrap();
+    std::fs::write(&short, "short").unwrap();
+    let (cert, key, read, short) = (
+        cert.to_str().unwrap(),
+        key.to_str().unwrap(),
+        read.to_str().unwrap(),
+        short.to_str().unwrap(),
+    );
+    for (listen, extra) in [
+        ("0.0.0.0:0", vec![]),
+        ("0.0.0.0:0", vec!["--tls-cert", cert, "--tls-key", key]),
+        ("0.0.0.0:0", vec!["--token-file", read]),
+        ("127.0.0.1:0", vec!["--tls-cert", cert]),
+        ("127.0.0.1:0", vec!["--tls-cert", read, "--tls-key", key]),
+        ("127.0.0.1:0", vec!["--token-file", short]),
+        ("127.0.0.1:0", vec!["--token-file", "missing-token-file"]),
+        (
+            "127.0.0.1:0",
+            vec!["--token-file", read, "--admin-token-file", read],
+        ),
+        // Tokens in use, publishing enabled, and nobody named as allowed to publish.
+        ("127.0.0.1:0", vec!["--token-file", read, "--allow-publish"]),
+        ("127.0.0.1:0", vec!["--log", "xml"]),
+        ("127.0.0.1:0", vec!["--max-models", "0"]),
+        ("127.0.0.1:0", vec!["--compile-timeout-ms", "soon"]),
+        ("127.0.0.1:0", vec!["--metrics-listen", "nowhere"]),
+    ] {
+        let output = command()
+            .args(["--model", &format!("v1={}", path.display())])
+            .args(["--data-source", "warehouse=presto", "--listen", listen])
+            .args(&extra)
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "{listen} {extra:?}");
+        assert!(output.stdout.is_empty(), "{listen} {extra:?}");
+        assert!(!output.stderr.is_empty(), "{listen} {extra:?}");
+    }
+    for file in [path.to_str().unwrap(), cert, key, read, short] {
+        std::fs::remove_file(file).unwrap();
+    }
+}
+
+// scenario: B0-API-020
+#[cfg(unix)]
+#[tokio::test(flavor = "current_thread")]
+async fn an_encrypted_host_serves_probes_metrics_and_drains_on_terminate() {
+    use pp_cube_service::grpc::health::{
+        health_check_response::ServingStatus, health_client::HealthClient, HealthCheckRequest,
+    };
+    use std::io::{Read, Write};
+    use tonic::transport::{Certificate, Channel, ClientTlsConfig};
+    let path = model();
+    let (cert, key) = certificate();
+    let (read, admin) = (scratch("read"), scratch("admin"));
+    std::fs::write(&read, READ).unwrap();
+    std::fs::write(&admin, format!("{ADMIN}\n")).unwrap();
+    let mut child = Process(
+        command()
+            .args(["--model", &format!("v1={}", path.display())])
+            .args(["--data-source", "warehouse=presto", "--listen", "0.0.0.0:0"])
+            .args(["--metrics-listen", "127.0.0.1:0", "--allow-publish"])
+            .arg("--tls-cert")
+            .arg(&cert)
+            .arg("--tls-key")
+            .arg(&key)
+            .arg("--token-file")
+            .arg(&read)
+            .arg("--admin-token-file")
+            .arg(&admin)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let stdout = child.0.stdout.take().unwrap();
+    let (send, receive) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        for _ in 0..2 {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            let _ = send.send(line);
+        }
+    });
+    let announced = |prefix: &str| {
+        let line = receive.recv_timeout(Duration::from_secs(15)).unwrap();
+        let address = line.trim().strip_prefix(prefix).unwrap().to_owned();
+        address.rsplit(':').next().unwrap().to_owned()
+    };
+    let port = announced("listening ");
+    let metrics_port = announced("metrics ");
+
+    let tls = ClientTlsConfig::new()
+        .ca_certificate(Certificate::from_pem(std::fs::read(&cert).unwrap()))
+        .domain_name("localhost");
+    let channel = Channel::from_shared(format!("https://127.0.0.1:{port}"))
+        .unwrap()
+        .tls_config(tls)
+        .unwrap()
+        .connect()
+        .await
+        .unwrap();
+    let mut client = CubeEngineClient::new(channel.clone());
+    let request = |token: Option<&str>| {
+        let mut request = tonic::Request::new(CompileRequest {
+            model_version: "v1".into(),
+            query_json: r#"{"measures":["sales.amount"]}"#.into(),
+            dialect: "presto".into(),
+            timezone: "UTC".into(),
+            request_id: "tls-test".into(),
+            ..Default::default()
+        });
+        if let Some(token) = token {
+            let value = format!("Bearer {token}").parse().unwrap();
+            request.metadata_mut().insert("authorization", value);
+        }
+        request
+    };
+    // Encrypted and identified callers are served; an unidentified one is not.
+    assert!(matches!(
+        client
+            .compile(request(Some(READ)))
+            .await
+            .unwrap()
+            .into_inner()
+            .result,
+        Some(compile_response::Result::Compiled(_))
+    ));
+    assert_eq!(
+        client.compile(request(None)).await.unwrap_err().code(),
+        tonic::Code::Unauthenticated
+    );
+    let mut listing = tonic::Request::new(ListModelsRequest {});
+    let value = format!("Bearer {ADMIN}").parse().unwrap();
+    listing.metadata_mut().insert("authorization", value);
+    assert_eq!(
+        client
+            .list_models(listing)
+            .await
+            .unwrap()
+            .into_inner()
+            .models
+            .len(),
+        1
+    );
+    let status = HealthClient::new(channel)
+        .check(HealthCheckRequest::default())
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(status.status, ServingStatus::Serving as i32);
+    // The same port refuses a caller that does not speak TLS.
+    let plain = async {
+        CubeEngineClient::connect(format!("http://127.0.0.1:{port}"))
+            .await?
+            .compile(request(Some(READ)))
+            .await
+            .map_err(|status| Box::new(status) as Box<dyn std::error::Error>)
+    };
+    assert!(plain.await.is_err());
+
+    let scrape = move |path: &str| {
+        let mut stream = std::net::TcpStream::connect(format!("127.0.0.1:{metrics_port}")).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        write!(stream, "GET {path} HTTP/1.1\r\nhost: localhost\r\n\r\n").unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        response
+    };
+    // The scrape runs on the host's single runtime thread; keep this one off ours.
+    let metrics = tokio::task::spawn_blocking(move || (scrape("/metrics"), scrape("/secret")))
+        .await
+        .unwrap();
+    assert!(
+        metrics.0.starts_with("HTTP/1.1 200 OK\r\n"),
+        "{}",
+        metrics.0
+    );
+    assert!(metrics
+        .0
+        .contains("ppcube_requests_total{rpc=\"Compile\",outcome=\"ok\"} 1\n"));
+    assert!(metrics
+        .0
+        .contains("ppcube_requests_total{rpc=\"Compile\",outcome=\"Unauthenticated\"} 1\n"));
+    assert!(metrics.0.contains("ppcube_model_versions 1\n"));
+    assert!(metrics.1.starts_with("HTTP/1.1 404 "), "{}", metrics.1);
+
+    drop(client);
+    // Orchestrators stop a container with SIGTERM.
+    assert!(Command::new("kill")
+        .args(["-TERM", &child.0.id().to_string()])
+        .status()
+        .unwrap()
+        .success());
+    let status = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if let Some(status) = child.0.try_wait().unwrap() {
+                break status;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(status.success());
+    let mut log = String::new();
+    child
+        .0
+        .stderr
+        .take()
+        .unwrap()
+        .read_to_string(&mut log)
+        .unwrap();
+    let events: Vec<serde_json::Value> = log
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("every stderr line is a JSON event"))
+        .collect();
+    assert!(events
+        .iter()
+        .any(|e| e["rpc"] == "Compile" && e["outcome"] == "ok" && e["request_id"] == "tls-test"));
+    assert!(!log.contains(READ) && !log.contains(ADMIN) && !log.contains("dw.sales"));
+    for file in [&path, &cert, &key, &read, &admin] {
+        std::fs::remove_file(file).unwrap();
+    }
+}

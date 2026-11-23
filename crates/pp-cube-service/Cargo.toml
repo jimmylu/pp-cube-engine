@@ -13,9 +13,18 @@ workspace = true
 [dependencies]
 pp-cube-model = { path = "../pp-cube-model" }
 pp-cube-compile = { path = "../pp-cube-compile" }
-tokio = { version = "1.54.1", default-features = false, features = ["sync", "rt", "net", "signal", "time"] }
+tokio = { version = "1.54.1", default-features = false, features = [
+  "sync",
+  "rt",
+  "net",
+  "signal",
+  "time",
+  "io-util",
+  "macros",
+] }
 
-tonic = "0.14.9"
+# TLS through rustls with the ring provider; both are already in the lockfile.
+tonic = { version = "0.14.9", features = ["tls-ring"] }
 tonic-prost = "0.14.9"
 prost = "0.14"
 serde = { version = "1", features = ["derive"] }

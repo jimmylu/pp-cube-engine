@@ -1,12 +1,89 @@
-//! Local trusted host for one validated model version.
+//! The service host: listener, TLS, tokens, limits, health, metrics and drain.
 use pp_cube_service::{
-    grpc::{wire::cube_engine_server::CubeEngineServer, GrpcService},
+    grpc::{
+        health::health_server::HealthServer, wire::cube_engine_server::CubeEngineServer, Access,
+        GrpcService, HealthService, Limits,
+    },
+    telemetry::Telemetry,
     CubeService,
 };
-use std::future::Future;
-use std::{collections::BTreeMap, io::Write, net::SocketAddr, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    future::Future,
+    io::Write,
+    net::SocketAddr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-fn run() -> Result<(), Box<dyn std::error::Error>> {
+type Failure = Box<dyn std::error::Error>;
+
+const VALUE_OPTIONS: [&str; 13] = [
+    "--listen",
+    "--workers",
+    "--queue",
+    "--tls-cert",
+    "--tls-key",
+    "--token-file",
+    "--admin-token-file",
+    "--metrics-listen",
+    "--compile-timeout-ms",
+    "--max-request-bytes",
+    "--max-models",
+    "--drain-seconds",
+    "--log",
+];
+
+/// A token is the trimmed content of a file, so it never appears in a process listing.
+fn token(path: Option<&String>) -> Result<Option<String>, Failure> {
+    path.map(|path| Ok(std::fs::read_to_string(path)?.trim().to_owned()))
+        .transpose()
+}
+
+/// Answers `GET /metrics` with the Prometheus text format and nothing else.
+async fn serve_metrics(
+    listener: tokio::net::TcpListener,
+    telemetry: Telemetry,
+    core: Arc<CubeService>,
+) {
+    loop {
+        let Ok((mut stream, _)) = listener.accept().await else {
+            continue;
+        };
+        let (telemetry, core) = (telemetry.clone(), Arc::clone(&core));
+        tokio::spawn(async move {
+            // A scrape is one small request; bound both its size and its time.
+            let exchange = async {
+                let mut request = Vec::new();
+                let mut chunk = [0u8; 1024];
+                while !request.windows(4).any(|w| w == b"\r\n\r\n") && request.len() < 8192 {
+                    match stream.read(&mut chunk).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(read) => request.extend_from_slice(&chunk[..read]),
+                    }
+                }
+                let (status, body) = if request.starts_with(b"GET /metrics ") {
+                    ("200 OK", telemetry.metrics.render(core.versions().len()))
+                } else {
+                    ("404 Not Found", String::new())
+                };
+                let response = format!(
+                    "HTTP/1.1 {status}\r\ncontent-type: text/plain; version=0.0.4\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(response.as_bytes()).await;
+                let _ = stream.shutdown().await;
+            };
+            let _ = tokio::time::timeout(Duration::from_secs(5), exchange).await;
+        });
+    }
+}
+
+fn run() -> Result<(), Failure> {
     let mut args = std::env::args().skip(1);
     let mut options = BTreeMap::new();
     let mut data_sources = BTreeMap::new();
@@ -42,7 +119,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
             continue;
         }
-        if !["--listen", "--workers", "--queue"].contains(&key.as_str()) {
+        if !VALUE_OPTIONS.contains(&key.as_str()) {
             return Err("unknown option; see crates/pp-cube-service/README.md".into());
         }
         let value = args.next().ok_or("missing option value")?;
@@ -53,27 +130,57 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             return Err("blank, missing or duplicate option value".into());
         }
     }
-    let required = |name| {
-        options
-            .get(name)
-            .ok_or("required options: --model version=path, --listen, --data-source name=dialect")
+    let number = |name: &str, default: u64| -> Result<u64, Failure> {
+        let value = options.get(name).map_or(Ok(default), |text| text.parse())?;
+        if value == 0 {
+            return Err(format!("{name} must be positive").into());
+        }
+        Ok(value)
     };
-    let address: SocketAddr = required("--listen")?.parse()?;
-    if !address.ip().is_loopback() {
-        return Err("listen address must be loopback".into());
+    let address: SocketAddr = options
+        .get("--listen")
+        .ok_or("required options: --model version=path, --listen, --data-source name=dialect")?
+        .parse()?;
+    let workers = number("--workers", 2)? as usize;
+    let queue = number("--queue", 16)? as usize;
+    let compile_timeout = Duration::from_millis(number("--compile-timeout-ms", 10_000)?);
+    let max_request_bytes = number("--max-request-bytes", 4 * 1024 * 1024)? as usize;
+    let max_models = number("--max-models", 64)? as usize;
+    let drain = Duration::from_secs(number("--drain-seconds", 30)?);
+    let log = match options.get("--log").map_or("json", String::as_str) {
+        "json" => true,
+        "off" => false,
+        _ => return Err("--log is json or off".into()),
+    };
+
+    let tls = match (options.get("--tls-cert"), options.get("--tls-key")) {
+        (Some(cert), Some(key)) => Some(tonic::transport::Identity::from_pem(
+            std::fs::read(cert)?,
+            std::fs::read(key)?,
+        )),
+        (None, None) => None,
+        _ => return Err("--tls-cert and --tls-key go together".into()),
+    };
+    let access = Access::new(
+        token(options.get("--token-file"))?.as_deref(),
+        token(options.get("--admin-token-file"))?.as_deref(),
+    )?;
+    // Beyond loopback, the connection must be encrypted and every caller identified.
+    if !address.ip().is_loopback() && (tls.is_none() || !options.contains_key("--token-file")) {
+        return Err("a non-loopback --listen needs --tls-cert, --tls-key and --token-file".into());
     }
-    let workers: usize = options
-        .get("--workers")
-        .map_or("2", String::as_str)
-        .parse()?;
-    let queue: usize = options
-        .get("--queue")
-        .map_or("16", String::as_str)
-        .parse()?;
+    if management && access.requires_token() && !access.has_admin_token() {
+        return Err("--allow-publish with tokens needs --admin-token-file".into());
+    }
     if models.is_empty() && !management {
         return Err("give at least one --model version=path, or --allow-publish".into());
     }
-    let core = CubeService::new(data_sources);
+    let metrics_address: Option<SocketAddr> = options
+        .get("--metrics-listen")
+        .map(|text| text.parse())
+        .transpose()?;
+
+    let core = CubeService::new(data_sources).with_max_versions(max_models);
     for (version, path) in models {
         let text = std::fs::read_to_string(path)?;
         let model = if serde_json::from_str::<serde_json::Value>(&text).is_ok() {
@@ -83,33 +190,88 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         };
         core.publish(version, model, None)?;
     }
-    let service = GrpcService::new(Arc::new(core), workers, queue)?.with_management(management);
+    let core = Arc::new(core);
+    let telemetry = if log {
+        Telemetry::default().with_log(|line| eprintln!("{line}"))
+    } else {
+        Telemetry::default()
+    };
+    let service = GrpcService::new(Arc::clone(&core), workers, queue)?
+        .with_management(management)
+        .with_access(access)
+        .with_limits(Limits { compile_timeout })
+        .with_telemetry(telemetry.clone());
+    let serving = Arc::new(AtomicBool::new(true));
+    let health = HealthService::new(Arc::clone(&serving));
+
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
     runtime.block_on(async move {
-        // Install the handler before announcing readiness, including an immediate SIGINT.
+        // Install the handlers before announcing readiness, including an immediate signal.
         let mut interrupt = Box::pin(tokio::signal::ctrl_c());
         std::future::poll_fn(|cx| match interrupt.as_mut().poll(cx) {
             std::task::Poll::Pending => std::task::Poll::Ready(Ok(())),
             std::task::Poll::Ready(result) => std::task::Poll::Ready(result),
         })
         .await?;
+        #[cfg(unix)]
+        let mut terminate =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+        let stop = async move {
+            #[cfg(unix)]
+            tokio::select! {
+                _ = interrupt => {}
+                _ = terminate.recv() => {}
+            }
+            #[cfg(not(unix))]
+            let _ = interrupt.await;
+        };
+
+        let mut server = tonic::transport::Server::builder();
+        if let Some(identity) = tls {
+            server =
+                server.tls_config(tonic::transport::ServerTlsConfig::new().identity(identity))?;
+        }
         let listener = tokio::net::TcpListener::bind(address).await?;
+        let metrics_listener = match metrics_address {
+            Some(address) => Some(tokio::net::TcpListener::bind(address).await?),
+            None => None,
+        };
         println!("listening {}", listener.local_addr()?);
+        if let Some(listener) = metrics_listener {
+            println!("metrics {}", listener.local_addr()?);
+            tokio::spawn(serve_metrics(listener, telemetry, core));
+        }
         std::io::stdout().flush()?;
-        tonic::transport::Server::builder()
-            .add_service(CubeEngineServer::new(service))
+
+        // On a signal: report NOT_SERVING, accept nothing new, let running requests
+        // finish, and give up when the drain time is over.
+        let (draining, drained) = tokio::sync::oneshot::channel::<()>();
+        let serve = server
+            .add_service(HealthServer::new(health))
+            .add_service(
+                CubeEngineServer::new(service).max_decoding_message_size(max_request_bytes),
+            )
             .serve_with_incoming_shutdown(
                 tokio_stream::wrappers::TcpListenerStream::new(listener),
                 async move {
-                    let _ = interrupt.await;
+                    stop.await;
+                    serving.store(false, Ordering::Relaxed);
+                    let _ = draining.send(());
                 },
-            )
-            .await?;
-        Ok::<_, Box<dyn std::error::Error>>(())
+            );
+        tokio::select! {
+            result = serve => result?,
+            _ = async {
+                let _ = drained.await;
+                tokio::time::sleep(drain).await;
+            } => return Err("requests were still running when the drain time ended".into()),
+        }
+        Ok::<_, Failure>(())
     })
 }
+
 fn main() -> std::process::ExitCode {
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
