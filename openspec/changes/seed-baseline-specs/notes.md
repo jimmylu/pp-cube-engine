@@ -139,3 +139,8 @@ acceptance. Product PR #58 does not archive this execution requirement.
 The complete Doris temporal execution tier requirement and B0-DORIS-010 move to
 accept-doris-temporal-execution, after the Doris container tier began executing
 the live-compiled manifest. B0-DORIS-001 and B0-DORIS-002 remain proposed here.
+
+## Doris B0 acceptance transfer
+The complete Doris B0 compilation and Doris B0 acceptance requirements, with
+B0-DORIS-001 and B0-DORIS-002, move to add-doris-b0-acceptance. The emptied
+dialect-doris seed delta is deleted. Presto and Druid deltas remain proposed.

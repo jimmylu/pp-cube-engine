@@ -79,3 +79,160 @@ SELECT DATE_TRUNC(CONVERT_TZ(`sales`.sold_at, 'UTC', 'America/New_York'), 'day')
 FROM  dw.sales_dtl  AS `sales`
 WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC
 -- parameters: ["2026-11-01T04:00:00.000Z", "2026-11-02T04:59:59.999Z"]
+
+-- aggregates
+SELECT `sales`.channel_cd `sales__channel_cd`, count(`sales`.sale_id) `sales__row_count`, COUNT(DISTINCT `sales`.order_no) `sales__order_count`, sum(`sales`.amount) `sales__amount`, avg(`sales`.amount) `sales__avg_amount`, min(`sales`.amount) `sales__min_amount`, max(`sales`.amount) `sales__max_amount`  
+FROM  dw.sales_dtl  AS `sales` GROUP BY 1 ORDER BY  1  ASC
+-- parameters: []
+
+-- filtered_measure_ratio_segment
+SELECT `sales`.channel_cd `sales__channel_cd`, sum(CASE WHEN (`sales`.category_cd = 'TOY') THEN `sales`.amount END) `sales__toy_amount`, sum(`sales`.amount) / NULLIF(COUNT(DISTINCT `sales`.order_no), 0) `sales__amount_per_order`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.category_cd = 'TOY') GROUP BY 1 ORDER BY  1  ASC
+-- parameters: []
+
+-- equals_many
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.channel_cd IN (?, ?))
+-- parameters: ["C1", "C3"]
+
+-- notEquals
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.region_cd <> ? OR `sales`.region_cd IS NULL)
+-- parameters: ["north"]
+
+-- boolean_equals
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE ((`sales`.is_valid = 1) = CAST(? AS BOOLEAN))
+-- parameters: ["true"]
+
+-- set
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.region_cd IS NOT NULL)
+-- parameters: []
+
+-- notSet
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.region_cd IS NULL)
+-- parameters: []
+
+-- gt
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.qty > CAST(? AS DOUBLE))
+-- parameters: ["3"]
+
+-- gte
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.qty >= CAST(? AS DOUBLE))
+-- parameters: ["3"]
+
+-- lt
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.qty < CAST(? AS DOUBLE))
+-- parameters: ["3"]
+
+-- lte
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.qty <= CAST(? AS DOUBLE))
+-- parameters: ["3"]
+
+-- contains
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE ((LOWER(`sales`.region_cd) LIKE CONCAT('%', LOWER(?), '%')))
+-- parameters: ["A\\%\\_\\\\B"]
+
+-- notContains
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE ((LOWER(`sales`.region_cd) NOT LIKE CONCAT('%', LOWER(?), '%')) OR `sales`.region_cd IS NULL)
+-- parameters: ["A\\%\\_\\\\B"]
+
+-- startsWith
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE ((LOWER(`sales`.region_cd) LIKE CONCAT('', LOWER(?), '%')))
+-- parameters: ["A\\%\\_\\\\B"]
+
+-- notStartsWith
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE ((LOWER(`sales`.region_cd) NOT LIKE CONCAT('', LOWER(?), '%')) OR `sales`.region_cd IS NULL)
+-- parameters: ["A\\%\\_\\\\B"]
+
+-- endsWith
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE ((LOWER(`sales`.region_cd) LIKE CONCAT('%', LOWER(?), '')))
+-- parameters: ["A\\%\\_\\\\B"]
+
+-- notEndsWith
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE ((LOWER(`sales`.region_cd) NOT LIKE CONCAT('%', LOWER(?), '')) OR `sales`.region_cd IS NULL)
+-- parameters: ["A\\%\\_\\\\B"]
+
+-- measure_filters
+SELECT `sales`.channel_cd `sales__channel_cd`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales` GROUP BY 1
+HAVING (sum(`sales`.amount) > CAST(? AS DOUBLE)) AND (sum(`sales`.amount) <> CAST(? AS DOUBLE) OR sum(`sales`.amount) IS NULL) ORDER BY  1  ASC
+-- parameters: ["20", "110"]
+
+-- nested_groups
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.category_cd = ?) AND (((`sales`.channel_cd = ?) AND (`sales`.qty > CAST(? AS DOUBLE))) OR (`sales`.channel_cd = ?))
+-- parameters: ["BOOK", "C3", "5", "C2"]
+
+-- order_limit_offset
+SELECT `sales`.channel_cd `sales__channel_cd`, `sales`.category_cd `sales__category_cd`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales` GROUP BY 1, 2 ORDER BY  1  DESC,  2  ASC
+LIMIT 2 OFFSET 1
+-- parameters: []
+
+-- plain_range
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)))
+-- parameters: ["2026-10-02T00:00:00.000Z", "2026-10-04T23:59:59.999Z"]
+
+-- query_timezone
+SELECT DATE_TRUNC(CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC'), 'day') `sales__sold_at_day`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: ["2026-10-01T00:00:00.000Z", "2026-10-01T23:59:59.999Z"]
+
+-- filtered_source
+SELECT `valid_sales`.channel_cd `valid_sales__channel_cd`, sum(`valid_sales`.amount) `valid_sales__amount`  
+FROM  (SELECT channel_cd, amount FROM dw.sales_dtl WHERE is_valid = 1)  AS `valid_sales` GROUP BY 1 ORDER BY  1  ASC
+-- parameters: []
+
+-- joined_dimension
+SELECT `stores`.store_name `stores__store_name`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+LEFT JOIN  dw.dim_store  AS `stores` ON `sales`.store_cd = `stores`.store_cd
+WHERE (`stores`.store_name IN (?, ?)) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: ["central", "uptown"]
+
+-- security_two_hop_join
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+LEFT JOIN  dw.dim_store  AS `stores` ON `sales`.store_cd = `stores`.store_cd
+LEFT JOIN  dw.dim_region  AS `regions` ON `stores`.region_cd = `regions`.region_cd
+WHERE ((`sales`.is_valid = 1) = CAST(? AS BOOLEAN)) AND (`regions`.region_name = ?)
+-- parameters: ["true", "north"]
+
+-- security_pattern
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (((LOWER(`sales`.region_cd) LIKE CONCAT('%', LOWER(?), '%'))) OR (`sales`.channel_cd = ?)) AND ((LOWER(`sales`.region_cd) LIKE CONCAT('', LOWER(?), '%')))
+-- parameters: ["north", "C3", "a\\%"]
