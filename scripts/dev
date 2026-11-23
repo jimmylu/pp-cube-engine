@@ -71,9 +71,11 @@ def check(mode):
 
 
 HARNESS_PATHS = re.compile(r'^(\.github/|scripts/|\.agents/|\.claude/|\.codex/|\.omp/|docs/agents/|AGENTS\.md$|CLAUDE\.md$|deny\.toml$|clippy\.toml$|rustfmt\.toml$|typos\.toml$|taplo\.toml$|rust-toolchain\.toml$)')
-# Harness files that decide what the engine tiers run or how they are invoked: the
-# engine scripts, the tier dispatcher, every workflow (one runs the remote engine
-# suite and any can invoke a tier) and the toolchain that builds the Doris emitter.
+# Harness files an engine run exercises: the engine scripts, the tier dispatcher,
+# every workflow (one runs the remote engine suite and any can invoke a tier) and
+# the toolchain that builds the Doris emitter. This controller is not among them:
+# running the containers cannot show that it still calls them, because a delivery
+# runs the controller of its own branch. Offline regressions pin that sequence.
 ENGINE_PATHS = re.compile(r'^(scripts/engines/|scripts/check\.sh$|\.github/workflows/|rust-toolchain\.toml$)')
 
 

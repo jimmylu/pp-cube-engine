@@ -49,13 +49,17 @@ before review; Docker or engine failure stops delivery without a model repair.
 Remote engine success does not substitute for this local execution.
 
 One exception, decided by the owner on 2026-11-23: a pull request whose whole
-diff against its base is harness paths, none of which decides what an engine
-tier runs or how it is invoked, skips both engine containers. The engine tier
-files are everything under `scripts/engines/` and `.github/workflows/` (one
+diff against its base is harness paths, none of them an engine tier file,
+skips both engine containers. The engine tier files are what an engine run
+exercises: everything under `scripts/engines/` and `.github/workflows/` (one
 workflow runs the remote engine suite and any can invoke a tier),
 `scripts/check.sh` and `rust-toolchain.toml` (it builds the emitter the Doris
 tier executes). A change outside them cannot alter compiled SQL, the cases or
-how a tier runs, locally or remotely. The controller prints
+what a tier does when it runs. `scripts/dev` itself is deliberately not an
+engine tier file: a delivery runs the controller of its own branch, so the
+containers cannot detect a controller that stopped calling them; the offline
+regressions in `scripts/tests/test_delivery.py` pin the mandatory sequence
+`ci`, `engines-container`, `doris-container` and the skip rule. The controller prints
 `local engine containers SKIPPED` and its evidence comment says the containers
 were not run; it never reports them as passed. Any product path, any engine
 tier file or an empty diff keeps the containers mandatory.
