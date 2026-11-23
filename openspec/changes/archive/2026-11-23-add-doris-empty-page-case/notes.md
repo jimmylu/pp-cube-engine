@@ -16,7 +16,12 @@ Local results on the working tree that became the implementation commit:
 - `check ci: PASSED — 15 steps, 0 skipped, 185s @ f10a7b0+dirty`
 Exact-head evidence is posted on the pull request by delivery.
 
-Open: merge main into `harness/doris-manifest-only` (#67) after this merges,
-then deliver it with the Doris spec, `scripts/check.sh`, the seed notes and
-`crates/pp-cube-compile/tests/doris_time.rs` as review context (the reviewer
-asked about each). Then Presto (#61).
+## 2026-11-23: order reversed, #67 merged first
+
+The owner merged the tier cleanup (#67) before this change, so on main the
+Doris tier already runs only the manifest and briefly has no empty-page
+execution; this change restores it. Main is merged into this branch. The first
+delivery attempt (CI passed at 21629a1) was stopped because the base had moved.
+proposal.md and tasks.md still describe #67 as following this change.
+
+Open: Presto tier migration (#61).
