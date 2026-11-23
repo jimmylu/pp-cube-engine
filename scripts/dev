@@ -358,12 +358,29 @@ ENGINE_TRIGGER_PATHS = ('crates/**', 'templates/**', 'scripts/engines/**', 'scri
                         '.github/workflows/engines.yml')
 
 
-def engines_expected(bound):
-    """Whether GitHub starts the engine workflow for this diff."""
+# The slow build checks. Keep both tuples in step with .github/workflows/build.yml.
+BUILD_CHECKS = ('image', 'aarch64')
+BUILD_TRIGGER_PATHS = ('Dockerfile', '.dockerignore', 'Cargo.toml', 'Cargo.lock',
+                       'rust-toolchain.toml', 'scripts/image-check.sh', 'scripts/vendor-sync.sh',
+                       '.github/workflows/build.yml')
+
+
+def triggered(bound, patterns):
+    """Whether this diff touches a path of a workflow's pull_request filter."""
     changed = git('diff', '--no-renames', '--name-only', '-z',
                   bound['base'] + '...' + bound['head']).split('\0')[:-1]
     return any(path.startswith(pattern[:-2]) if pattern.endswith('/**') else path == pattern
-               for path in changed for pattern in ENGINE_TRIGGER_PATHS)
+               for path in changed for pattern in patterns)
+
+
+def engines_expected(bound):
+    """Whether GitHub starts the engine workflow for this diff."""
+    return triggered(bound, ENGINE_TRIGGER_PATHS)
+
+
+def builds_expected(bound):
+    """Whether GitHub starts the build workflow for this diff."""
+    return triggered(bound, BUILD_TRIGGER_PATHS)
 
 
 def deliver():
@@ -373,7 +390,8 @@ def deliver():
     bound = binding()
     check('ci')
     engines = engines_expected(bound)
-    required = ('t0',) + (ENGINE_CHECKS if engines else ())
+    builds = builds_expected(bound)
+    required = ('t0',) + (ENGINE_CHECKS if engines else ()) + (BUILD_CHECKS if builds else ())
     deadline = time.monotonic() + 2700
     while True:
         checks = json.loads(run('gh', 'api', f'repos/{repo}/commits/{bound["head"]}/check-runs?filter=latest&per_page=100'))
@@ -399,6 +417,8 @@ def deliver():
         f'Local CI passed; remote t0 passed at `{bound["head"]}`.\n'
         + ('Remote engine containers passed: ' + ', '.join(ENGINE_CHECKS) + '.\n' if engines else
            'Remote engine containers were not triggered: no engine-relevant path changed.\n')
+        + ('Remote build checks passed: ' + ', '.join(BUILD_CHECKS) + '.\n' if builds else
+           'Remote build checks were not triggered: no build-deciding path changed; they run on main.\n')
         + 'Local engine containers are on demand and were not run by delivery.\n'
         + (f'Cross-model review on demand at this head by {reviewed["reviewer"]}: '
            f'{len(reviewed.get("findings", []))} findings, {len(reviewed.get("questions", []))} questions.\n'

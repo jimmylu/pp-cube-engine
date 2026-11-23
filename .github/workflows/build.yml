@@ -1,0 +1,79 @@
+# Build checks that are too slow for every pull request: the service image and
+# an aarch64 build. They run when a file that decides the build changes, and on
+# every push to main, so a change to the crates is covered once it lands.
+# Nothing is published. The path filter and job names are mirrored in scripts/dev
+# (BUILD_TRIGGER_PATHS, BUILD_CHECKS); scripts/tests/test_delivery.py keeps them in step.
+name: build
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'scripts/image-check.sh'
+      - 'scripts/vendor-sync.sh'
+      - '.github/workflows/build.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the pinned upstream
+        run: scripts/vendor-sync.sh
+
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Build the image and verify a container
+        shell: bash
+        run: |
+          set -o pipefail
+          echo "SHA: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          scripts/check.sh image > /tmp/image-evidence.txt 2>&1
+          result=$?
+          cat /tmp/image-evidence.txt
+          tail -1 /tmp/image-evidence.txt >> "$GITHUB_STEP_SUMMARY"
+          exit "$result"
+
+  aarch64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the pinned upstream
+        run: scripts/vendor-sync.sh
+
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      # The whole test suite, goldens included: output must not depend on the architecture.
+      - name: Build and test on aarch64
+        run: |
+          uname -m
+          cargo test --workspace --locked

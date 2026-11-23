@@ -8,6 +8,7 @@
 #   scripts/check.sh engines       live-compiled manifest on a prepared Presto
 #   scripts/check.sh engines-container  the same on a disposable pinned Presto
 #   scripts/check.sh doris-container    live-compiled manifest on a disposable pinned Doris
+#   scripts/check.sh image              build the service image and verify a container
 #
 # BASE_REF (default origin/main) is the branch a change is compared against.
 
@@ -244,12 +245,16 @@ case "$MODE" in
     python3 scripts/engines/presto.py
     exit $?
     ;;
+  image)
+    scripts/image-check.sh
+    exit $?
+    ;;
   conformance)
     echo "check $MODE: not built yet (it arrives with the first conformance work)." >&2
     exit 2
     ;;
   *)
-    echo "usage: scripts/check.sh fast|ci|conformance|engines|engines-container|doris-container" >&2
+    echo "usage: scripts/check.sh fast|ci|conformance|engines|engines-container|doris-container|image" >&2
     exit 64
     ;;
 esac
