@@ -24,6 +24,10 @@ class DeliveryTests(unittest.TestCase):
         dev.state = dev.root
         dev.repo = 'example/kernel'
         (dev.root / 'AGENTS.md').write_text('Review only.')
+        # Delivery tests leave the slow build checks out unless they say otherwise.
+        builds = patch.object(dev, 'builds_expected', return_value=False)
+        self.builds_expected = builds.start()
+        self.addCleanup(builds.stop)
 
     def test_ready_transition_triggers_gate(self):
         workflow = (Path(__file__).parents[2] / '.github/workflows/gate.yml').read_text()
@@ -136,6 +140,49 @@ class DeliveryTests(unittest.TestCase):
                 self.assertIs(dev.engines_expected(bound), expected)
                 git.assert_called_once_with('diff', '--no-renames', '--name-only', '-z', 'a...b')
 
+    def test_build_expectation_matches_the_workflow(self):
+        workflow = (Path(__file__).parents[2] / '.github/workflows/build.yml').read_text()
+        paths = workflow.split('    paths:\n', 1)[1].split('  push:', 1)[0]
+        self.assertEqual(tuple(line.strip()[3:-1] for line in paths.splitlines() if line.strip()),
+                         dev.BUILD_TRIGGER_PATHS)
+        for name in dev.BUILD_CHECKS:
+            self.assertIn('\n  ' + name + ':\n', workflow)
+        # Merges are covered too, because a change to the crates alone does not trigger it.
+        self.assertRegex(workflow, r'push:\s+branches: \[main\]')
+        for changed, expected in [
+                ('Dockerfile', True), ('.dockerignore', True), ('Cargo.lock', True),
+                ('scripts/image-check.sh', True), ('.github/workflows/build.yml', True),
+                ('crates/pp-cube-service/src/main.rs', False), ('docs/guide.md', False),
+                ('scripts/dev', False)]:
+            with self.subTest(changed=changed), \
+                 patch.object(dev, 'git', return_value=changed + '\0'):
+                self.assertIs(dev.triggered({'base': 'a', 'head': 'b'}, dev.BUILD_TRIGGER_PATHS), expected)
+
+    def test_triggered_build_checks_are_required_and_reported(self):
+        self.builds_expected.return_value = True
+
+        def remote(name, conclusion, number):
+            return dict(id=number, name=name, app={'slug': 'github-actions'},
+                        status='completed', conclusion=conclusion)
+        failing = {'check_runs': [remote('t0', 'success', 1), remote('image', 'success', 2),
+                                  remote('aarch64', 'failure', 3)]}
+        with patch.object(dev, 'publish'), patch.object(dev, 'binding', return_value={'head': 'a'}), \
+             patch.object(dev, 'check'), patch.object(dev, 'engines_expected', return_value=False), \
+             patch.object(dev, 'run', return_value=json.dumps(failing)):
+            with self.assertRaisesRegex(ValueError, 'Remote aarch64 failed'):
+                dev.deliver()
+            self.assertFalse((dev.state / 'evidence.md').exists())
+        passing = {'check_runs': [remote('t0', 'success', 1), remote('image', 'success', 2),
+                                  remote('aarch64', 'success', 3)]}
+        with patch.object(dev, 'publish'), \
+             patch.object(dev, 'binding', return_value={'head': 'a', 'number': 1}), \
+             patch.object(dev, 'check'), patch.object(dev, 'engines_expected', return_value=False), \
+             patch.object(dev, 'config', return_value={'implementer': 'example/model'}), \
+             patch.object(dev, 'pr', return_value={'isDraft': False, 'url': 'https://example.test/1'}), \
+             patch.object(dev, 'run', return_value=json.dumps(passing)):
+            dev.deliver()
+        self.assertIn('Remote build checks passed: image, aarch64', (dev.state / 'evidence.md').read_text())
+
     def test_idempotent_network_calls_are_retried_and_others_are_not(self):
         done = subprocess.CompletedProcess([], 0, stdout='ok\n')
         failure = subprocess.CalledProcessError(1, ['gh'])
@@ -238,6 +285,7 @@ class DeliveryTests(unittest.TestCase):
             dev.deliver()
         evidence = (dev.state / 'evidence.md').read_text()
         self.assertIn('Remote engine containers were not triggered', evidence)
+        self.assertIn('Remote build checks were not triggered', evidence)
         self.assertIn('Cross-model review on demand at this head by other/model: 0 findings, 1 questions', evidence)
 
     def test_atomic_state_roundtrip(self):

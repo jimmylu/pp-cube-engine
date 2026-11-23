@@ -15,7 +15,21 @@ execution manifest of `pp-cube-conformance`, the same cases on both engines; see
 without PRESTO_URL, which is not a passing result. The container modes need a Docker
 daemon and the pinned Rust toolchain and provision their own fixtures. Druid execution
 is not built.
-`scripts/dev deliver` requires local `ci`, remote `t0` and, when the `engines` workflow is
+## Build checks
+
+`scripts/check.sh image` builds the service image and verifies a container made from
+it: an encrypted, authenticated compilation through the example client, refusal of a
+caller without a token, the metrics endpoint, a non-root user and a clean stop. It
+needs Docker, openssl, curl and the Rust toolchain, publishes nothing and removes
+the image afterwards. The `build` workflow runs it as `image`, and runs the whole
+test suite on an aarch64 runner as `aarch64`. Both are slow, so on pull requests
+they run only when a file that decides the build changes (the Dockerfile and its
+ignore file, the Cargo manifests and lockfile, the toolchain, the image script,
+`scripts/vendor-sync.sh`, the workflow); they run on every push to main, which is
+where a change to the crates alone is covered. A failure on main is fixed forward.
+
+`scripts/dev deliver` requires local `ci`, remote `t0`, remote `image` and `aarch64`
+when the `build` workflow is triggered and, when the `engines` workflow is
 triggered, remote `presto-smoke` and `doris-smoke`. It starts no local container and runs
 no review; see [delivery.md](delivery.md). T0 remains Docker-free.
 Results from T3 are recorded publicly only as pass or fail per scenario.
