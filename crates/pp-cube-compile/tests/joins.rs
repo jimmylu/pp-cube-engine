@@ -38,13 +38,6 @@ fn failure_with(model: &str, query: &str) -> String {
     }
 }
 
-fn unsupported_with(model: &str, query: &str) -> String {
-    match compile_with(model, query) {
-        Err(CompileError::Unsupported(message)) => message,
-        other => panic!("expected Unsupported, got {other:?}"),
-    }
-}
-
 fn query_failure(query: &str) -> String {
     failure_with(include_str!("fixtures/retail.yaml"), query)
 }
@@ -189,38 +182,7 @@ fn measures_of_a_joined_cube_that_stay_in_one_select() {
 }
 
 // scenario: B0-JOIN-006
-#[test]
-fn measures_that_need_more_than_one_select_are_unsupported_by_name() {
-    let unsupported = |query: &str| unsupported_with(include_str!("fixtures/retail.yaml"), query);
-    for measure in ["floor_area", "avg_area", "min_area", "max_area"] {
-        let message = unsupported(&format!(
-            r#"{{"measures": ["stores.{measure}"], "dimensions": ["sales.channel_cd"]}}"#
-        ));
-        assert_eq!(
-            message,
-            format!(
-                "Measure `stores.{measure}` belongs to `stores`, which this query reaches from \
-                 `sales` through a many_to_one join; only its count and count_distinct measures \
-                 stay in one SELECT, the others are outside the baseline"
-            )
-        );
-    }
-    // Two joins away is still repeated, and so is a measure a filter names.
-    assert!(unsupported(
-        r#"{"measures": ["sales.amount"], "dimensions": ["sales.channel_cd"],
-            "filters": [{"member": "stores.floor_area", "operator": "gt", "values": ["1"]}]}"#
-    )
-    .contains("more than one cube"));
-    assert_eq!(
-        unsupported(
-            r#"{"measures": ["sales.amount"],
-                "filters": [{"member": "stores.store_count", "operator": "gt", "values": ["1"]}]}"#
-        ),
-        "Measures of more than one cube (`sales`, `stores`) are outside the baseline"
-    );
-}
-
-// scenario: B0-JOIN-006
+// scenario: B1-MULTI-004
 #[test]
 fn cube_reached_only_through_a_member_expression_counts_as_joined() {
     // Every member below is one of `receipts`; two of them read `sales`,
@@ -260,10 +222,16 @@ cubes:
         "{}",
         through_a_dimension.sql
     );
-    // A formula over measures of two cubes is still beyond the baseline.
-    assert_eq!(
-        unsupported_with(model, r#"{"measures": ["receipts.tax_share"]}"#),
-        "Measures of more than one cube (`sales`, `receipts`) are outside the baseline"
+    // A formula over measures of both cubes aggregates each in the same SELECT.
+    let formula = compile_with(model, r#"{"measures": ["receipts.tax_share"]}"#)
+        .expect("a formula over two cubes compiles");
+    assert!(
+        formula
+            .sql
+            .contains(r#"sum("receipts".tax) / NULLIF(sum("sales".amount), 0)"#)
+            && !formula.sql.contains("WITH"),
+        "{}",
+        formula.sql
     );
 }
 

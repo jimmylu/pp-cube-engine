@@ -12,14 +12,19 @@ const NO_STORES: &str = "DROP TABLE IF EXISTS memory.dw.dim_store";
 const NO_REGIONS: &str = "DROP TABLE IF EXISTS memory.dw.dim_region";
 const NO_RECEIPTS: &str = "DROP TABLE IF EXISTS memory.dw.receipt";
 const NO_PROMOS: &str = "DROP TABLE IF EXISTS memory.dw.promo";
+const NO_REFUNDS: &str = "DROP TABLE IF EXISTS memory.dw.refund_dtl";
+const NO_VISITS: &str = "DROP TABLE IF EXISTS memory.dw.visit";
+const REFUNDS: &str =
+    "CREATE TABLE memory.dw.refund_dtl (refund_id INTEGER, store_cd VARCHAR, amount DOUBLE)";
+const VISITS: &str = "CREATE TABLE memory.dw.visit (visit_id INTEGER, store_cd VARCHAR)";
 const RECEIPTS: &str = "CREATE TABLE memory.dw.receipt (receipt_no VARCHAR, tax DOUBLE)";
 const PROMOS: &str =
     "CREATE TABLE memory.dw.promo (promo_cd VARCHAR, region_cd VARCHAR, promo_name VARCHAR)";
 const SALES: &str = "CREATE TABLE memory.dw.sales_dtl (sale_id INTEGER, channel_cd VARCHAR, \
      category_cd VARCHAR, region_cd VARCHAR, store_cd VARCHAR, is_valid INTEGER, qty INTEGER, \
      order_no INTEGER, amount DOUBLE, sold_at TIMESTAMP, receipt_no VARCHAR, promo_cd VARCHAR)";
-const STORES: &str =
-    "CREATE TABLE memory.dw.dim_store (store_cd VARCHAR, store_name VARCHAR, region_cd VARCHAR)";
+const STORES: &str = "CREATE TABLE memory.dw.dim_store (store_cd VARCHAR, store_name VARCHAR, \
+     region_cd VARCHAR, floor_area DOUBLE)";
 const REGIONS: &str = "CREATE TABLE memory.dw.dim_region (region_cd VARCHAR, region_name VARCHAR)";
 
 const TOKYO_OCTOBER: &[&str] = &[
@@ -29,11 +34,15 @@ const TOKYO_OCTOBER: &[&str] = &[
     NO_REGIONS,
     NO_RECEIPTS,
     NO_PROMOS,
+    NO_REFUNDS,
+    NO_VISITS,
     SALES,
     STORES,
     REGIONS,
     RECEIPTS,
     PROMOS,
+    REFUNDS,
+    VISITS,
     "INSERT INTO memory.dw.sales_dtl (sale_id, sold_at, amount) VALUES \
      (1,TIMESTAMP '2026-09-30 14:59:59.999',10),(2,TIMESTAMP '2026-09-30 15:00:00.000',20),\
      (3,TIMESTAMP '2026-10-31 14:59:59.999',7),(4,TIMESTAMP '2026-10-31 15:00:00.000',100)",
@@ -46,11 +55,15 @@ const NEW_YORK_DST: &[&str] = &[
     NO_REGIONS,
     NO_RECEIPTS,
     NO_PROMOS,
+    NO_REFUNDS,
+    NO_VISITS,
     SALES,
     STORES,
     REGIONS,
     RECEIPTS,
     PROMOS,
+    REFUNDS,
+    VISITS,
     "INSERT INTO memory.dw.sales_dtl (sale_id, sold_at, amount) VALUES \
      (1,TIMESTAMP '2026-11-01 04:00:00',3),(2,TIMESTAMP '2026-11-01 05:30:00',5),\
      (3,TIMESTAMP '2026-11-01 06:30:00',7),(4,TIMESTAMP '2026-11-02 05:00:00',100)",
@@ -63,23 +76,30 @@ const RETAIL: &[&str] = &[
     NO_REGIONS,
     NO_RECEIPTS,
     NO_PROMOS,
+    NO_REFUNDS,
+    NO_VISITS,
     SALES,
     STORES,
     REGIONS,
     RECEIPTS,
     PROMOS,
-"INSERT INTO memory.dw.sales_dtl VALUES \
+    REFUNDS,
+    VISITS,
+    "INSERT INTO memory.dw.sales_dtl VALUES \
      (1,'C1','TOY','north','s1',1,1,100,10,TIMESTAMP '2026-10-01 00:00:00','R1','P1'),\
      (2,'C1','TOY','north','s1',1,2,100,20,TIMESTAMP '2026-10-02 00:00:00','R2','P1'),\
      (3,'C2','BOOK','south','s2',1,3,101,5,TIMESTAMP '2026-10-03 00:00:00','R3','P1'),\
      (4,'C2','TOY',NULL,'s2',0,4,102,7,TIMESTAMP '2026-10-04 00:00:00',NULL,NULL),\
      (5,'C3','BOOK','a%_\\b','s3',1,5,103,11,TIMESTAMP '2026-10-05 00:00:00','R5','P2'),\
      (6,'C3','BOOK','axxb','s3',1,6,103,99,TIMESTAMP '2026-10-06 00:00:00','R6','P2')",
-    "INSERT INTO memory.dw.dim_store VALUES ('s1','central','r1'),('s2','harbor','r2'),('s3','uptown','r1')",
+    "INSERT INTO memory.dw.dim_store VALUES ('s1','central','r1',100),('s2','harbor','r2',200),\
+     ('s3','uptown','r1',50),('s4',NULL,'r2',70)",
     "INSERT INTO memory.dw.dim_region VALUES ('r1','north'),('r2','south')",
     "INSERT INTO memory.dw.receipt VALUES ('R1',1),('R2',2),('R3',5),('R5',3),('R6',9),('R9',100)",
     "INSERT INTO memory.dw.promo VALUES ('P1','r1','spring-north'),('P1','r2','spring-south'),\
      ('P2','r2','autumn-south')",
+    "INSERT INTO memory.dw.refund_dtl VALUES (1,'s1',4),(2,'s1',6),(3,'s2',5),(4,'s4',8)",
+    "INSERT INTO memory.dw.visit VALUES (1,'s1'),(2,'s3'),(3,'s4'),(4,'s4')",
 ];
 
 pub fn fixture(fixture: Fixture) -> &'static [&'static str] {

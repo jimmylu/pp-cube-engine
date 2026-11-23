@@ -41,6 +41,7 @@ cubes:
     measures:
       - { name: store_count, type: count }
       - { name: name_count, type: count_distinct, sql: "{CUBE}.store_name" }
+      - { name: floor_area, type: sum, sql: "{CUBE}.floor_area" }
   - name: regions
     sql_table: dw.dim_region
     data_source: warehouse
@@ -65,6 +66,26 @@ cubes:
       - { name: promo_cd, sql: "{CUBE}.promo_cd", type: string, primary_key: true }
       - { name: region_cd, sql: "{CUBE}.region_cd", type: string, primary_key: true }
       - { name: promo_name, sql: "{CUBE}.promo_name", type: string }
+  # Two more facts, each joined to stores and to nothing else.
+  - name: refunds
+    sql_table: dw.refund_dtl
+    data_source: warehouse
+    joins:
+      - { name: stores, relationship: many_to_one, sql: "{CUBE}.store_cd = {stores.store_cd}" }
+    dimensions:
+      - { name: refund_id, sql: "{CUBE}.refund_id", type: number, primary_key: true }
+    measures:
+      - { name: amount, type: sum, sql: "{CUBE}.amount" }
+      - { name: refund_count, type: count }
+  - name: visits
+    sql_table: dw.visit
+    data_source: warehouse
+    joins:
+      - { name: stores, relationship: many_to_one, sql: "{CUBE}.store_cd = {stores.store_cd}" }
+    dimensions:
+      - { name: visit_id, sql: "{CUBE}.visit_id", type: number, primary_key: true }
+    measures:
+      - { name: visit_count, type: count }
   # Every query on this cube carries the row restriction of its source.
   - name: valid_sales
     sql: SELECT channel_cd, amount FROM dw.sales_dtl WHERE is_valid = 1

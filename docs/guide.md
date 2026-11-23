@@ -65,6 +65,9 @@ describes.
 - **Apply the session properties.** `session_properties` lists engine settings
   the SQL needs. Presto needs `offset_clause_enabled=true` for a query with an
   offset; without it the engine rejects the statement.
+- **Expect one statement, not one shape.** A query over one fact is a single
+  `SELECT`. A query over several facts, or a sum over rows a join repeats,
+  begins with `WITH`: one common table expression per aggregation.
 - **Execute unchanged.** Run the SQL as returned, on the engine of the dialect
   you asked for. With the service, SQL is only returned when that dialect
   serves every data source the query reads.
@@ -88,7 +91,7 @@ access should be able to call it.
 | --- | --- | --- |
 | model | The model is invalid or outside the baseline | Fix the model; issues name the path and rule |
 | query | The query is wrong for this model or dialect | Fix the query; the message names the member or rule |
-| unsupported | A recognized Cube feature beyond B0 or the dialect | Do not retry; the feature is not available |
+| unsupported | A recognized Cube feature the kernel or the dialect does not implement | Do not retry; the feature is not available |
 | internal | The kernel or planner failed | Report it; the message carries no detail by design |
 
 No failure returns SQL, and no message contains table names or SQL text.
@@ -97,7 +100,7 @@ No failure returns SQL, and no message contains table names or SQL text.
 
 For every execution case, Cube Core 1.8.28 (the release of the pinned upstream
 commit) was asked for the SQL of the same model and query on Presto. Its SQL
-and parameters equal the kernel's in all forty cases, with one difference:
+and parameters equal the kernel's in all fifty cases, with one difference:
 
 - **Default row limit.** Cube's API adds `LIMIT 10000` to a query that sets no
   limit. The kernel adds none: a query without a limit compiles without one.
@@ -117,18 +120,26 @@ planners:
 - Measures of a cube joined one_to_one, and count or count_distinct of a cube
   joined many_to_one, compile to the SQL Cube writes.
 - A join whose condition reads a third cube joins that cube first, as Cube does.
-- **Sum, avg, min and max of a cube reached through a many_to_one join** are
-  unsupported here. Cube answers them with multi-stage SQL (a subquery of
-  distinct keys); the baseline is one flat SELECT.
-- **Measures of two cubes in one query** are unsupported here, including the
-  case Cube writes flat: a measure of the root cube beside one of a cube joined
-  one_to_one.
+- Sum, avg, min and max of a cube reached through a many_to_one join are
+  aggregated over distinct keys, in the multi-stage SQL Cube writes.
+
+Queries over several facts were compared the same way, forty-nine in all:
+
+- Measures of two or three cubes over shared dimensions, with dimension
+  filters, segments, measure filters, order and paging, compile to the SQL Cube
+  writes. So do a measure beside one of a cube joined one_to_one, and a formula
+  over measures of both.
+- A fact that cannot reach a dimension or filter of the query is an error in
+  Cube and a query error here.
+- **A filter on a count over repeated rows** is unsupported here. For a count
+  of a cube reached through a many_to_one join, Cube selects the count of
+  distinct keys but compares the count of joined rows in the filter, so a
+  filtered result can contradict its own column.
 
 Cube Core has no Doris dialect, so Doris output is accepted by execution only.
 
 ## Not supported yet
 
-Apache Druid, measures of more than one cube, measures that need multi-stage SQL,
-multi-fact queries, time shifts, rolling windows, views, ungrouped
+Apache Druid, time shifts, rolling windows, period-to-date, views, ungrouped
 queries, approximate distinct counts, custom granularities and relative date
 ranges. See [performance](performance.md) for latency figures.

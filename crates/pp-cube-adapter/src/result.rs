@@ -36,13 +36,6 @@ pub(crate) fn metadata(
     let [Statement::Query(query)] = statements.as_slice() else {
         return Err(fault());
     };
-    // The baseline is one flat SELECT. When the planner needs more, for a sum over a
-    // cube whose rows a join repeats for one, it writes common table expressions.
-    if query.with.is_some() {
-        return Err(PlanError::Unsupported(
-            "The query needs multi-stage SQL, which is outside the baseline".into(),
-        ));
-    }
     let SetExpr::Select(select) = query.body.as_ref() else {
         return Err(fault());
     };
@@ -84,16 +77,19 @@ pub(crate) fn metadata(
     let mut tables = Tables::default();
     let _ = statements.visit(&mut tables);
     let mut used = vec![];
-    for cube in &model.cubes {
-        let expected_alias = cubesqlplanner::planner::sql_templates::PlanSqlTemplates::alias_name(
+    let alias_of = |cube: &pp_cube_model::Cube| {
+        cubesqlplanner::planner::sql_templates::PlanSqlTemplates::alias_name(
             cube.sql_alias.as_deref().unwrap_or(&cube.name),
-        );
+        )
+    };
+    let cube_aliases: Vec<String> = model.cubes.iter().map(alias_of).collect();
+    for cube in &model.cubes {
+        let expected_alias = alias_of(cube);
 
-        if !tables
-            .0
-            .iter()
-            .any(|(_, a)| a.as_deref() == Some(expected_alias.as_str()))
-        {
+        if !tables.0.iter().any(|(_, a)| {
+            a.as_deref()
+                .is_some_and(|a| is_alias_of(a, &expected_alias, &cube_aliases))
+        }) {
             continue;
         }
 
@@ -122,7 +118,9 @@ pub(crate) fn metadata(
         let mut physical = Tables::default();
         let _ = source.visit(&mut physical);
         if tables.0.iter().any(|(name, alias)| {
-            alias.as_deref() == Some(expected_alias.as_str())
+            alias
+                .as_deref()
+                .is_some_and(|a| is_alias_of(a, &expected_alias, &cube_aliases))
                 && (name.is_empty() || physical.0.iter().any(|(p, _)| p == name))
         }) {
             let mut physical_tables: Vec<_> = physical.0.into_iter().map(|(n, _)| n).collect();
@@ -137,6 +135,17 @@ pub(crate) fn metadata(
     used.sort_by(|a, b| a.name.cmp(&b.name));
     Ok((columns, used))
 }
+/// Whether `alias` is how the planner names the cube aliased `expected`: as it is,
+/// or as `<cube>_key_<expected>` inside the subquery of distinct keys it writes for
+/// a measure of `<cube>` over repeated rows.
+fn is_alias_of(alias: &str, expected: &str, cube_aliases: &[String]) -> bool {
+    alias == expected
+        || alias
+            .strip_suffix(expected)
+            .and_then(|rest| rest.strip_suffix("_key_"))
+            .is_some_and(|fact| cube_aliases.iter().any(|known| known == fact))
+}
+
 #[derive(Default)]
 struct Tables(Vec<(Vec<String>, Option<String>)>);
 impl Visitor for Tables {

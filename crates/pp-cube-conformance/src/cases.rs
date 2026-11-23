@@ -19,7 +19,9 @@ pub enum Fixture {
     NewYorkDst,
     /// Six sales: a NULL region, a region made of pattern characters and its
     /// decoy `axxb`, one invalid row, two rows of one order, three stores in
-    /// two regions.
+    /// two regions. A fourth store without a name has no sales. Four refunds
+    /// and four visits: no refund at `uptown`, no visit at `harbor`, and both
+    /// at the nameless store.
     Retail,
 }
 
@@ -336,6 +338,81 @@ fn matrix() -> Vec<Declared> {
             &["promos__promo_name", "sales__amount"],
             json!([["spring-north", 30], ["spring-south", 5]]),
         ),
+        // Each fact is totalled by store on its own: `uptown` has no refund. The
+        // filter drops the nameless store from both facts.
+        retail(
+            "multi_fact_by_dimension",
+            r#"{"measures":["sales.amount","refunds.amount","refunds.refund_count"],"dimensions":["stores.store_name"],"filters":[{"member":"stores.store_name","operator":"set"}],"order":[["stores.store_name","asc"]]}"#,
+            &[
+                "stores__store_name",
+                "sales__amount",
+                "refunds__amount",
+                "refunds__refund_count",
+            ],
+            json!([
+                ["central", 30, 10, 2],
+                ["harbor", 12, 5, 1],
+                ["uptown", 110, null, null]
+            ]),
+        ),
+        // Three facts. The nameless store has refunds and visits, which meet in one
+        // row only if NULL keys are matched. The measure filter drops `harbor`,
+        // which has no visit, from the combined rows.
+        retail(
+            "multi_fact_null_key",
+            r#"{"measures":["sales.amount","refunds.amount","visits.visit_count"],"dimensions":["stores.store_name"],"filters":[{"member":"visits.visit_count","operator":"gt","values":["0"]}],"order":[["visits.visit_count","desc"],["sales.amount","desc"]]}"#,
+            &[
+                "stores__store_name",
+                "sales__amount",
+                "refunds__amount",
+                "visits__visit_count",
+            ],
+            json!([
+                [null, null, 8, 2],
+                ["uptown", 110, null, 1],
+                ["central", 30, 10, 1]
+            ]),
+        ),
+        // Without a dimension each fact is one row, and they stand side by side.
+        retail(
+            "multi_fact_totals",
+            r#"{"measures":["sales.amount","refunds.amount"]}"#,
+            &["sales__amount", "refunds__amount"],
+            json!([[152, 23]]),
+        ),
+        // The page is taken from the combined rows: 110, then 30, then 12.
+        retail(
+            "multi_fact_page",
+            r#"{"measures":["sales.amount","refunds.amount"],"dimensions":["stores.store_name"],"filters":[{"member":"stores.store_name","operator":"set"}],"order":[["sales.amount","desc"]],"limit":1,"offset":1}"#,
+            &["stores__store_name", "sales__amount", "refunds__amount"],
+            json!([["central", 30, 10]]),
+        ),
+        // Three sales of each category reach two stores; each store's area counts
+        // once. Summed over the joined rows the areas would be 300 and 400.
+        retail(
+            "sum_over_repeated_rows",
+            r#"{"measures":["sales.amount","stores.floor_area"],"dimensions":["sales.category_cd"],"order":[["sales.category_cd","asc"]]}"#,
+            &["sales__category_cd", "sales__amount", "stores__floor_area"],
+            json!([["BOOK", 115, 250], ["TOY", 37, 300]]),
+        ),
+        // A one_to_one join repeats no row, so both cubes aggregate in one SELECT.
+        retail(
+            "two_cubes_in_one_select",
+            r#"{"measures":["sales.amount","receipts.tax"],"dimensions":["sales.channel_cd"],"order":[["sales.channel_cd","asc"]]}"#,
+            &["sales__channel_cd", "sales__amount", "receipts__tax"],
+            json!([["C1", 30, 3], ["C2", 12, 5], ["C3", 110, 12]]),
+        ),
+        // The security filter restricts every fact: `harbor` and the nameless
+        // store, both in the south, lose their sales and their refunds alike.
+        Declared {
+            security: r#"{"filters":[{"member":"regions.region_name","operator":"equals","values":["north"]}]}"#,
+            ..retail(
+                "security_multi_fact",
+                r#"{"measures":["sales.amount","refunds.amount"],"dimensions":["stores.store_name"],"order":[["stores.store_name","asc"]]}"#,
+                &["stores__store_name", "sales__amount", "refunds__amount"],
+                json!([["central", 30, 10], ["uptown", 110, null]]),
+            )
+        },
         // Only the security filter needs the two joins to the region table.
         Declared {
             security: r#"{"filters":[{"member":"regions.region_name","operator":"equals","values":["north"]}]}"#,

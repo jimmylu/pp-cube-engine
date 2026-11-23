@@ -2,7 +2,7 @@ schema: spec-driven
 context: |
   pp-cube-engine is a Rust compile kernel: Cube model + query + context
   in, SQL + ordered parameters out. It never executes SQL.
-  B0 is the current baseline; B1 and extensions are deferred.
+  B0 is implemented; B1 is implemented unit by unit; extensions are deferred.
   The upstream planner is pinned to 486f0d26 and vendor/ is read-only.
   Read docs/design/engine-design.md for the public design and
   docs/agents/workflow.md for gates and the implemented-spec lifecycle.
@@ -14,7 +14,7 @@ rules:
     - State scope and explicit non-goals; justify changes spanning capabilities.
     - Name affected paths, baseline level, and observable output changes.
   specs:
-    - Every requirement needs a WHEN/THEN scenario with a stable B0-AREA-NNN id.
+    - Every requirement needs a WHEN/THEN scenario with a stable LEVEL-AREA-NNN id (B0-AGG-003, B1-MULTI-001).
     - Never reuse or renumber ids; distinguish proposed behavior from evidence.
     - Follow pinned Cube behavior; report contradictions instead of hiding them.
   design:

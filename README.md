@@ -6,11 +6,11 @@ The kernel compiles; it does not execute. Running the SQL, access decisions and 
 
 ## Status
 
-In development; not yet released. The B0 baseline compiles for Presto and Apache
-Doris, and forty shared cases are executed on both engines for every relevant
-pull request. A gRPC service exposes Compile, ValidateModel and GetMeta
+In development; not yet released. The B0 baseline and B1 multi-fact queries
+compile for Presto and Apache Doris, and fifty shared cases are executed on both
+engines for every relevant pull request. A gRPC service exposes Compile, ValidateModel and GetMeta
 ([crates/pp-cube-service](crates/pp-cube-service/README.md)). Apache Druid, the
-B1 baseline, comparison with Cube Core and production packaging are not built.
+rest of the B1 baseline, and production packaging are not built.
 Implemented behaviour is recorded in [openspec/specs](openspec/specs).
 
 Start with [the guide](docs/guide.md); latency figures are in [performance](docs/performance.md).

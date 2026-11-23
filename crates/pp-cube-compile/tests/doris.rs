@@ -115,6 +115,7 @@ fn doris_retains_join_boundaries() {
         r#"{"dimensions":["sales.channel_cd","refunds.refund_id","stores.store_name"]}"#,
         r#"{"measures":["refunds.amount"],"dimensions":["regions.region_name"]}"#,
         r#"{"measures":["sales.amount"],"dimensions":["visits.source"]}"#,
+        r#"{"measures":["sales.amount","refunds.amount"],"dimensions":["sales.channel_cd"]}"#,
     ] {
         assert!(matches!(
             compile(
@@ -125,22 +126,14 @@ fn doris_retains_join_boundaries() {
             Err(CompileError::Query(_))
         ));
     }
+    // A filter on a count over repeated rows is refused on Doris too.
     let query = pp_cube_model::load_query(
-        r#"{"measures":["sales.amount","stores.store_count"],"dimensions":["stores.store_name"]}"#,
+        r#"{"measures":["sales.amount"],"filters":[{"member":"stores.store_count","operator":"gt","values":["1"]}]}"#,
     )
     .unwrap();
     assert!(matches!(
         compile(&retail(), &query, &join_context()),
-        Err(CompileError::Unsupported(_))
-    ));
-    // A sum over a cube whose rows a join repeats needs multi-stage SQL on Doris too.
-    let query = pp_cube_model::load_query(
-        r#"{"measures":["stores.floor_area"],"dimensions":["sales.channel_cd"]}"#,
-    )
-    .unwrap();
-    assert!(matches!(
-        compile(&retail(), &query, &join_context()),
-        Err(CompileError::Unsupported(message)) if message.contains("stores.floor_area")
+        Err(CompileError::Unsupported(message)) if message.contains("stores.store_count")
     ));
 }
 

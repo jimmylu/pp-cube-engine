@@ -5,8 +5,9 @@
 //! that one would choose.
 //!
 //! Like Cube, it joins the cubes a join condition reads before the join that
-//! reads them, and it lets a measure come from a joined cube as long as the
-//! result is still one flat SELECT.
+//! reads them. Measures may come from any cube: the planner aggregates each
+//! cube's measures on its own and combines them, so every such cube needs its
+//! own tree to the rest of the query.
 
 use std::any::Any;
 use std::cell::RefCell;
@@ -51,9 +52,6 @@ pub(crate) struct Joins {
     model: Arc<Model>,
     /// The joins each cube declares, by the cube's position in the model.
     edges: Vec<Vec<Edge>>,
-    /// The cube of the query's measures, if it has any. Every tree that
-    /// holds this cube starts from it.
-    measure_cube: Option<usize>,
     // Upstream bridge traits can return only CubeError. Keep the first fatal
     // local validation error typed until finish(), without parsing upstream text.
     // This cell belongs to one synchronous plan() call, never a shared model.
@@ -119,13 +117,12 @@ impl Joins {
             })
             .collect::<Result<_, CubeError>>()
             .map_err(PlanError::local)?;
-        let mut joins = Self {
+        let joins = Self {
             model,
             edges,
-            measure_cube: None,
             local_failure: RefCell::new(None),
         };
-        joins.measure_cube = joins.check(query)?;
+        joins.check(query)?;
         Ok(joins)
     }
 
@@ -184,71 +181,138 @@ impl Joins {
         }
     }
 
-    /// Fails unless the cubes `query` reads form one tree of joins, and returns
-    /// the cube of the measures. The measures belong to one cube. When that cube
-    /// is reached through a many_to_one join, only measures that count distinct
-    /// keys are allowed: any other needs the planner's multi-stage SQL, which is
-    /// beyond the baseline.
+    /// Fails unless the planner can join what `query` reads.
+    ///
+    /// A fact is a cube whose measures the query names, in its measures or in a
+    /// filter, together with the cubes those measures read. The planner
+    /// aggregates each fact on its own over the dimensions, filters and segments
+    /// of the query, so each fact needs one tree of joins to all of those. With
+    /// one fact that is the single tree of a flat query.
     ///
     /// What a query reads is the members it names and the members their
     /// expressions refer to, in any cube. The planner can join further cubes
     /// on its own account, for the primary key a count counts for one; `build`
     /// holds those to the same rule.
-    fn check(&self, query: &Query) -> Result<Option<usize>, PlanError> {
+    fn check(&self, query: &Query) -> Result<(), PlanError> {
         let mut named: Vec<&str> = Vec::new();
         named.extend(query.measures.iter().map(String::as_str));
         named.extend(query.dimensions.iter().map(String::as_str));
         named.extend(query.segments.iter().map(String::as_str));
-        filter_members(&query.filters, &mut named);
+        let mut filtered: Vec<&str> = Vec::new();
+        filter_members(&query.filters, &mut filtered);
+        named.extend(filtered.iter().copied());
         let time_dimensions = query.time_dimensions.iter();
         named.extend(time_dimensions.map(|time_dimension| time_dimension.dimension.as_str()));
 
-        let mut read = Read::default();
+        // What the query reads apart from its measures, and what each fact reads.
+        let mut shared = Read::default();
+        let mut facts: Vec<(usize, Read)> = Vec::new();
         for member in named {
-            if let Some((cube, name)) = member.split_once('.') {
-                if let Some(cube) = self.position(cube) {
-                    self.read(cube, name, &mut read);
+            let Some((cube, name)) = member.split_once('.') else {
+                continue;
+            };
+            let Some(cube) = self.position(cube) else {
+                continue;
+            };
+            let is_measure = self.cube(cube).measures.iter().any(|m| m.name == name);
+            if !is_measure {
+                self.read(cube, name, &mut shared);
+                continue;
+            }
+            let position = facts.iter().position(|(owner, _)| *owner == cube);
+            let position = position.unwrap_or_else(|| {
+                facts.push((cube, Read::default()));
+                facts.len() - 1
+            });
+            self.read(cube, name, &mut facts[position].1);
+        }
+        self.follow(&mut shared).map_err(PlanError::local)?;
+        for (_, fact) in &mut facts {
+            self.follow(fact).map_err(PlanError::local)?;
+            for cube in &shared.cubes {
+                if !fact.cubes.contains(cube) {
+                    fact.cubes.push(*cube);
                 }
             }
         }
-        self.follow(&mut read).map_err(PlanError::local)?;
-        let Some(tree) = self.tree(&read.cubes).map_err(PlanError::local)? else {
-            return Err(PlanError::local(self.unconnected(&read.cubes)));
-        };
-
-        let mut owners: Vec<usize> = read.measures.iter().map(|(cube, _)| *cube).collect();
-        owners.sort_unstable();
-        owners.dedup();
-        if owners.len() > 1 {
-            return Err(PlanError::Unsupported(format!(
-                "Measures of more than one cube ({}) are outside the baseline",
-                self.names(&owners)
-            )));
+        if facts.is_empty()
+            && self
+                .tree(&shared.cubes)
+                .map_err(PlanError::local)?
+                .is_none()
+        {
+            return Err(PlanError::local(self.unconnected(&shared.cubes)));
         }
-        // A join that is not one_to_one repeats the rows of the cube it leads to, and
-        // of every cube beyond it. Counting distinct keys survives that; summing does
-        // not, and the planner then needs a subquery of distinct keys.
-        let multiplied = self.multiplied(&tree);
-        for (cube, name) in &read.measures {
-            let definition = self.cube(*cube);
-            let measure = definition.measures.iter().find(|m| m.name == *name);
-            let additive = measure.is_some_and(|measure| {
-                !matches!(
-                    measure.measure_type,
-                    MeasureType::Count | MeasureType::CountDistinct | MeasureType::Number
-                )
-            });
-            if additive && multiplied.get(cube).copied().unwrap_or(false) {
-                return Err(PlanError::Unsupported(format!(
-                    "Measure `{owner}.{name}` belongs to `{owner}`, which this query reaches from \
-                     `{}` through a many_to_one join; only its count and count_distinct measures \
-                     stay in one SELECT, the others are outside the baseline",
-                    self.cube(tree.root).name,
-                    owner = definition.name
-                )));
+        for (_, fact) in &facts {
+            let Some(tree) = self.tree(&fact.cubes).map_err(PlanError::local)? else {
+                return Err(PlanError::local(self.unconnected(&fact.cubes)));
+            };
+            self.check_filtered_counts(&tree, fact, &filtered)?;
+        }
+        let mut together: Vec<usize> = Vec::new();
+        for cube in facts.iter().flat_map(|(_, fact)| &fact.cubes) {
+            if !together.contains(cube) {
+                together.push(*cube);
             }
         }
-        Ok(owners.first().copied())
+        // Facts are combined in one statement even when no join connects them.
+        self.one_source(&together).map_err(PlanError::local)?;
+        // When one tree holds every fact the planner may aggregate them together,
+        // so a count is also held to that tree. A tree that cannot be built is the
+        // planner's to meet: it asks for this one only when it wants it.
+        if let (true, Ok(Some(tree))) = (facts.len() > 1, self.tree(&together)) {
+            for (_, fact) in &facts {
+                self.check_filtered_counts(&tree, fact, &filtered)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Fails for a filter on a count whose rows the joins of `tree` repeat. The
+    /// planner selects such a count as a count of distinct keys but compares the
+    /// count of repeated rows in the filter, as Cube does; the filter would then
+    /// disagree with the column it is read against.
+    fn check_filtered_counts(
+        &self,
+        tree: &Tree,
+        fact: &Read,
+        filtered: &[&str],
+    ) -> Result<(), PlanError> {
+        let multiplied = self.multiplied(tree);
+        for member in filtered {
+            let Some((cube, name)) = member.split_once('.') else {
+                continue;
+            };
+            let Some(cube) = self.position(cube) else {
+                continue;
+            };
+            if !fact
+                .measures
+                .iter()
+                .any(|(owner, measure)| *owner == cube && *measure == name)
+            {
+                continue;
+            }
+            // The counts the filtered measure is computed from, itself included.
+            let mut read = Read::default();
+            self.read(cube, name, &mut read);
+            self.follow(&mut read).map_err(PlanError::local)?;
+            for (owner, measure) in &read.measures {
+                let definition = self.cube(*owner);
+                let counts = definition.measures.iter().any(|found| {
+                    found.name == *measure && found.measure_type == MeasureType::Count
+                });
+                if counts && multiplied.get(owner).copied().unwrap_or(false) {
+                    return Err(PlanError::Unsupported(format!(
+                        "The filter on `{member}` compares the count `{}.{measure}`, and this \
+                         query reaches `{}` through a many_to_one join; a filter on a count over \
+                         repeated rows is not supported",
+                        definition.name, definition.name
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     fn unconnected(&self, cubes: &[usize]) -> CubeError {
@@ -410,8 +474,17 @@ impl Joins {
             ordered.push(edge);
         }
 
+        self.one_source(&joined)?;
+        Ok(Some(Tree {
+            root,
+            edges: ordered,
+        }))
+    }
+
+    /// Fails unless `cubes` are on one data source: SQL is written for one.
+    fn one_source(&self, cubes: &[usize]) -> Result<(), CubeError> {
         let mut sources: Vec<(&str, &str)> = Vec::new();
-        for cube in joined.iter().map(|cube| self.cube(*cube)) {
+        for cube in cubes.iter().map(|cube| self.cube(*cube)) {
             if !sources
                 .iter()
                 .any(|(_, source)| *source == cube.data_source)
@@ -429,10 +502,7 @@ impl Joins {
                 described.join(", ")
             )));
         }
-        Ok(Some(Tree {
-            root,
-            edges: ordered,
-        }))
+        Ok(())
     }
 
     /// The root that reaches every cube of `cubes` and the joins of those
@@ -541,9 +611,8 @@ impl Joins {
         let Some(tree) = self.tree(cubes)? else {
             return Ok(None);
         };
-        // These are the cubes the planner joins, whatever made it join them. A
-        // measure it then has to aggregate over repeated rows comes back as
-        // multi-stage SQL, which `plan` refuses.
+        // These are the cubes the planner joins, whatever made it join them. It
+        // aggregates a measure over repeated rows through a subquery of distinct keys.
         let multiplied = self.multiplied(&tree);
         let mut items: Vec<Rc<dyn JoinItem>> = Vec::with_capacity(tree.edges.len());
         for edge in &tree.edges {
