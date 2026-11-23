@@ -112,7 +112,7 @@ fn joined_dimensions_and_security_only_paths() {
 #[test]
 fn doris_retains_join_boundaries() {
     for text in [
-        r#"{"measures":["receipts.tax"],"dimensions":["sales.channel_cd"]}"#,
+        r#"{"dimensions":["sales.channel_cd","refunds.refund_id","stores.store_name"]}"#,
         r#"{"measures":["refunds.amount"],"dimensions":["regions.region_name"]}"#,
         r#"{"measures":["sales.amount"],"dimensions":["visits.source"]}"#,
     ] {
@@ -132,6 +132,15 @@ fn doris_retains_join_boundaries() {
     assert!(matches!(
         compile(&retail(), &query, &join_context()),
         Err(CompileError::Unsupported(_))
+    ));
+    // A sum over a cube whose rows a join repeats needs multi-stage SQL on Doris too.
+    let query = pp_cube_model::load_query(
+        r#"{"measures":["stores.floor_area"],"dimensions":["sales.channel_cd"]}"#,
+    )
+    .unwrap();
+    assert!(matches!(
+        compile(&retail(), &query, &join_context()),
+        Err(CompileError::Unsupported(message)) if message.contains("stores.floor_area")
     ));
 }
 

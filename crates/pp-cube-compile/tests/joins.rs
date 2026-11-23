@@ -172,33 +172,55 @@ fn cubes_that_no_join_path_connects_are_refused_by_name() {
     );
 }
 
-// scenario: B0-JOIN-004
+// scenario: B0-JOIN-006
+// scenario: B0-DET-001
 #[test]
-fn measure_of_a_joined_cube_is_refused_under_either_relationship() {
-    let many_to_one = query_failure(
-        r#"{"measures": ["stores.store_count"], "dimensions": ["sales.channel_cd"]}"#,
-    );
-    let one_to_one =
-        query_failure(r#"{"measures": ["receipts.tax"], "dimensions": ["sales.channel_cd"]}"#);
-    let in_a_filter = unsupported_with(
-        include_str!("fixtures/retail.yaml"),
-        r#"{"measures": ["sales.amount"],
-            "filters": [{"member": "stores.store_count", "operator": "gt", "values": ["1"]}]}"#,
-    );
+fn measures_of_a_joined_cube_that_stay_in_one_select() {
+    // Through one_to_one every measure type stays flat; through many_to_one the
+    // counts do, as distinct counts of the joined cube's keys.
+    insta::assert_snapshot!([
+        r#"{"measures": ["receipts.tax", "receipts.avg_tax", "receipts.receipt_count", "receipts.tax_per_receipt"],
+            "dimensions": ["sales.channel_cd"], "order": [["sales.channel_cd", "asc"]]}"#,
+        r#"{"measures": ["stores.store_count", "stores.name_count"],
+            "dimensions": ["sales.channel_cd"], "order": [["sales.channel_cd", "asc"]]}"#,
+    ]
+    .map(compiled)
+    .join("\n\n"));
+}
 
+// scenario: B0-JOIN-006
+#[test]
+fn measures_that_need_more_than_one_select_are_unsupported_by_name() {
+    let unsupported = |query: &str| unsupported_with(include_str!("fixtures/retail.yaml"), query);
+    for measure in ["floor_area", "avg_area", "min_area", "max_area"] {
+        let message = unsupported(&format!(
+            r#"{{"measures": ["stores.{measure}"], "dimensions": ["sales.channel_cd"]}}"#
+        ));
+        assert_eq!(
+            message,
+            format!(
+                "Measure `stores.{measure}` belongs to `stores`, which this query reaches from \
+                 `sales` through a many_to_one join; only its count and count_distinct measures \
+                 stay in one SELECT, the others are outside the baseline"
+            )
+        );
+    }
+    // Two joins away is still repeated, and so is a measure a filter names.
+    assert!(unsupported(
+        r#"{"measures": ["sales.amount"], "dimensions": ["sales.channel_cd"],
+            "filters": [{"member": "stores.floor_area", "operator": "gt", "values": ["1"]}]}"#
+    )
+    .contains("more than one cube"));
     assert_eq!(
-        [many_to_one, one_to_one, in_a_filter],
-        [
-            "Measure `stores.store_count` belongs to `stores`, which this query reaches through \
-             a join from `sales`; measures are taken from the cube the joins start from",
-            "Measure `receipts.tax` belongs to `receipts`, which this query reaches through a \
-             join from `sales`; measures are taken from the cube the joins start from",
-            "Measures of more than one cube (`sales`, `stores`) are outside the baseline",
-        ]
+        unsupported(
+            r#"{"measures": ["sales.amount"],
+                "filters": [{"member": "stores.store_count", "operator": "gt", "values": ["1"]}]}"#
+        ),
+        "Measures of more than one cube (`sales`, `stores`) are outside the baseline"
     );
 }
 
-// scenario: B0-JOIN-004
+// scenario: B0-JOIN-006
 #[test]
 fn cube_reached_only_through_a_member_expression_counts_as_joined() {
     // Every member below is one of `receipts`; two of them read `sales`,
@@ -222,28 +244,35 @@ cubes:
       - { name: tax_share, type: number, sql: "{tax} / NULLIF({sales.amount}, 0)" }
 "#;
 
-    let through_a_dimension = failure_with(
+    // The dimension brings `sales` in, the join starts there, and the sum stays flat.
+    let through_a_dimension = compile_with(
         model,
         r#"{"measures": ["receipts.tax"], "dimensions": ["receipts.channel"]}"#,
+    )
+    .expect("a one_to_one measure compiles");
+    assert!(
+        through_a_dimension
+            .sql
+            .contains(r#"FROM  dw.sales_dtl  AS "sales""#)
+            && through_a_dimension.sql.contains("LEFT JOIN  dw.receipt")
+            && through_a_dimension.sql.contains(r#"sum("receipts".tax)"#)
+            && !through_a_dimension.sql.contains("WITH"),
+        "{}",
+        through_a_dimension.sql
     );
-    let through_a_formula = unsupported_with(model, r#"{"measures": ["receipts.tax_share"]}"#);
-
+    // A formula over measures of two cubes is still beyond the baseline.
     assert_eq!(
-        [through_a_dimension, through_a_formula],
-        [
-            "Measure `receipts.tax` belongs to `receipts`, which this query reaches through a \
-             join from `sales`; measures are taken from the cube the joins start from",
-            "Measures of more than one cube (`sales`, `receipts`) are outside the baseline",
-        ]
+        unsupported_with(model, r#"{"measures": ["receipts.tax_share"]}"#),
+        "Measures of more than one cube (`sales`, `receipts`) are outside the baseline"
     );
 }
 
-// scenario: B0-JOIN-004
+// scenario: B0-JOIN-006
 #[test]
-fn cube_the_planner_joins_on_its_own_account_counts_as_joined() {
+fn cube_the_planner_joins_on_its_own_account_starts_the_tree() {
     // A count has no expression; the planner counts the primary key, and
-    // this one reads `sales`.
-    let message = failure_with(
+    // this one reads `sales`. The query names only `receipts`.
+    let compiled = compile_with(
         r#"
 cubes:
   - name: sales
@@ -258,18 +287,55 @@ cubes:
     measures: [{ name: row_count, type: count }]
 "#,
         r#"{"measures": ["receipts.row_count"]}"#,
-    );
+    )
+    .expect("a count through a one_to_one join compiles");
 
-    assert_eq!(
-        message,
-        "The measures of `receipts` are reached through a join from `sales`; measures are \
-         taken from the cube the joins start from"
+    // The tree starts from the cube that reaches the other, and both are reported.
+    assert!(
+        compiled.sql.contains(r#"FROM  dw.sales_dtl  AS "sales""#)
+            && compiled.sql.contains("LEFT JOIN  dw.receipt")
+            && !compiled.sql.contains("WITH"),
+        "{}",
+        compiled.sql
     );
+    let used: Vec<_> = compiled
+        .used_cubes
+        .iter()
+        .map(|c| c.name.as_str())
+        .collect();
+    assert_eq!(used, ["receipts", "sales"]);
+}
+
+// scenario: B0-JOIN-007
+// scenario: B0-DET-001
+#[test]
+fn cubes_a_join_condition_reads_are_joined_before_it() {
+    // The join to `promos` reads `regions`, which is reached through `stores`:
+    // both are joined first, whether or not the query names them, and in that
+    // order even when the query names `regions` last.
+    insta::assert_snapshot!([
+        r#"{"measures": ["sales.amount"], "dimensions": ["promos.promo_name"],
+            "order": [["promos.promo_name", "asc"]]}"#,
+        r#"{"measures": ["sales.amount"], "dimensions": ["promos.promo_name", "regions.region_name"],
+            "filters": [{"member": "promos.promo_cd", "operator": "equals", "values": ["P1"]}],
+            "order": [["promos.promo_name", "asc"]]}"#,
+    ]
+    .map(compiled)
+    .join("\n\n"));
+    // A query that does not need that join is not given its cubes.
+    let alone = compile_with(
+        include_str!("fixtures/retail.yaml"),
+        r#"{"measures": ["sales.amount"], "dimensions": ["sales.channel_cd"]}"#,
+    )
+    .expect("a query on sales alone compiles");
+    assert!(!alone.sql.contains("JOIN"), "{}", alone.sql);
 }
 
 // scenario: B0-JOIN-005
 #[test]
-fn join_whose_condition_reads_a_third_cube_is_refused_where_it_is_needed() {
+fn join_conditions_that_cannot_be_ordered_are_refused_where_they_are_needed() {
+    // Here the join to `stores` reads `regions`, and `regions` is reached only
+    // through `stores`: neither can be joined first.
     let model = |condition: &str| {
         r#"
 cubes:
@@ -299,8 +365,8 @@ cubes:
     let through_a_dimension = model("{CUBE}.region_cd = {stores.region_key}");
     let directly = model("{CUBE}.store_cd = {stores.store_cd} AND {regions.active} = 1");
     let by_store = r#"{"measures": ["sales.amount"], "dimensions": ["stores.store_name"]}"#;
-    let refused =
-        "The join `stores` of cube `sales` reads `regions`, which is neither side of the join";
+    let refused = "The joins to `stores`, `regions` cannot be ordered: a join condition reads a \
+                   cube that is joined only after it";
 
     assert_eq!(
         [

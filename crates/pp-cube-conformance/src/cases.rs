@@ -303,6 +303,39 @@ fn matrix() -> Vec<Declared> {
             &["stores__store_name", "sales__amount"],
             json!([["central", 30], ["uptown", 110]]),
         ),
+        // Measures of a cube joined one_to_one: the sale without a receipt adds nothing,
+        // and the receipt no sale has is not counted.
+        retail(
+            "joined_one_to_one_measures",
+            r#"{"measures":["receipts.tax","receipts.receipt_count","receipts.tax_per_receipt"],"dimensions":["sales.channel_cd"],"order":[["sales.channel_cd","asc"]]}"#,
+            &[
+                "sales__channel_cd",
+                "receipts__tax",
+                "receipts__receipt_count",
+                "receipts__tax_per_receipt",
+            ],
+            json!([["C1", 3, 2, 1.5], ["C2", 5, 1, 5], ["C3", 12, 2, 6]]),
+        ),
+        // Counts of a cube joined many_to_one count distinct keys, not sales: three
+        // sales of each category reach two stores.
+        retail(
+            "joined_many_to_one_counts",
+            r#"{"measures":["stores.store_count","stores.name_count"],"dimensions":["sales.category_cd"],"order":[["sales.category_cd","asc"]]}"#,
+            &[
+                "sales__category_cd",
+                "stores__store_count",
+                "stores__name_count",
+            ],
+            json!([["BOOK", 2, 2], ["TOY", 2, 2]]),
+        ),
+        // The join to promotions reads the region, reached through the store. Without
+        // the region in the condition, the south sale would count under both names.
+        retail(
+            "join_reading_a_third_cube",
+            r#"{"measures":["sales.amount"],"dimensions":["promos.promo_name"],"filters":[{"member":"promos.promo_name","operator":"set"}],"order":[["promos.promo_name","asc"]]}"#,
+            &["promos__promo_name", "sales__amount"],
+            json!([["spring-north", 30], ["spring-south", 5]]),
+        ),
         // Only the security filter needs the two joins to the region table.
         Declared {
             security: r#"{"filters":[{"member":"regions.region_name","operator":"equals","values":["north"]}]}"#,

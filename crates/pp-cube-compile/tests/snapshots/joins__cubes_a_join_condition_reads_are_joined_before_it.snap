@@ -1,0 +1,18 @@
+---
+source: crates/pp-cube-compile/tests/joins.rs
+expression: "[r#\"{\"measures\": [\"sales.amount\"], \"dimensions\": [\"promos.promo_name\"],\n            \"order\": [[\"promos.promo_name\", \"asc\"]]}\"#,\nr#\"{\"measures\": [\"sales.amount\"], \"dimensions\": [\"promos.promo_name\", \"regions.region_name\"],\n            \"filters\": [{\"member\": \"promos.promo_cd\", \"operator\": \"equals\", \"values\": [\"P1\"]}],\n            \"order\": [[\"promos.promo_name\", \"asc\"]]}\"#,].map(compiled).join(\"\\n\\n\")"
+---
+SELECT "promos".promo_name "promos__promo_name", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+LEFT JOIN  dw.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+LEFT JOIN  dw.dim_region  AS "regions" ON "stores".region_cd = "regions".region_cd
+LEFT JOIN  dw.promo  AS "promos" ON "sales".promo_cd = "promos".promo_cd AND "promos".region_cd = "regions".region_cd GROUP BY 1 ORDER BY  1  ASC
+-- parameters: []
+
+SELECT "promos".promo_name "promos__promo_name", "regions".region_name "regions__region_name", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+LEFT JOIN  dw.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+LEFT JOIN  dw.dim_region  AS "regions" ON "stores".region_cd = "regions".region_cd
+LEFT JOIN  dw.promo  AS "promos" ON "sales".promo_cd = "promos".promo_cd AND "promos".region_cd = "regions".region_cd
+WHERE ("promos".promo_cd = ?) GROUP BY 1, 2 ORDER BY  1  ASC
+-- parameters: [Text("P1")]

@@ -36,6 +36,13 @@ pub(crate) fn metadata(
     let [Statement::Query(query)] = statements.as_slice() else {
         return Err(fault());
     };
+    // The baseline is one flat SELECT. When the planner needs more, for a sum over a
+    // cube whose rows a join repeats for one, it writes common table expressions.
+    if query.with.is_some() {
+        return Err(PlanError::Unsupported(
+            "The query needs multi-stage SQL, which is outside the baseline".into(),
+        ));
+    }
     let SetExpr::Select(select) = query.body.as_ref() else {
         return Err(fault());
     };

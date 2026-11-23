@@ -3,6 +3,10 @@
 //! Cube's own join graph tries each cube as the root and takes the shortest
 //! path, choosing between candidates without a word. This one refuses where
 //! that one would choose.
+//!
+//! Like Cube, it joins the cubes a join condition reads before the join that
+//! reads them, and it lets a measure come from a joined cube as long as the
+//! result is still one flat SELECT.
 
 use std::any::Any;
 use std::cell::RefCell;
@@ -16,7 +20,7 @@ use cubesqlplanner::cube_bridge::join_graph::JoinGraph;
 use cubesqlplanner::cube_bridge::join_hints::JoinHintItem;
 use cubesqlplanner::cube_bridge::join_item::{JoinItem, JoinItemStatic};
 use cubesqlplanner::cube_bridge::join_item_definition::JoinItemDefinition;
-use pp_cube_model::{Cube, Filter, Model, Query, Relationship, Target};
+use pp_cube_model::{Cube, Filter, MeasureType, Model, Query, Relationship, Target};
 
 use crate::schema::JoinDef;
 use crate::PlanError;
@@ -180,10 +184,11 @@ impl Joins {
         }
     }
 
-    /// Fails unless the cubes `query` reads form one tree of joins whose root
-    /// owns every measure, and returns the cube of the measures. A measure
-    /// anywhere else needs the planner's multi-stage SQL, which is beyond the
-    /// baseline.
+    /// Fails unless the cubes `query` reads form one tree of joins, and returns
+    /// the cube of the measures. The measures belong to one cube. When that cube
+    /// is reached through a many_to_one join, only measures that count distinct
+    /// keys are allowed: any other needs the planner's multi-stage SQL, which is
+    /// beyond the baseline.
     ///
     /// What a query reads is the members it names and the members their
     /// expressions refer to, in any cube. The planner can join further cubes
@@ -220,15 +225,30 @@ impl Joins {
                 self.names(&owners)
             )));
         }
-        match read.measures.iter().find(|(cube, _)| *cube != tree.root) {
-            None => Ok(owners.first().copied()),
-            Some((cube, measure)) => Err(PlanError::User(format!(
-                "Measure `{owner}.{measure}` belongs to `{owner}`, which this query reaches \
-                 through a join from `{}`; measures are taken from the cube the joins start from",
-                self.cube(tree.root).name,
-                owner = self.cube(*cube).name
-            ))),
+        // A join that is not one_to_one repeats the rows of the cube it leads to, and
+        // of every cube beyond it. Counting distinct keys survives that; summing does
+        // not, and the planner then needs a subquery of distinct keys.
+        let multiplied = self.multiplied(&tree);
+        for (cube, name) in &read.measures {
+            let definition = self.cube(*cube);
+            let measure = definition.measures.iter().find(|m| m.name == *name);
+            let additive = measure.is_some_and(|measure| {
+                !matches!(
+                    measure.measure_type,
+                    MeasureType::Count | MeasureType::CountDistinct | MeasureType::Number
+                )
+            });
+            if additive && multiplied.get(cube).copied().unwrap_or(false) {
+                return Err(PlanError::Unsupported(format!(
+                    "Measure `{owner}.{name}` belongs to `{owner}`, which this query reaches from \
+                     `{}` through a many_to_one join; only its count and count_distinct measures \
+                     stay in one SELECT, the others are outside the baseline",
+                    self.cube(tree.root).name,
+                    owner = definition.name
+                )));
+            }
         }
+        Ok(owners.first().copied())
     }
 
     fn unconnected(&self, cubes: &[usize]) -> CubeError {
@@ -260,26 +280,34 @@ impl Joins {
         Ok(())
     }
 
-    /// Fails if the condition of the join `edge` reads a cube other than the
-    /// two it joins, directly or through the expression of a member. The
-    /// planner would name that cube in the `ON` clause and not join it. Cube
-    /// joins such a cube first; the baseline refuses the join.
-    fn check_condition(&self, edge: Edge) -> Result<(), CubeError> {
-        let declaring = self.cube(edge.from);
-        let join = &declaring.joins[edge.join];
+    /// The cubes the condition of the join `edge` reads besides the two it
+    /// joins, directly or through the expression of a member. The planner names
+    /// such a cube in the `ON` clause, so it has to be joined first.
+    fn condition_cubes(&self, edge: Edge) -> Result<Vec<usize>, CubeError> {
+        let join = &self.cube(edge.from).joins[edge.join];
         let mut read = Read::default();
         read.pending.push((edge.from, join.sql.as_str()));
         self.follow(&mut read)?;
-        let mut outside = read.cubes.iter();
-        match outside.find(|cube| **cube != edge.from && **cube != edge.to) {
-            None => Ok(()),
-            Some(outside) => Err(CubeError::user(format!(
-                "The join `{}` of cube `{}` reads `{}`, which is neither side of the join",
-                join.name,
-                declaring.name,
-                self.cube(*outside).name
-            ))),
+        let outside = read.cubes.into_iter();
+        Ok(outside
+            .filter(|cube| *cube != edge.from && *cube != edge.to)
+            .collect())
+    }
+
+    /// Whether each cube of `tree` has its rows repeated: a `many_to_one` join
+    /// multiplies the cube it leads to, and so every cube joined beyond that one.
+    fn multiplied(&self, tree: &Tree) -> HashMap<usize, bool> {
+        let mut multiplied = HashMap::from([(tree.root, false)]);
+        // Edges can be ordered by what their conditions read, so settle by passes.
+        for _ in 0..=tree.edges.len() {
+            for edge in &tree.edges {
+                if let Some(from) = multiplied.get(&edge.from).copied() {
+                    let many = self.relationship(*edge) == Relationship::ManyToOne;
+                    multiplied.insert(edge.to, from || many);
+                }
+            }
         }
+        multiplied
     }
 
     /// A shortest chain of joins from `from` to `to` that does not use the
@@ -331,10 +359,86 @@ impl Joins {
     }
 
     /// The tree for `cubes`, or `None` when none of them reaches all the
-    /// others. Fails when there is more than one way to join them, when a
-    /// join of the tree reads a cube it does not join, or when the joined
-    /// cubes are not on one data source.
+    /// others. Cubes that the conditions of its joins read are added and joined
+    /// before the join that reads them, as Cube does. Fails when there is more
+    /// than one way to join them, when join conditions need each other, or when
+    /// the joined cubes are not on one data source.
     fn tree(&self, cubes: &[usize]) -> Result<Option<Tree>, CubeError> {
+        let mut cubes = cubes.to_vec();
+        // Each pass either adds a cube or ends; there are only so many cubes.
+        let (root, mut edges) = loop {
+            let Some((root, edges)) = self.spanning(&cubes)? else {
+                return Ok(None);
+            };
+            let mut added = false;
+            for edge in &edges {
+                for cube in self.condition_cubes(*edge)? {
+                    if !cubes.contains(&cube) {
+                        cubes.push(cube);
+                        added = true;
+                    }
+                }
+            }
+            if !added {
+                break (root, edges);
+            }
+        };
+
+        // SQL order: a join comes after the cube it starts from and after every
+        // cube its condition reads.
+        let mut joined = vec![root];
+        let mut ordered = Vec::with_capacity(edges.len());
+        while !edges.is_empty() {
+            let mut ready = None;
+            for (index, edge) in edges.iter().enumerate() {
+                let needs = self.condition_cubes(*edge)?;
+                if joined.contains(&edge.from) && needs.iter().all(|cube| joined.contains(cube)) {
+                    ready = Some(index);
+                    break;
+                }
+            }
+            let Some(index) = ready else {
+                let waiting: Vec<usize> = edges.iter().map(|edge| edge.to).collect();
+                return Err(CubeError::user(format!(
+                    "The joins to {} cannot be ordered: a join condition reads a cube that is \
+                     joined only after it",
+                    self.names(&waiting)
+                )));
+            };
+            let edge = edges.remove(index);
+            joined.push(edge.to);
+            ordered.push(edge);
+        }
+
+        let mut sources: Vec<(&str, &str)> = Vec::new();
+        for cube in joined.iter().map(|cube| self.cube(*cube)) {
+            if !sources
+                .iter()
+                .any(|(_, source)| *source == cube.data_source)
+            {
+                sources.push((&cube.name, &cube.data_source));
+            }
+        }
+        if sources.len() > 1 {
+            let described: Vec<_> = sources
+                .iter()
+                .map(|(cube, source)| format!("`{cube}` on `{source}`"))
+                .collect();
+            return Err(CubeError::user(format!(
+                "Cubes on different data sources cannot be joined: {}",
+                described.join(", ")
+            )));
+        }
+        Ok(Some(Tree {
+            root,
+            edges: ordered,
+        }))
+    }
+
+    /// The root that reaches every cube of `cubes` and the joins of those
+    /// chains, or `None` when no cube reaches all the others. Fails when there
+    /// is more than one way to join them.
+    fn spanning(&self, cubes: &[usize]) -> Result<Option<(usize, Vec<Edge>)>, CubeError> {
         let mut trees = cubes.iter().filter_map(|root| {
             let others = cubes.iter().filter(|cube| *cube != root);
             let chains: Option<Vec<_>> = others
@@ -369,31 +473,7 @@ impl Joins {
                 }
             }
         }
-        for edge in &edges {
-            self.check_condition(*edge)?;
-        }
-
-        let joined = std::iter::once(root).chain(edges.iter().map(|edge| edge.to));
-        let mut sources: Vec<(&str, &str)> = Vec::new();
-        for cube in joined.map(|cube| self.cube(cube)) {
-            if !sources
-                .iter()
-                .any(|(_, source)| *source == cube.data_source)
-            {
-                sources.push((&cube.name, &cube.data_source));
-            }
-        }
-        if sources.len() > 1 {
-            let described: Vec<_> = sources
-                .iter()
-                .map(|(cube, source)| format!("`{cube}` on `{source}`"))
-                .collect();
-            return Err(CubeError::user(format!(
-                "Cubes on different data sources cannot be joined: {}",
-                described.join(", ")
-            )));
-        }
-        Ok(Some(Tree { root, edges }))
+        Ok(Some((root, edges)))
     }
 
     /// The cubes the planner names, each once, by position in the model.
@@ -461,26 +541,12 @@ impl Joins {
         let Some(tree) = self.tree(cubes)? else {
             return Ok(None);
         };
-        // These are the cubes the planner joins, whatever made it join them.
-        if let Some(owner) = self.measure_cube.filter(|owner| cubes.contains(owner)) {
-            if tree.root != owner {
-                return Err(CubeError::user(format!(
-                    "The measures of `{}` are reached through a join from `{}`; measures are \
-                     taken from the cube the joins start from",
-                    self.cube(owner).name,
-                    self.cube(tree.root).name
-                )));
-            }
-        }
-
-        // Cube's rule: a `many_to_one` join multiplies the rows of the cube it
-        // leads to, and so of every cube joined beyond that one.
-        let mut multiplied = HashMap::from([(tree.root, false)]);
+        // These are the cubes the planner joins, whatever made it join them. A
+        // measure it then has to aggregate over repeated rows comes back as
+        // multi-stage SQL, which `plan` refuses.
+        let multiplied = self.multiplied(&tree);
         let mut items: Vec<Rc<dyn JoinItem>> = Vec::with_capacity(tree.edges.len());
         for edge in &tree.edges {
-            let many = self.relationship(*edge) == Relationship::ManyToOne;
-            let from_multiplied = multiplied.get(&edge.from).copied().unwrap_or(false);
-            multiplied.insert(edge.to, from_multiplied || many);
             let (from, to) = (&self.cube(edge.from).name, &self.cube(edge.to).name);
             items.push(Rc::new(Item {
                 statics: JoinItemStatic {
@@ -568,24 +634,67 @@ fn local_failure_survives_upstream_wrapping_and_success() {
         .unwrap(),
     );
     let query = Query {
-        measures: vec!["receipts.tax".into()],
+        measures: vec!["sales.amount".into()],
         ..Query::default()
     };
-    // Use the real bridge rejection, not a fabricated receipt.
+    // Use a real bridge rejection: `refunds` reaches `regions` directly and
+    // through `stores`.
     let joins = Joins::new(model, &query).unwrap();
-    let sales = joins.position("sales").unwrap();
-    let receipts = joins.position("receipts").unwrap();
-    let mut joins = joins;
-    joins.measure_cube = Some(receipts);
+    let refunds = joins.position("refunds").unwrap();
+    let regions = joins.position("regions").unwrap();
     for upstream_success in [false, true] {
-        let _ = joins.build(&[sales, receipts]);
+        assert!(joins.build(&[refunds, regions]).is_err());
         let result = if upstream_success {
             Ok(())
         } else {
             Err(CubeError::internal("wrapped failure".into()))
         };
         assert!(
-            matches!(joins.finish(result, &query, "planning"), Err(PlanError::User(message)) if message.contains("receipts"))
+            matches!(joins.finish(result, &query, "planning"), Err(PlanError::User(message)) if message.contains("more than one join path"))
         );
     }
+}
+
+// scenario: B0-JOIN-008
+#[test]
+fn a_lookup_without_a_path_is_an_answer_and_only_a_refusal_is_kept() {
+    // The planner asks speculatively through `try_build`: at the pinned commit every
+    // call site treats `None` as "no path, try something else" and propagates an
+    // error. So "no path" must not be remembered, and a refusal must be.
+    let model = Arc::new(
+        pp_cube_model::load_yaml(include_str!(
+            "../../pp-cube-compile/tests/fixtures/retail.yaml"
+        ))
+        .unwrap(),
+    );
+    let query = Query {
+        measures: vec!["sales.amount".into()],
+        ..Query::default()
+    };
+    let joins = Joins::new(model, &query).unwrap();
+    let cube = |name: &str| JoinHintItem::Single(name.to_owned());
+    // `regions` and `receipts` are both reached from `sales`, and neither reaches the other.
+    assert!(matches!(
+        joins.try_build(&[cube("regions"), cube("receipts")]),
+        Ok(None)
+    ));
+    assert!(joins.finish(Ok(()), &query, "planning").is_ok());
+    // A path that exists is still answered after a miss.
+    assert!(matches!(
+        joins.try_build(&[cube("sales"), cube("receipts")]),
+        Ok(Some(_))
+    ));
+    assert!(joins.finish(Ok(()), &query, "planning").is_ok());
+    // An ambiguous path is refused, and the refusal outlives a later success.
+    assert!(joins
+        .try_build(&[cube("refunds"), cube("regions")])
+        .is_err());
+    assert!(matches!(
+        joins.try_build(&[cube("sales"), cube("stores")]),
+        Ok(Some(_))
+    ));
+    assert!(matches!(
+        joins.finish(Ok(()), &query, "planning"),
+        Err(PlanError::User(message)) if message.contains("more than one join path")
+    ));
 }

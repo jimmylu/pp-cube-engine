@@ -234,7 +234,7 @@ fn forbidden_security_only_join_trees_fail_without_sql() {
             third_cube.as_str(),
             QUERY,
             "stores.store_name",
-            "neither side",
+            "cannot be ordered",
         ),
     ] {
         if message.is_empty() {

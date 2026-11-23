@@ -1,6 +1,6 @@
 ---
 source: crates/pp-cube-conformance/tests/manifest.rs
-expression: text
+expression: "golden_text(\"doris\")"
 ---
 -- day
 SELECT DATE_TRUNC(CONVERT_TZ(`sales`.sold_at, 'UTC', 'Asia/Tokyo'), 'day') `sales__sold_at_day`, sum(`sales`.amount) `sales__amount`  
@@ -228,6 +228,27 @@ FROM  dw.sales_dtl  AS `sales`
 LEFT JOIN  dw.dim_store  AS `stores` ON `sales`.store_cd = `stores`.store_cd
 WHERE (`stores`.store_name IN (?, ?)) GROUP BY 1 ORDER BY  1  ASC
 -- parameters: ["central", "uptown"]
+
+-- joined_one_to_one_measures
+SELECT `sales`.channel_cd `sales__channel_cd`, sum(`receipts`.tax) `receipts__tax`, count(`receipts`.receipt_no) `receipts__receipt_count`, sum(`receipts`.tax) / NULLIF(count(`receipts`.receipt_no), 0) `receipts__tax_per_receipt`  
+FROM  dw.sales_dtl  AS `sales`
+LEFT JOIN  dw.receipt  AS `receipts` ON `sales`.receipt_no = `receipts`.receipt_no GROUP BY 1 ORDER BY  1  ASC
+-- parameters: []
+
+-- joined_many_to_one_counts
+SELECT `sales`.category_cd `sales__category_cd`, COUNT(DISTINCT `stores`.store_cd) `stores__store_count`, COUNT(DISTINCT `stores`.store_name) `stores__name_count`  
+FROM  dw.sales_dtl  AS `sales`
+LEFT JOIN  dw.dim_store  AS `stores` ON `sales`.store_cd = `stores`.store_cd GROUP BY 1 ORDER BY  1  ASC
+-- parameters: []
+
+-- join_reading_a_third_cube
+SELECT `promos`.promo_name `promos__promo_name`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+LEFT JOIN  dw.dim_store  AS `stores` ON `sales`.store_cd = `stores`.store_cd
+LEFT JOIN  dw.dim_region  AS `regions` ON `stores`.region_cd = `regions`.region_cd
+LEFT JOIN  dw.promo  AS `promos` ON `sales`.promo_cd = `promos`.promo_cd AND `promos`.region_cd = `regions`.region_cd
+WHERE (`promos`.promo_name IS NOT NULL) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: []
 
 -- security_two_hop_join
 SELECT sum(`sales`.amount) `sales__amount`  
