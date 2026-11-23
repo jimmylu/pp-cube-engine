@@ -93,6 +93,26 @@ access should be able to call it.
 
 No failure returns SQL, and no message contains table names or SQL text.
 
+## Compared with Cube Core
+
+For every execution case, Cube Core 1.8.28 (the release of the pinned upstream
+commit) was asked for the SQL of the same model and query on Presto. Its SQL
+and parameters equal the kernel's in all forty cases, with one difference:
+
+- **Default row limit.** Cube's API adds `LIMIT 10000` to a query that sets no
+  limit. The kernel adds none: a query without a limit compiles without one.
+  A caller that wants a cap states `limit` in the query.
+
+Two things Cube does in its API layer are the caller's here:
+
+- **Security filters.** Cube has no separate channel for them in a REST query;
+  the comparison appends them to the query's top-level filters, which is where
+  the kernel puts the filters of the compile context.
+- **Timezone.** The kernel takes a default from the compile context; Cube takes
+  it from the query. The comparison states the effective timezone in the query.
+
+Cube Core has no Doris dialect, so Doris output is accepted by execution only.
+
 ## Not supported yet
 
 Apache Druid, multi-fact queries, time shifts, rolling windows, views, ungrouped

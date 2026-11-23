@@ -171,3 +171,60 @@ fn unusable_requests_emit_no_manifest() {
     let error = render(DialectId::Doris, "doris", model, &[good.clone(), good]).unwrap_err();
     assert!(error.contains("duplicate"), "{error}");
 }
+
+// scenario: B0-EXEC-005
+#[test]
+fn the_sources_manifest_adds_what_cube_core_needs_and_changes_nothing_else() {
+    let plain = emit("presto");
+    let output = Command::new(env!("CARGO_BIN_EXE_execution-cases"))
+        .args(["presto", "--sources"])
+        .output()
+        .expect("start the emitter");
+    assert!(output.status.success());
+    let mut sources: Value = serde_json::from_slice(&output.stdout).unwrap();
+    // The model is the text the cases were compiled against, and it loads.
+    let model = sources["model"].as_str().unwrap().to_owned();
+    let loaded = pp_cube_model::load_yaml(&model).unwrap();
+    assert!(loaded.cubes.iter().any(|cube| cube.name == "sales"));
+    assert_eq!(sources["data_sources"], serde_json::json!(["warehouse"]));
+    for case in sources["cases"].as_array().unwrap() {
+        let name = case["name"].as_str().unwrap();
+        // The query is Cube's own format and loads as written.
+        assert!(
+            pp_cube_model::load_query(&case["query"].to_string()).is_ok(),
+            "{name}"
+        );
+        assert!(case["timezone"].is_string(), "{name}");
+        let filters = case["security_filters"].as_array().unwrap();
+        assert_eq!(filters.is_empty(), !name.starts_with("security"), "{name}");
+        let wrapped = serde_json::json!({ "filters": filters }).to_string();
+        assert!(pp_cube_model::load_query(&wrapped).is_ok(), "{name}");
+    }
+    // Without the added fields it is exactly the plain manifest, so tiers that
+    // read the plain manifest are unaffected.
+    let document = sources.as_object_mut().unwrap();
+    document.remove("model");
+    document.remove("data_sources");
+    for case in document["cases"].as_array_mut().unwrap() {
+        let case = case.as_object_mut().unwrap();
+        for field in ["query", "timezone", "security_filters"] {
+            assert!(case.remove(field).is_some());
+        }
+    }
+    let plain: Value = serde_json::from_slice(&plain.stdout).unwrap();
+    assert_eq!(sources, plain);
+    for arguments in [
+        vec!["presto", "--other"],
+        vec!["presto", "--sources", "extra"],
+        vec![],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_execution-cases"))
+            .args(&arguments)
+            .output()
+            .unwrap();
+        assert!(
+            !output.status.success() && output.stdout.is_empty(),
+            "{arguments:?}"
+        );
+    }
+}
