@@ -42,21 +42,30 @@ pub fn midnight(day: &str) -> Value {
 /// Compiles every case of the named dialect now and returns its manifest.
 /// Fails, without a partial document, for a dialect that has no cases.
 pub fn manifest(dialect: &str) -> Result<String, String> {
-    match dialect {
-        "doris" => render(
+    emit(dialect, false)
+}
+
+/// The manifest with what a comparison against Cube Core needs besides the
+/// compiled SQL: the model text, and each case's query in Cube's own format with
+/// its timezone and the security filters that were applied to it.
+pub fn manifest_with_sources(dialect: &str) -> Result<String, String> {
+    emit(dialect, true)
+}
+
+fn emit(dialect: &str, sources: bool) -> Result<String, String> {
+    let (id, cases) = match dialect {
+        "doris" => (
             DialectId::Doris,
-            dialect,
-            MODEL,
-            &dialect_cases(doris::fixture, doris::scenario),
+            dialect_cases(doris::fixture, doris::scenario),
         ),
-        "presto" => render(
+        "presto" => (
             DialectId::Presto,
-            dialect,
-            MODEL,
-            &dialect_cases(presto::fixture, presto::scenario),
+            dialect_cases(presto::fixture, presto::scenario),
         ),
-        other => Err(format!("unknown dialect `{other}`")),
-    }
+        other => return Err(format!("unknown dialect `{other}`")),
+    };
+    let document = document(id, dialect, MODEL, &cases, sources)?;
+    Ok(format!("{document:#}\n"))
 }
 
 /// The model every shared case is compiled against.
@@ -92,6 +101,16 @@ pub fn render(
     model_yaml: &str,
     cases: &[Case],
 ) -> Result<String, String> {
+    document(dialect, label, model_yaml, cases, false).map(|document| format!("{document:#}\n"))
+}
+
+fn document(
+    dialect: DialectId,
+    label: &str,
+    model_yaml: &str,
+    cases: &[Case],
+    sources: bool,
+) -> Result<Value, String> {
     if cases.is_empty() {
         return Err(format!("dialect `{label}` has no execution cases"));
     }
@@ -139,7 +158,7 @@ pub fn render(
                 }
             }
         }
-        entries.push(json!({
+        let mut entry = json!({
             "name": case.name,
             "scenario": case.scenario,
             "fixture": case.fixture,
@@ -147,15 +166,40 @@ pub fn render(
             "params": params,
             "columns": case.columns,
             "rows": case.rows,
-        }));
+        });
+        if sources {
+            // The query as the case wrote it, not a re-serialization of what was loaded.
+            let written: Value =
+                serde_json::from_str(&case.query).map_err(|e| fail(e.to_string()))?;
+            let filters: Value = if case.security.is_empty() {
+                json!([])
+            } else {
+                serde_json::from_str::<Value>(case.security).map_err(|e| fail(e.to_string()))?
+                    ["filters"]
+                    .take()
+            };
+            entry["query"] = written;
+            entry["timezone"] = json!(case.timezone);
+            entry["security_filters"] = filters;
+        }
+        entries.push(entry);
     }
-    let document = json!({
+    let mut document = json!({
         "schema": SCHEMA,
         "dialect": label,
         "session": session,
         "cases": entries,
     });
-    Ok(format!("{document:#}\n"))
+    if sources {
+        let data_sources: std::collections::BTreeSet<&str> = model
+            .cubes
+            .iter()
+            .map(|cube| cube.data_source.as_str())
+            .collect();
+        document["model"] = json!(model_yaml);
+        document["data_sources"] = json!(data_sources);
+    }
+    Ok(document)
 }
 
 /// Every parameter keeps an explicit type so a tier never guesses a binding.

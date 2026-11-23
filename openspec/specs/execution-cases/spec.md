@@ -28,3 +28,9 @@ Every dialect's manifest SHALL be compiled from the same case declarations, so e
 #### Scenario: B0-EXEC-004 Presto manifest
 - **WHEN** the Presto and Doris manifests are compiled
 - **THEN** they hold the same case names in the same order with equal expected columns and rows, each declares its session properties, and the SQL and ordered parameters of every Presto case equal the reviewed golden snapshot
+
+### Requirement: Sources for comparison
+On request the emitter SHALL add to a manifest what an independent implementation needs to answer the same cases: the model text the cases were compiled against, its data sources, and each case's query in Cube's format with its effective default timezone and the security filters applied to it. Without the request the manifest SHALL be unchanged, and with it every other field SHALL be identical.
+#### Scenario: B0-EXEC-005 Sources manifest
+- **WHEN** the Presto manifest is requested with and without sources
+- **THEN** the sources manifest carries a loadable model, its data sources, and a loadable query, a timezone and security filters for every case, and equals the plain manifest once those fields are removed
