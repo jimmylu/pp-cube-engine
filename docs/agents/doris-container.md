@@ -24,7 +24,8 @@ literal expected columns and rows. The tier loads a fixture once for consecutive
 cases that share it, binds parameters through the native MySQL prepared
 statement protocol, never SQL text substitution, and compares column names and
 ordered rows. An unknown manifest schema, dialect, case field, parameter type or
-cell shape fails the run.
+cell shape fails the run. A failure line names the stage, the case and the
+numeric server code, never a server message, SQL or endpoint.
 
 Cases, fixtures, expectations and their reviewed golden are product files in
 `crates/pp-cube-conformance`; add or change them there, in a product change.

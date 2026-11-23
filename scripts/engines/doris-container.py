@@ -4,6 +4,7 @@ import datetime
 import importlib.util
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
@@ -58,16 +59,33 @@ def cell(value):
     return value
 
 
+# Where a run stopped, for the fixed failure line: a stage and a public case name.
+PROGRESS = {}
+
+
+def failure_point(error):
+    """Stage, case name and numeric server code only; never a server message, SQL or endpoint."""
+    name = str(PROGRESS.get('case', ''))
+    code = getattr(error, 'errno', None)
+    return ('stage=' + PROGRESS.get('stage', 'setup')
+            + (' case=' + name if re.fullmatch(r'[A-Za-z0-9_]{1,64}', name) else '')
+            + (' statement=%d' % PROGRESS['statement'] if PROGRESS.get('stage') == 'fixture' else '')
+            + (' code=%d' % code if type(code) is int else ''))
+
+
 def suite(connection, cases):
     """Runs every live-compiled case; each fixture leaves exactly its own data."""
     loaded = None
     for case in cases:
+        PROGRESS.update(stage='fixture', case=case['name'])
         if case['fixture'] != loaded:
             cursor = connection.cursor()
-            for statement in case['fixture']:
+            for index, statement in enumerate(case['fixture'], 1):
+                PROGRESS['statement'] = index
                 cursor.execute(statement)
             cursor.close()
             loaded = case['fixture']
+        PROGRESS['stage'] = 'case'
         # Parameters travel separately through the native prepared protocol.
         cursor = connection.cursor(prepared=True)
         try:
@@ -137,7 +155,8 @@ def main():
         run(cases)
     except Exception as error:
         # Never publish endpoints, driver/server responses or business input.
-        print('check doris-container: FAILED — ' + type(error).__name__, file=sys.stderr)
+        print('check doris-container: FAILED — ' + type(error).__name__ + ' at ' + failure_point(error),
+              file=sys.stderr)
         return 1
     print('check doris-container: PASSED — Doris 4.1.3, %d live-compiled manifest cases (%s)'
           % (len(cases), MANIFEST.scenarios(cases)))

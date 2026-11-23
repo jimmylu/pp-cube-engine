@@ -73,3 +73,21 @@ class DorisTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 doris.cell(value)
         self.assertIsNone(doris.cell(None))
+
+    def test_failure_point_names_stage_case_and_code_but_no_server_text(self):
+        class ServerError(Exception):
+            errno = 1105
+            msg = 'private server message about dw.sales_dtl'
+        cases = self.manifest()['cases']
+        connection = Mock()
+        connection.cursor.return_value.execute.side_effect = [None, ServerError('private')]
+        with self.assertRaises(ServerError) as failure:
+            doris.suite(connection, cases)
+        self.assertEqual(doris.failure_point(failure.exception), 'stage=fixture case=day statement=2 code=1105')
+        connection = Mock()
+        with unittest.mock.patch.object(doris, 'verify', side_effect=[None, ValueError('differs')]):
+            with self.assertRaises(ValueError) as failure:
+                doris.suite(connection, cases)
+        self.assertEqual(doris.failure_point(failure.exception), 'stage=case case=week')
+        doris.PROGRESS.update(stage='case', case='x; DROP TABLE y')
+        self.assertEqual(doris.failure_point(ServerError('p')), 'stage=case code=1105')
