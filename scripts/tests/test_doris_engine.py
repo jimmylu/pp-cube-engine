@@ -21,15 +21,6 @@ class DorisTests(unittest.TestCase):
                 doris.verify(cursor, 'SELECT ?', ('literal',), ['amount'], [(30,)])
             cursor.execute.assert_called_once_with('SELECT ?', ('literal',))
 
-    def test_suite_checks_fixture_outcomes_and_uses_prepared_cursor(self):
-        connection = Mock()
-        with unittest.mock.patch.object(doris, 'verify') as verify:
-            doris.suite(connection)
-        connection.cursor.assert_any_call(prepared=True)
-        self.assertEqual(verify.call_count, 19)
-        # Security AND the complete user OR produces two allowed fixture rows.
-        self.assertEqual(verify.call_args.args[-1], [(18.0,)])
-
     def manifest(self, **changes):
         case = {'name': 'day', 'scenario': 'B0-DORIS-010', 'fixture': ['CREATE X', 'INSERT X'],
                 'sql': 'SELECT ?', 'params': [{'type': 'text', 'value': 'a'}, {'type': 'null'}],
@@ -53,16 +44,18 @@ class DorisTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 doris.compiled_cases(emit)
 
-    def test_manifest_cases_reset_schema_share_fixtures_and_bind_natively(self):
+    def test_manifest_cases_share_fixtures_and_bind_natively(self):
         connection = Mock()
+        cases = self.manifest()['cases'] + [dict(self.manifest()['cases'][0], name='dst', fixture=['INSERT Y'])]
         with unittest.mock.patch.object(doris, 'verify') as verify:
-            doris.manifest_suite(connection, self.manifest()['cases'])
+            doris.suite(connection, cases)
         statements = [call.args[0] for call in connection.cursor.return_value.execute.call_args_list]
-        # The stored-golden schema goes first; an unchanged fixture is loaded once.
-        self.assertEqual(statements, ['DROP DATABASE IF EXISTS dw FORCE', 'CREATE X', 'INSERT X'])
+        # An unchanged fixture is loaded once; nothing but case fixtures touches the engine.
+        self.assertEqual(statements, ['CREATE X', 'INSERT X', 'INSERT Y'])
         self.assertEqual([call.kwargs for call in connection.cursor.call_args_list],
-                         [{}, {}, {'prepared': True}, {'prepared': True}])
-        self.assertEqual(verify.call_count, 2)
+                         [{}, {'prepared': True}, {'prepared': True}, {}, {'prepared': True}])
+        self.assertEqual(verify.call_count, 3)
+        self.assertFalse(hasattr(doris, 'golden'))
         self.assertEqual(verify.call_args.args[1:],
                          ('SELECT ?', ('a', None), ['day', 'amount'],
                           [(datetime.datetime(2026, 10, 1), 20)]))
