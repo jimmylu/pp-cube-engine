@@ -11,8 +11,7 @@ Done: workspace version 0.1.0, `Cargo.lock` for the six members, `CHANGELOG.md`.
 Fingerprints change for every compilation by design. No golden holds a
 fingerprint, so none changed.
 
-Written while #80 (joined measures) was still open; the changelog describes
-main with #80 merged. If #80 does not merge, drop the changelog lines about
-third-cube joins and measures of a joined cube.
+Written while #80 (joined measures) was open; it merged first and main is merged
+into this branch, so the changelog describes the tree as it is.
 
 Open: no tag, image or release is published, by the owner's decision.
