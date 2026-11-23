@@ -86,8 +86,9 @@ requiring manual removal; pre-existing containers are never removed.
 `scripts/dev deliver` runs local CI, real local Presto and Doris Docker smoke, cross-vendor review
 and remote t0 before Ready. Every repair round repeats all local checks. Engine
 failure stops before review; remote success cannot replace local proof. The one
-exception is a harness-only change outside `scripts/engines/` and
-`scripts/check.sh`: it skips both containers and its evidence says they were not
+exception is a harness-only change that touches no engine tier file
+(`scripts/engines/`, `scripts/check.sh`, `.github/workflows/`,
+`rust-toolchain.toml`): it skips both containers and its evidence says they were not
 run, which is neither a missing gate nor an engine failure (see
 [delivery.md](delivery.md)). T0 remains
 Docker-free. The separate presto-engine CI runs the real suite on relevant PRs.

@@ -113,20 +113,52 @@ class DeliveryTests(unittest.TestCase):
         self.addCleanup(self.engines.start)
         bound = {'base': 'a', 'head': 'b'}
         cases = [
-            ('docs/agents/review.md\nscripts/dev\nscripts/tests/test_delivery.py', False),
-            ('.github/workflows/t0.yml\nAGENTS.md\ndeny.toml', False),
-            ('scripts/dev\nscripts/engines/doris-container.py', True),
-            ('scripts/check.sh', True),
-            ('scripts/dev\ncrates/pp-cube-dialect/src/lib.rs', True),
-            ('templates/doris.yaml', True),
-            ('openspec/specs/dialect-doris/spec.md', True),
-            ('Cargo.lock', True),
-            ('', True),
+            (['docs/agents/review.md', 'scripts/dev', 'scripts/tests/test_delivery.py'], False),
+            (['AGENTS.md', 'deny.toml', '.github/CODEOWNERS'], False),
+            (['docs/agents/na\u00efve.md', 'scripts/a"b.py'], False),
+            (['scripts/dev', 'scripts/engines/doris-container.py'], True),
+            (['scripts/check.sh'], True),
+            (['.github/workflows/presto-engine.yml'], True),
+            (['.github/workflows/t0.yml', 'AGENTS.md'], True),
+            (['rust-toolchain.toml'], True),
+            (['scripts/dev', 'crates/pp-cube-dialect/src/lib.rs'], True),
+            (['templates/doris.yaml'], True),
+            (['openspec/specs/dialect-doris/spec.md'], True),
+            (['Cargo.lock'], True),
+            ([], True),
         ]
         for changed, required in cases:
-            with self.subTest(changed=changed), patch.object(dev, 'git', return_value=changed) as git:
+            listing = ''.join(path + '\0' for path in changed)
+            with self.subTest(changed=changed), patch.object(dev, 'git', return_value=listing) as git:
                 self.assertIs(dev.engines_required(bound), required)
-                git.assert_called_once_with('diff', '--no-renames', '--name-only', 'a...b')
+                git.assert_called_once_with('diff', '--no-renames', '--name-only', '-z', 'a...b')
+
+    def test_harness_only_exemption_reads_paths_without_git_quoting(self):
+        self.engines.stop()
+        self.addCleanup(self.engines.start)
+        with tempfile.TemporaryDirectory() as directory:
+            def git(*args):
+                return subprocess.check_output(['git', '-C', directory, *args], text=True).strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Test')
+            git('config', 'user.email', 'test@example.com')
+            # Git quotes these names in plain --name-only output under its default.
+            git('config', 'core.quotePath', 'true')
+            git('commit', '-qm', 'base', '--allow-empty')
+            base = git('rev-parse', 'HEAD')
+            for name in ('docs/agents/na\u00efve.md', 'scripts/a"b.py'):
+                path = Path(directory) / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('content\n')
+            git('add', '.')
+            git('commit', '-qm', 'harness paths')
+            bound = {'base': base, 'head': git('rev-parse', 'HEAD')}
+            previous_cwd = os.getcwd()
+            try:
+                os.chdir(directory)
+                self.assertIs(dev.engines_required(bound), False)
+            finally:
+                os.chdir(previous_cwd)
 
     def test_harness_only_delivery_skips_engines_and_says_so(self):
         self.engines_required.return_value = False

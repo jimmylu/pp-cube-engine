@@ -71,14 +71,17 @@ def check(mode):
 
 
 HARNESS_PATHS = re.compile(r'^(\.github/|scripts/|\.agents/|\.claude/|\.codex/|\.omp/|docs/agents/|AGENTS\.md$|CLAUDE\.md$|deny\.toml$|clippy\.toml$|rustfmt\.toml$|typos\.toml$|taplo\.toml$|rust-toolchain\.toml$)')
-# Harness files that decide what the engine tiers run or how they are invoked.
-ENGINE_PATHS = re.compile(r'^(scripts/engines/|scripts/check\.sh$)')
+# Harness files that decide what the engine tiers run or how they are invoked: the
+# engine scripts, the tier dispatcher, every workflow (one runs the remote engine
+# suite and any can invoke a tier) and the toolchain that builds the Doris emitter.
+ENGINE_PATHS = re.compile(r'^(scripts/engines/|scripts/check\.sh$|\.github/workflows/|rust-toolchain\.toml$)')
 
 
 def engines_required(bound):
     """Only a harness-only diff that leaves the engine tiers alone may skip the containers."""
-    changed = git('diff', '--no-renames', '--name-only',
-                  bound['base'] + '...' + bound['head']).splitlines()
+    # NUL-separated: Git C-quotes unusual paths otherwise, hiding them from both patterns.
+    changed = git('diff', '--no-renames', '--name-only', '-z',
+                  bound['base'] + '...' + bound['head']).split('\0')[:-1]
     return not changed or any(not HARNESS_PATHS.match(p) or ENGINE_PATHS.match(p) for p in changed)
 
 

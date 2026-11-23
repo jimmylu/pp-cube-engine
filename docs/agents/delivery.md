@@ -49,9 +49,13 @@ before review; Docker or engine failure stops delivery without a model repair.
 Remote engine success does not substitute for this local execution.
 
 One exception, decided by the owner on 2026-11-23: a pull request whose whole
-diff against its base is harness paths, none of them under `scripts/engines/`
-and not `scripts/check.sh`, skips both engine containers. Such a change cannot
-alter compiled SQL, the cases or how a tier runs. The controller prints
+diff against its base is harness paths, none of which decides what an engine
+tier runs or how it is invoked, skips both engine containers. The engine tier
+files are everything under `scripts/engines/` and `.github/workflows/` (one
+workflow runs the remote engine suite and any can invoke a tier),
+`scripts/check.sh` and `rust-toolchain.toml` (it builds the emitter the Doris
+tier executes). A change outside them cannot alter compiled SQL, the cases or
+how a tier runs, locally or remotely. The controller prints
 `local engine containers SKIPPED` and its evidence comment says the containers
 were not run; it never reports them as passed. Any product path, any engine
 tier file or an empty diff keeps the containers mandatory.
