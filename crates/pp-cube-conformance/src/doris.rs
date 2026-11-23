@@ -335,7 +335,7 @@ fn matrix() -> Vec<Case> {
                 140,
             )
         },
-        // The user OR admits five sales; the security pattern admits only `a%_\b`.
+        // The user OR admits four sales; the security pattern admits only `a%_\b`.
         Case {
             security: r#"{"filters":[{"member":"sales.region_cd","operator":"startsWith","values":["a%"]}]}"#,
             ..passing(
