@@ -187,3 +187,12 @@ above the cap. Earlier sections that mention 500 KB describe the cap as it was.
 The alternative, sending `Cargo.lock` only as a diff, was not taken: an earlier
 harness change deliberately kept the lockfile whole so dependency findings can
 cite pinned lines. A packet near the cap is still a prompt to consider a split.
+
+## On demand since 2026-11-23
+
+The owner removed review from automatic delivery: it cost several rounds per pull
+request and most of the elapsed time. `scripts/dev deliver` no longer calls the
+reviewer or a repair model. `scripts/dev review` is unchanged and is run only when
+the owner asks; everything above about the packet, citations, questions and
+reassessments still describes that command. Sections above that describe review
+as a delivery gate record how it worked before this date.

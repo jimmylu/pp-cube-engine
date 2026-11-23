@@ -83,12 +83,12 @@ Cleanup is attempted after any create attempt, even a timeout. Ordinary cleanup
 failure fails the run. SIGKILL or shutdown can leave an owned cube-presto- container
 requiring manual removal; pre-existing containers are never removed.
 
-`scripts/dev deliver` runs local CI, real local Presto and Doris Docker smoke, cross-vendor review
-and remote t0 before Ready. Every repair round repeats all local checks. Engine
-failure stops before review; remote success cannot replace local proof. T0 remains
-Docker-free. The separate presto-engine CI runs the real suite on relevant PRs.
-Its log/summary records the tested merge SHA and final smoke line. Evidence binds
-to the PR head and recorded merge SHA in comments/Actions, not evidence-only commits.
+Delivery does not start this container locally. The `engines` workflow on GitHub
+runs `presto-smoke` (this suite) and `doris-smoke` on every pull request that can
+affect them, and `scripts/dev deliver` requires both when they are triggered; see
+[delivery.md](delivery.md). Run the container mode locally when debugging. T0 remains
+Docker-free. The workflow log/summary records the tested merge SHA and final line.
+Evidence binds to the PR head in comments/Actions, not evidence-only commits.
 The owner approves and merges.
 
 ## Sources and handoffs

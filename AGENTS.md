@@ -12,7 +12,8 @@ scripts/check.sh ci     # before requesting final review; CI runs exactly this a
 ```
 
 Use `scripts/dev checkpoint --message "..."` to check, commit, push and maintain a Draft PR.
-Use `scripts/dev deliver` to run CI, cross-vendor review and bounded repair, then request owner review.
+Use `scripts/dev deliver` to run local CI, wait for the remote checks (`t0` and, when the change can affect engines, the engine containers) and request owner review. It runs no model and starts no container.
+Use `scripts/dev review` for a cross-model review only when the owner asks for one; it never runs automatically.
 Report commit SHA, push status, PR URL and blockers after every publication.
 The last check line is evidence; store evidence against its SHA in PR comments or CI artifacts. A check you did not run is reported as not run.
 
@@ -27,7 +28,8 @@ First use in a fresh clone: `scripts/vendor-sync.sh` (a plain `git submodule upd
 5. **Harness changes travel alone.** A pull request touching a harness path (`.github/`, `scripts/`, `AGENTS.md`, `CLAUDE.md`, `.agents/`, `.claude/`, `.codex/`, `.omp/`, `docs/agents/`, lint and toolchain configuration) touches nothing else.
 6. **Stay inside the current baseline level.** Anything beyond it becomes an issue labelled `after-baseline`.
 7. **The owner merges.** Automate delivery through Ready; owner reviews the final head and merges.
-8. **Size is guidance.** Around 400 lines prompts a scope review, not a forced split. Keep one independently testable behavior together.
+8. **A change is one capability, sized by work.** Each pull request delivers one independently usable capability. Plan a change as about 2–3 working days of work, up to 4–5 when the capability needs it. There is no line or file limit; do not split a capability to stay small.
+9. **Test and framework optimization travels in its own batch.** A capability pull request carries the tests its capability needs and no more. Reworking existing test cases, fixtures or the test framework is collected and done once, in a dedicated pull request, not spread across capability pull requests or repeated.
 
 ## Stop conditions
 
@@ -36,7 +38,7 @@ Stop, write the state into the change's `notes.md`, and report when:
 - the same check fails twice after two different fixes;
 - the work needs a file outside the change's stated scope, or a harness path;
 - upstream behaviour contradicts the spec;
-- the change passes about one working day without a reviewable result;
+- the change runs past its planned size (rule 8) by about a working day without a reviewable result;
 - a question only the owner can answer comes up: open an issue labelled `decision`.
 
 Stopping with a clear report is a successful outcome.
@@ -48,7 +50,7 @@ Stopping with a clear report is a successful outcome.
 
 ## Roles
 
-One agent at a time owns a change's branch. The reviewing model comes from a different vendor than the implementing model. The reviewer posts a report as a pull request comment and pushes nothing. The pull request records which tool and model implemented and reviewed.
+One agent at a time owns a change's branch. Review by a second model is on demand: the owner starts it, or asks for it, when a change warrants one. When it runs, the reviewing model comes from a different vendor than the implementing model, posts its report as a pull request comment and pushes nothing. The pull request records which tool and model implemented, and the reviewer only when a review ran.
 
 ## Read when
 
