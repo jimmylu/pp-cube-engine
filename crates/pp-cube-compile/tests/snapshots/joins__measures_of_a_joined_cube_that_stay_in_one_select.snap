@@ -1,0 +1,13 @@
+---
+source: crates/pp-cube-compile/tests/joins.rs
+expression: "[r#\"{\"measures\": [\"receipts.tax\", \"receipts.avg_tax\", \"receipts.receipt_count\", \"receipts.tax_per_receipt\"],\n            \"dimensions\": [\"sales.channel_cd\"], \"order\": [[\"sales.channel_cd\", \"asc\"]]}\"#,\nr#\"{\"measures\": [\"stores.store_count\", \"stores.name_count\"],\n            \"dimensions\": [\"sales.channel_cd\"], \"order\": [[\"sales.channel_cd\", \"asc\"]]}\"#,].map(compiled).join(\"\\n\\n\")"
+---
+SELECT "sales".channel_cd "sales__channel_cd", sum("receipts".tax) "receipts__tax", avg("receipts".tax) "receipts__avg_tax", count("receipts".receipt_no) "receipts__receipt_count", sum("receipts".tax) / NULLIF(count("receipts".receipt_no), 0) "receipts__tax_per_receipt"  
+FROM  dw.sales_dtl  AS "sales"
+LEFT JOIN  dw.receipt  AS "receipts" ON "sales".receipt_no = "receipts".receipt_no GROUP BY 1 ORDER BY  1  ASC
+-- parameters: []
+
+SELECT "sales".channel_cd "sales__channel_cd", COUNT(DISTINCT "stores".store_cd) "stores__store_count", COUNT(DISTINCT "stores".store_name) "stores__name_count"  
+FROM  dw.sales_dtl  AS "sales"
+LEFT JOIN  dw.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd GROUP BY 1 ORDER BY  1  ASC
+-- parameters: []
