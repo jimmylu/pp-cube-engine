@@ -1207,6 +1207,7 @@ dependencies = [
 name = "pp-cube-conformance"
 version = "0.0.0"
 dependencies = [
+ "insta",
  "pp-cube-compile",
  "pp-cube-model",
  "serde_json",

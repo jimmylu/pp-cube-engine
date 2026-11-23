@@ -14,3 +14,7 @@ workspace = true
 pp-cube-compile = { path = "../pp-cube-compile" }
 pp-cube-model = { path = "../pp-cube-model" }
 serde_json = "1.0.154"
+
+[dev-dependencies]
+# Same pin as pp-cube-compile; see the note there.
+insta = { version = "~1.43", default-features = false }
