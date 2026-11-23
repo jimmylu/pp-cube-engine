@@ -34,8 +34,9 @@ Evidence, on the working tree that became the implementation commit:
 - Existing SQL is unchanged: the manifest goldens gained nine blocks and lost
   no line; no existing compile golden changed, including after the date-range
   completion.
-- `check fast`, `check ci` and the remote checks are recorded on the pull
-  request. Cross-model review: not run.
+- `check fast: PASSED — 4 steps, 0 skipped, 427s @ 20efeeb+dirty`; after
+  archiving, `check ci: PASSED — 15 steps, 0 skipped, 426s @ 658e82b+dirty`.
+- Remote checks are recorded on the pull request. Cross-model review: not run.
 
 Open:
 - Three things Cube compiles and the kernel refuses are owner-visible choices,
