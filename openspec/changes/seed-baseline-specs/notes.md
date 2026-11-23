@@ -156,3 +156,9 @@ B0-PRESTO-003 moves to complete-compile-contract as its own requirement, after
 the Presto tier ran the manifest on GitHub (#72). The remaining seed requirement
 is reduced to the Cube Core comparison, B0-PRESTO-002 (T1). Druid deltas stay
 proposed; the owner paused new dialects on 2026-11-23.
+
+## Presto Cube Core comparison transfer
+B0-PRESTO-002 moves to add-joined-measures, reworded to what the tier does, after
+the comparison ran on GitHub as `cube-core` (#79). The emptied dialect-presto
+seed delta is deleted. Only the Druid delta remains here; new dialects are
+paused by the owner's decision of 2026-11-23.

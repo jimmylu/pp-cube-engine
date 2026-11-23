@@ -6,6 +6,8 @@ cubes:
       - { name: stores, relationship: many_to_one, sql: "{CUBE}.store_cd = {stores.store_cd}" }
       - { name: receipts, relationship: one_to_one, sql: "{CUBE}.receipt_no = {receipts.receipt_no}" }
       - { name: visits, relationship: many_to_one, sql: "{CUBE}.visit_id = {visits.visit_id}" }
+      # The condition reads `regions`, which is neither side of this join.
+      - { name: promos, relationship: many_to_one, sql: "{CUBE}.promo_cd = {promos.promo_cd} AND {promos.region_cd} = {regions.region_cd}" }
     dimensions:
       - { name: sale_id, sql: "{CUBE}.sale_id", type: number, primary_key: true }
       - { name: channel_cd, sql: "{CUBE}.channel_cd", type: string }
@@ -22,6 +24,11 @@ cubes:
       - { name: store_name, sql: "{CUBE}.store_name", type: string }
     measures:
       - { name: store_count, type: count }
+      - { name: name_count, type: count_distinct, sql: "{CUBE}.store_name" }
+      - { name: floor_area, type: sum, sql: "{CUBE}.floor_area" }
+      - { name: avg_area, type: avg, sql: "{CUBE}.floor_area" }
+      - { name: min_area, type: min, sql: "{CUBE}.floor_area" }
+      - { name: max_area, type: max, sql: "{CUBE}.floor_area" }
     segments:
       - { name: open, sql: "{CUBE}.closed_at IS NULL" }
   - name: regions
@@ -39,6 +46,9 @@ cubes:
       - { name: printed, sql: "{CUBE}.printed = 1", type: boolean }
     measures:
       - { name: tax, type: sum, sql: "{CUBE}.tax" }
+      - { name: avg_tax, type: avg, sql: "{CUBE}.tax" }
+      - { name: receipt_count, type: count }
+      - { name: tax_per_receipt, type: number, sql: "{tax} / NULLIF({receipt_count}, 0)" }
   # Reaches regions directly and through stores.
   - name: refunds
     sql_table: dw.refund_dtl
@@ -50,6 +60,14 @@ cubes:
       - { name: refund_id, sql: "{CUBE}.refund_id", type: number, primary_key: true }
     measures:
       - { name: amount, type: sum, sql: "{CUBE}.amount" }
+  # A promotion runs per region.
+  - name: promos
+    sql_table: dw.promo
+    data_source: warehouse
+    dimensions:
+      - { name: promo_cd, sql: "{CUBE}.promo_cd", type: string, primary_key: true }
+      - { name: region_cd, sql: "{CUBE}.region_cd", type: string, primary_key: true }
+      - { name: promo_name, sql: "{CUBE}.promo_name", type: string }
   # On another data source.
   - name: visits
     sql_table: web.visit

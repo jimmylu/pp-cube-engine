@@ -111,10 +111,24 @@ Two things Cube does in its API layer are the caller's here:
 - **Timezone.** The kernel takes a default from the compile context; Cube takes
   it from the query. The comparison states the effective timezone in the query.
 
+Joins were compared separately, with the same result under both of Cube's
+planners:
+
+- Measures of a cube joined one_to_one, and count or count_distinct of a cube
+  joined many_to_one, compile to the SQL Cube writes.
+- A join whose condition reads a third cube joins that cube first, as Cube does.
+- **Sum, avg, min and max of a cube reached through a many_to_one join** are
+  unsupported here. Cube answers them with multi-stage SQL (a subquery of
+  distinct keys); the baseline is one flat SELECT.
+- **Measures of two cubes in one query** are unsupported here, including the
+  case Cube writes flat: a measure of the root cube beside one of a cube joined
+  one_to_one.
+
 Cube Core has no Doris dialect, so Doris output is accepted by execution only.
 
 ## Not supported yet
 
-Apache Druid, multi-fact queries, time shifts, rolling windows, views, ungrouped
+Apache Druid, measures of more than one cube, measures that need multi-stage SQL,
+multi-fact queries, time shifts, rolling windows, views, ungrouped
 queries, approximate distinct counts, custom granularities and relative date
 ranges. See [performance](performance.md) for latency figures.

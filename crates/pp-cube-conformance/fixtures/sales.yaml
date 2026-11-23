@@ -4,6 +4,9 @@ cubes:
     data_source: warehouse
     joins:
       - { name: stores, relationship: many_to_one, sql: "{CUBE}.store_cd = {stores.store_cd}" }
+      - { name: receipts, relationship: one_to_one, sql: "{CUBE}.receipt_no = {receipts.receipt_no}" }
+      # The condition reads `regions`, which is neither side of this join.
+      - { name: promos, relationship: many_to_one, sql: "{CUBE}.promo_cd = {promos.promo_cd} AND {promos.region_cd} = {regions.region_cd}" }
     dimensions:
       - { name: sale_id, sql: "{CUBE}.sale_id", type: number, primary_key: true }
       - { name: channel_cd, sql: "{CUBE}.channel_cd", type: string }
@@ -35,12 +38,33 @@ cubes:
     dimensions:
       - { name: store_cd, sql: "{CUBE}.store_cd", type: string, primary_key: true }
       - { name: store_name, sql: "{CUBE}.store_name", type: string }
+    measures:
+      - { name: store_count, type: count }
+      - { name: name_count, type: count_distinct, sql: "{CUBE}.store_name" }
   - name: regions
     sql_table: dw.dim_region
     data_source: warehouse
     dimensions:
       - { name: region_cd, sql: "{CUBE}.region_cd", type: string, primary_key: true }
       - { name: region_name, sql: "{CUBE}.region_name", type: string }
+  # One receipt per sale at most.
+  - name: receipts
+    sql_table: dw.receipt
+    data_source: warehouse
+    dimensions:
+      - { name: receipt_no, sql: "{CUBE}.receipt_no", type: string, primary_key: true }
+    measures:
+      - { name: tax, type: sum, sql: "{CUBE}.tax" }
+      - { name: receipt_count, type: count }
+      - { name: tax_per_receipt, type: number, sql: "{tax} / NULLIF({receipt_count}, 0)" }
+  # A promotion runs per region.
+  - name: promos
+    sql_table: dw.promo
+    data_source: warehouse
+    dimensions:
+      - { name: promo_cd, sql: "{CUBE}.promo_cd", type: string, primary_key: true }
+      - { name: region_cd, sql: "{CUBE}.region_cd", type: string, primary_key: true }
+      - { name: promo_name, sql: "{CUBE}.promo_name", type: string }
   # Every query on this cube carries the row restriction of its source.
   - name: valid_sales
     sql: SELECT channel_cd, amount FROM dw.sales_dtl WHERE is_valid = 1
