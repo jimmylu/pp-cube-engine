@@ -71,6 +71,29 @@ fn doris_manifest_is_stable_and_complete() {
     assert_eq!(cases[0]["rows"][0][0]["timestamp"], "2026-10-01T00:00:00");
 }
 
+// scenario: B0-EXEC-003
+#[test]
+fn doris_cases_match_their_goldens() {
+    let manifest: Value =
+        serde_json::from_str(&pp_cube_conformance::manifest("doris").unwrap()).unwrap();
+    let mut text = String::new();
+    for case in manifest["cases"].as_array().unwrap() {
+        let values: Vec<_> = case["params"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|param| param["value"].to_string())
+            .collect();
+        text.push_str(&format!(
+            "-- {}\n{}\n-- parameters: [{}]\n\n",
+            case["name"].as_str().unwrap(),
+            case["sql"].as_str().unwrap(),
+            values.join(", ")
+        ));
+    }
+    insta::assert_snapshot!("doris_cases", text);
+}
+
 // scenario: B0-EXEC-002
 #[test]
 fn unusable_requests_emit_no_manifest() {

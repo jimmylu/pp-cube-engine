@@ -1,0 +1,81 @@
+---
+source: crates/pp-cube-conformance/tests/manifest.rs
+expression: text
+---
+-- day
+SELECT DATE_TRUNC(CONVERT_TZ(`sales`.sold_at, 'UTC', 'Asia/Tokyo'), 'day') `sales__sold_at_day`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: ["2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
+
+-- week
+SELECT DATE_TRUNC(CONVERT_TZ(`sales`.sold_at, 'UTC', 'Asia/Tokyo'), 'week') `sales__sold_at_week`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: ["2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
+
+-- month
+SELECT DATE_TRUNC(CONVERT_TZ(`sales`.sold_at, 'UTC', 'Asia/Tokyo'), 'month') `sales__sold_at_month`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: ["2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
+
+-- quarter
+SELECT DATE_TRUNC(CONVERT_TZ(`sales`.sold_at, 'UTC', 'Asia/Tokyo'), 'quarter') `sales__sold_at_quarter`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: ["2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
+
+-- year
+SELECT DATE_TRUNC(CONVERT_TZ(`sales`.sold_at, 'UTC', 'Asia/Tokyo'), 'year') `sales__sold_at_year`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: ["2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
+
+-- inDateRange
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)))
+-- parameters: ["2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
+
+-- notInDateRange
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at < CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) OR `sales`.sold_at > CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)))
+-- parameters: ["2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
+
+-- beforeDate
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at < CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)))
+-- parameters: ["2026-09-30T15:00:00.000Z"]
+
+-- beforeOrOnDate
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)))
+-- parameters: ["2026-10-01T14:59:59.999Z"]
+
+-- afterDate
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at > CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)))
+-- parameters: ["2026-10-01T14:59:59.999Z"]
+
+-- afterOrOnDate
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)))
+-- parameters: ["2026-09-30T15:00:00.000Z"]
+
+-- security
+SELECT sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE ((`sales`.sold_at < CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) OR (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)))) AND (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)))
+-- parameters: ["2026-09-30T15:00:00.000Z", "2026-09-30T15:00:00.000Z", "2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
+
+-- dst
+SELECT DATE_TRUNC(CONVERT_TZ(`sales`.sold_at, 'UTC', 'America/New_York'), 'day') `sales__sold_at_day`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales`
+WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: ["2026-11-01T04:00:00.000Z", "2026-11-02T04:59:59.999Z"]
