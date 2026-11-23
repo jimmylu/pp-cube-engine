@@ -1,0 +1,31 @@
+---
+source: crates/pp-cube-compile/tests/multi_fact.rs
+expression: "[BY_STORE,\nTOTALS].map(|query| compiled(DialectId::Presto, query)).join(\"\\n\\n\")"
+---
+ WITH 
+cte_0 AS (  SELECT "stores".store_name "stores__store_name", sum("sales".amount) "sales__amount"  
+  FROM  dw.sales_dtl  AS "sales"
+  LEFT JOIN  dw.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd GROUP BY 1),
+cte_1 AS (  SELECT "stores".store_name "stores__store_name", sum("refunds".amount) "refunds__amount"  
+  FROM  dw.refund_dtl  AS "refunds"
+  LEFT JOIN  dw.dim_store  AS "stores" ON "refunds".store_cd = "stores".store_cd GROUP BY 1)
+SELECT "fk_aggregate_keys"."stores__store_name" "stores__store_name", "q_0"."sales__amount" "sales__amount", "q_1"."refunds__amount" "refunds__amount"  
+FROM (SELECT DISTINCT "stores__store_name" "stores__store_name"  
+FROM (SELECT DISTINCT "stores__store_name" "stores__store_name"  
+FROM  cte_0  AS "cte_0"
+ UNION ALL 
+SELECT DISTINCT "stores__store_name" "stores__store_name"  
+FROM  cte_1  AS "cte_1") AS "fk_aggregate_keys_source") AS "fk_aggregate_keys"
+LEFT JOIN  cte_0  AS "q_0" ON (("fk_aggregate_keys"."stores__store_name" = "q_0"."stores__store_name" OR (("fk_aggregate_keys"."stores__store_name" IS NULL) AND ("q_0"."stores__store_name" IS NULL))))
+LEFT JOIN  cte_1  AS "q_1" ON (("fk_aggregate_keys"."stores__store_name" = "q_1"."stores__store_name" OR (("fk_aggregate_keys"."stores__store_name" IS NULL) AND ("q_1"."stores__store_name" IS NULL)))) ORDER BY  1  ASC
+-- parameters: []
+
+ WITH 
+cte_0 AS (  SELECT sum("sales".amount) "sales__amount"  
+  FROM  dw.sales_dtl  AS "sales"),
+cte_1 AS (  SELECT sum("refunds".amount) "refunds__amount"  
+  FROM  dw.refund_dtl  AS "refunds")
+SELECT "q_0"."sales__amount" "sales__amount", "q_1"."refunds__amount" "refunds__amount"  
+FROM  cte_0  AS "q_0"
+INNER JOIN  cte_1  AS "q_1" ON 1 = 1
+-- parameters: []

@@ -6,6 +6,29 @@ gRPC contract or the Rust API; such changes are listed under "Breaking".
 The kernel version is part of every fingerprint, so fingerprints differ between
 versions even when the SQL does not.
 
+## Unreleased
+
+**Compiles**
+- Measures of more than one cube in one query (B1 multi-fact): each fact is
+  aggregated on its own and the results are combined over the shared
+  dimensions. Dimension, segment and security filters restrict every fact;
+  measure filters, order and paging apply to the combined rows.
+- Sum, avg, min and max of a cube reached through a many_to_one join, over
+  distinct keys.
+- A measure beside one of a cube joined one_to_one, and a formula over measures
+  of both, in one SELECT.
+
+**Changed**
+- SQL may begin with `WITH`. The result is still one statement.
+
+**Breaking**
+- A filter on a count of a cube reached through a many_to_one join returns
+  unsupported. It compiled in 0.1.0 to a comparison of joined rows that could
+  contradict the selected count.
+
+**Evidence**
+- Fifty shared cases on Presto 0.293, Doris 4.1.3 and against Cube Core 1.8.28.
+
 ## 0.1.0
 
 The first version. It compiles the B0 baseline of Cube's data model and query

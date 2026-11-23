@@ -13,13 +13,12 @@ fn context() -> CompileContext {
 }
 
 // scenario: B0-RESULT-002
-// scenario: B0-AGG-003
+// scenario: B1-MULTI-005
 #[test]
-fn multi_fact_is_unsupported_and_invalid_inputs_keep_precedence() {
+fn invalid_inputs_keep_precedence_in_a_query_over_two_cubes_measures() {
     let base = load_yaml(include_str!("fixtures/retail.yaml")).unwrap();
     let query = load_query(r#"{"measures":["sales.amount","stores.store_count"]}"#).unwrap();
-    let error = compile(&Arc::new(base.clone()), &query, &context()).unwrap_err();
-    assert!(matches!(error, CompileError::Unsupported(_)), "{error:?}");
+    assert!(compile(&Arc::new(base.clone()), &query, &context()).is_ok());
     let mut model = base.clone();
     model.cubes[0].sql_table = None;
     assert!(matches!(
@@ -97,7 +96,7 @@ fn public_failures_do_not_disclose_physical_sources() {
     let base = load_yaml(&text).unwrap();
     for query in [
         r#"{"measures":["missing.member"]}"#,
-        r#"{"measures":["sales.amount","stores.store_count"]}"#,
+        r#"{"measures":["sales.amount","refunds.amount"],"dimensions":["sales.channel_cd"]}"#,
     ] {
         let error = compile(
             &Arc::new(base.clone()),
@@ -106,7 +105,9 @@ fn public_failures_do_not_disclose_physical_sources() {
         )
         .unwrap_err();
         assert!(!error.to_string().contains("hidden_"));
-        assert!(error.to_string().contains("missing") || error.to_string().contains("baseline"));
+        assert!(
+            error.to_string().contains("missing") || error.to_string().contains("No join path")
+        );
     }
     let mut invalid = base;
     invalid.cubes[0].sql_table = None;
@@ -151,7 +152,7 @@ fn security_measure_dependencies_are_classified_without_being_selected() {
         Err(CompileError::Query(_))
     ));
     for text in [
-        r#"{"measures":["sales.amount","refunds.amount"]}"#,
+        r#"{"measures":["sales.amount","refunds.amount"],"dimensions":["sales.channel_cd"]}"#,
         r#"{"measures":["refunds.amount","stores.store_count"],"dimensions":["regions.region_name"]}"#,
     ] {
         assert!(matches!(

@@ -123,3 +123,15 @@ templates:
   tesseract/join_types_left:
     source: BaseQuery.ts
     text: "LEFT"
+  expressions/column_reference:
+    source: BaseQuery.ts
+    text: "{% if table_name %}{{ table_name }}.{% endif %}{{ name }}"
+  statements/cte:
+    source: BaseQuery.ts
+    text: "{{ alias }} AS ({{ query | indent(2, true) }})"
+  expressions/is_null:
+    source: BaseQuery.ts
+    text: "({{ expr }} IS {% if negate %}NOT {% endif %}NULL)"
+  tesseract/join_types_inner:
+    source: BaseQuery.ts
+    text: "INNER"

@@ -29,15 +29,17 @@ fn doris_manifest_is_stable_and_complete() {
             scenario("B0-DORIS-002"),
             scenario("B0-DORIS-011")
         ),
-        (43, 13, 29, 1)
+        (50, 13, 36, 1)
     );
     let mut names = std::collections::BTreeSet::new();
     for case in cases {
         let name = case["name"].as_str().unwrap();
         assert!(names.insert(name), "{name} is declared twice");
         assert!(!case["fixture"].as_array().unwrap().is_empty(), "{name}");
+        // One SELECT, or the common table expressions of a query over several facts.
+        let sql = case["sql"].as_str().unwrap();
         assert!(
-            case["sql"].as_str().unwrap().starts_with("SELECT"),
+            sql.starts_with("SELECT") || sql.starts_with(" WITH \ncte_0 AS ("),
             "{name}"
         );
         let params = case["params"].as_array().unwrap();
@@ -101,7 +103,7 @@ fn presto_shares_the_doris_cases_and_matches_its_goldens() {
         doris["cases"].as_array().unwrap(),
         presto["cases"].as_array().unwrap(),
     );
-    assert_eq!(presto_cases.len(), 43);
+    assert_eq!(presto_cases.len(), 50);
     assert_eq!(doris_cases.len(), presto_cases.len());
     // Same questions and the same answers on both engines; only SQL and fixtures differ.
     for (doris, presto) in doris_cases.iter().zip(presto_cases) {
@@ -128,7 +130,14 @@ fn presto_shares_the_doris_cases_and_matches_its_goldens() {
         .filter(|case| case["sql"].as_str().unwrap().contains("\nOFFSET "))
         .map(|case| case["name"].as_str().unwrap())
         .collect();
-    assert_eq!(paginated, ["order_limit_offset", "page_past_last_group"]);
+    assert_eq!(
+        paginated,
+        [
+            "order_limit_offset",
+            "page_past_last_group",
+            "multi_fact_page"
+        ]
+    );
     insta::assert_snapshot!("presto_cases", golden_text("presto"));
 }
 
