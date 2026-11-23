@@ -35,8 +35,8 @@ Evidence, on the working tree that became the implementation commit:
   conformance tier executes the same fifty cases on Presto.
 - Existing cases' SQL is unchanged: the two manifest goldens gained seven
   blocks and lost no line. No existing compile golden changed.
-- `check ci` and the remote checks are recorded on the pull request.
-  Cross-model review: not run.
+- After archiving: `check ci: PASSED — 15 steps, 0 skipped, 333s @ 8aa90a1+dirty`.
+- Remote checks are recorded on the pull request. Cross-model review: not run.
 
 Open:
 - The filtered count is upstream behaviour worth an issue: selected as

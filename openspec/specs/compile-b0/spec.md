@@ -6,11 +6,10 @@ Specify the first supported query level without promising B1 behavior.
 ## Requirements
 
 ### Requirement: B0 boundary
-The B0 feature matrix SHALL be: the six aggregate types, filtered measures, number formulas, joined dimensions, every contract-query filter operator, and/or groups, segments, absolute time ranges, the five granularities, timezone conversion, explicit order, limit and offset. The kernel SHALL return unsupported, without SQL, for B1 query features and for matrix members outside the target dialect's declared support.
+The B0 feature matrix SHALL be: the six aggregate types, filtered measures, number formulas, joined dimensions, every contract-query filter operator, and/or groups, segments, absolute time ranges, the five granularities, timezone conversion, explicit order, limit and offset. The kernel SHALL return unsupported, without SQL, for query features of a higher level that are not implemented and for matrix members outside the target dialect's declared support.
 #### Scenario: B0-AGG-003 Higher-level query
-- **WHEN** a query with a valid B0 bundle requests either measures from more than one cube in an otherwise valid query connected by a unique usable join tree on one data source, or ungrouped output, compareDateRange or a recognized Cube granularity outside B0
+- **WHEN** a query with a valid B0 bundle requests ungrouped output, compareDateRange or a recognized Cube granularity outside B0
 - **THEN** compilation returns unsupported without SQL
-- **AND** when multi-cube measures are the only requested feature outside B0, query validation takes precedence: invalid members or security filters, disconnected cubes, ambiguous join paths and differing data sources return a query error without SQL
 
 ### Requirement: Single-cube aggregation
 The kernel SHALL compile count, count_distinct, sum, avg, min, max, filtered measures and number formulas using pinned planner semantics. Direct-table B0 queries SHALL use a flat SELECT; a cube defined by row-filtered sql MAY add its source subquery.
@@ -46,10 +45,10 @@ A join condition MAY read cubes other than the two it joins, directly or through
 - **THEN** SQL joins stores, then regions, then promotions, in that order in both queries, in one flat SELECT
 
 ### Requirement: Measures of joined cubes
-The measures of a query SHALL belong to one cube, which MAY be reached through joins. Through one_to_one joins every B0 measure type SHALL compile in the same flat SELECT. When a many_to_one join lies on the way, count and count_distinct SHALL compile, count as a distinct count of the cube's primary key, and every other measure type SHALL return unsupported without SQL, naming the measure. A compilation the planner can only express as multi-stage SQL SHALL return unsupported.
+The measures of a query MAY belong to a cube reached through joins. Through one_to_one joins every B0 measure type SHALL compile in the same flat SELECT. When a many_to_one join lies on the way, count and count_distinct SHALL compile in the flat SELECT, count as a distinct count of the cube's primary key. Every other measure type through a many_to_one join, and measures of more than one cube, SHALL compile as compile-b1 states.
 #### Scenario: B0-JOIN-006 Joined measures
-- **WHEN** queries take sum, avg, count and a number formula from a cube joined one_to_one, count and count_distinct from a cube joined many_to_one, and sum, avg, min and max from that cube
-- **THEN** the first two compile to one flat SELECT each, with the many_to_one count as a distinct count of the primary key, and each of the last returns unsupported naming the measure
+- **WHEN** queries take sum, avg, count and a number formula from a cube joined one_to_one, and count and count_distinct from a cube joined many_to_one
+- **THEN** each compiles to one flat SELECT, with the many_to_one count as a distinct count of the primary key
 
 ### Requirement: Speculative join lookups
 When the planner asks whether a join tree exists for a set of cubes and none does, the kernel SHALL answer that there is none without failing the compilation. A lookup the kernel refuses, such as an ambiguous path, SHALL fail the compilation with its own message even if the planner goes on to succeed.
