@@ -73,47 +73,84 @@ impl fmt::Display for CompileError {
 
 impl std::error::Error for CompileError {}
 
+/// A model that has been validated and digested once, ready to compile many
+/// queries. Validation and the content digest cost time in proportion to the
+/// model; a host that keeps a model should prepare it once.
+#[derive(Debug, Clone)]
+pub struct PreparedModel {
+    model: Arc<Model>,
+    digest: [u8; 32],
+}
+
+impl PreparedModel {
+    /// Validates the complete model; an invalid one returns its issues.
+    pub fn new(model: Arc<Model>) -> Result<Self, CompileError> {
+        let issues = validate_model(&model);
+        if !issues.is_empty() {
+            return Err(CompileError::Model(issues));
+        }
+        let digest = fingerprint::content_digest(&model)?;
+        Ok(Self { model, digest })
+    }
+
+    pub fn model(&self) -> &Arc<Model> {
+        &self.model
+    }
+
+    /// The content digest, as `model_digest` writes it.
+    pub fn digest(&self) -> String {
+        fingerprint::digest_text(&self.digest)
+    }
+
+    /// Compiles one query. The result equals `compile` on the same model.
+    pub fn compile(
+        &self,
+        query: &Query,
+        context: &CompileContext,
+    ) -> Result<Compiled, CompileError> {
+        if let Some(feature) = query.unsupported_b0_features().first() {
+            return Err(CompileError::Unsupported(format!(
+                "The recognized Cube feature `{feature}` is outside B0"
+            )));
+        }
+        for filter in &context.security_filters {
+            check_security_filter(filter)?;
+        }
+        if context.dialect == DialectId::Doris {
+            check_doris(query)?;
+        }
+        let fingerprint = fingerprint::fingerprint(&self.digest, query, context)?;
+        let mut query = query.clone();
+        query
+            .filters
+            .extend(context.security_filters.iter().cloned());
+        let dialect = dialect(context.dialect).map_err(|error| CompileError::Internal {
+            detail: error.to_string(),
+        })?;
+        match plan(&self.model, &query, dialect, &context.timezone) {
+            Ok(planned) => Ok(Compiled {
+                columns: planned.columns,
+                used_cubes: planned.used_cubes,
+                fingerprint,
+                sql: planned.sql,
+                parameters: planned.parameters,
+                session_properties: dialect.session_properties(query.offset.is_some()),
+            }),
+            Err(error) => Err(error.into()),
+        }
+    }
+}
+
 /// Compiles one query after validating the complete model.
 /// Model errors take precedence over query and security-filter errors.
+/// This validates and digests the model on every call; to compile many queries
+/// against one model, use `PreparedModel`.
 pub fn compile(
     model: &Arc<Model>,
     query: &Query,
     context: &CompileContext,
 ) -> Result<Compiled, CompileError> {
-    let issues = validate_model(model);
-    if !issues.is_empty() {
-        return Err(CompileError::Model(issues));
-    }
-    if let Some(feature) = query.unsupported_b0_features().first() {
-        return Err(CompileError::Unsupported(format!(
-            "The recognized Cube feature `{feature}` is outside B0"
-        )));
-    }
-    for filter in &context.security_filters {
-        check_security_filter(filter)?;
-    }
-    if context.dialect == DialectId::Doris {
-        check_doris(query)?;
-    }
-    let fingerprint = fingerprint::fingerprint(model, query, context)?;
-    let mut query = query.clone();
-    query
-        .filters
-        .extend(context.security_filters.iter().cloned());
-    let dialect = dialect(context.dialect).map_err(|error| CompileError::Internal {
-        detail: error.to_string(),
-    })?;
-    match plan(model, &query, dialect, &context.timezone) {
-        Ok(planned) => Ok(Compiled {
-            columns: planned.columns,
-            used_cubes: planned.used_cubes,
-            fingerprint,
-            sql: planned.sql,
-            parameters: planned.parameters,
-            session_properties: dialect.session_properties(query.offset.is_some()),
-        }),
-        Err(error) => Err(error.into()),
-    }
+    PreparedModel::new(Arc::clone(model))?.compile(query, context)
 }
 
 fn check_security_filter(filter: &Filter) -> Result<(), CompileError> {

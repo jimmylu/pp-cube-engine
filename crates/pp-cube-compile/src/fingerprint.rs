@@ -10,31 +10,37 @@ pub const UPSTREAM_PIN: &str = "486f0d26bab58ab4fe0be0e4cdd39818b35a7870";
 /// The digest of a model's typed content: `sha256:` and 64 hex digits. It does not
 /// depend on YAML or JSON formatting, key order or comments, only on what loads.
 pub fn model_digest(model: &Model) -> Result<String, CompileError> {
-    let model = canonical(serde_json::to_value(model).map_err(error)?).map_err(error)?;
-    let digest = Sha256::digest(model);
-    Ok(digest.iter().fold("sha256:".to_owned(), |mut text, byte| {
-        text.push_str(&format!("{byte:02x}"));
-        text
-    }))
+    Ok(digest_text(&content_digest(model)?))
 }
 
+pub(crate) fn digest_text(digest: &[u8; 32]) -> String {
+    digest.iter().fold("sha256:".to_owned(), |mut text, byte| {
+        text.push_str(&format!("{byte:02x}"));
+        text
+    })
+}
+
+/// SHA-256 of the canonical JSON of a model's typed content.
+pub(crate) fn content_digest(model: &Model) -> Result<[u8; 32], CompileError> {
+    let model = canonical(serde_json::to_value(model).map_err(error)?).map_err(error)?;
+    Ok(Sha256::digest(model).into())
+}
+
+/// `digest` is `content_digest` of the model the query is compiled against.
 pub(crate) fn fingerprint(
-    model: &Model,
+    digest: &[u8; 32],
     query: &Query,
     ctx: &CompileContext,
 ) -> Result<[u8; 32], CompileError> {
-    identity(model, query, ctx, crate::KERNEL_VERSION, UPSTREAM_PIN)
+    identity(digest, query, ctx, crate::KERNEL_VERSION, UPSTREAM_PIN)
 }
 fn identity(
-    model: &Model,
+    digest: &[u8; 32],
     query: &Query,
     ctx: &CompileContext,
     version: &str,
     pin: &str,
 ) -> Result<[u8; 32], CompileError> {
-    let model = serde_json::to_value(model).map_err(error)?;
-    let model = canonical(model).map_err(error)?;
-    let digest = Sha256::digest(model);
     let record = serde_json::json!([
         "pp-cube-fingerprint-v1",
         digest.as_slice(),
@@ -85,9 +91,15 @@ fn version_and_pin_participate_in_identity() {
         security_filters: vec![],
         request_id: String::new(),
     };
-    let base = identity(&model, &query, &ctx, "v1", "pin1").unwrap();
-    assert_ne!(base, identity(&model, &query, &ctx, "v2", "pin1").unwrap());
-    assert_ne!(base, identity(&model, &query, &ctx, "v1", "pin2").unwrap());
+    let base = identity(&content_digest(&model).unwrap(), &query, &ctx, "v1", "pin1").unwrap();
+    assert_ne!(
+        base,
+        identity(&content_digest(&model).unwrap(), &query, &ctx, "v2", "pin1").unwrap()
+    );
+    assert_ne!(
+        base,
+        identity(&content_digest(&model).unwrap(), &query, &ctx, "v1", "pin2").unwrap()
+    );
 }
 // scenario: B0-DET-002
 #[test]
@@ -168,12 +180,19 @@ fn upstream_identity_matches_repository_gitlink() {
     let compiled = crate::compile(&model, &query, &ctx).unwrap();
     assert_eq!(
         compiled.fingerprint,
-        identity(&model, &query, &ctx, env!("CARGO_PKG_VERSION"), checkout).unwrap()
+        identity(
+            &content_digest(&model).unwrap(),
+            &query,
+            &ctx,
+            env!("CARGO_PKG_VERSION"),
+            checkout
+        )
+        .unwrap()
     );
     assert_ne!(
         compiled.fingerprint,
         identity(
-            &model,
+            &content_digest(&model).unwrap(),
             &query,
             &ctx,
             env!("CARGO_PKG_VERSION"),

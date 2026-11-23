@@ -170,3 +170,42 @@ fn parameter(parameter: &Parameter) -> Result<Value, String> {
         Parameter::Null => json!({ "type": "null" }),
     })
 }
+
+/// The shared model padded with copies of its sales cube up to `cubes` cubes,
+/// for measuring how compilation scales with model size.
+pub fn padded_model(cubes: usize) -> Result<pp_cube_model::Model, String> {
+    let mut model = pp_cube_model::load_yaml(MODEL).map_err(|error| error.to_string())?;
+    let template = model
+        .cubes
+        .iter()
+        .find(|cube| cube.name == "sales")
+        .cloned()
+        .ok_or("the shared model has no sales cube")?;
+    for index in model.cubes.len()..cubes {
+        let mut cube = template.clone();
+        cube.name = format!("sales_copy_{index}");
+        cube.sql_table = Some(format!("dw.sales_copy_{index}"));
+        model.cubes.push(cube);
+    }
+    Ok(model)
+}
+
+/// The shared cases as loaded queries with their timezone and security filters.
+#[allow(clippy::type_complexity)]
+pub fn bench_cases(
+) -> Result<Vec<(pp_cube_model::Query, String, Vec<pp_cube_model::Filter>)>, String> {
+    cases::declared()
+        .into_iter()
+        .map(|case| {
+            let query = pp_cube_model::load_query(&case.query).map_err(|e| e.to_string())?;
+            let security = if case.security.is_empty() {
+                Vec::new()
+            } else {
+                pp_cube_model::load_query(case.security)
+                    .map_err(|e| e.to_string())?
+                    .filters
+            };
+            Ok((query, case.timezone.to_owned(), security))
+        })
+        .collect()
+}

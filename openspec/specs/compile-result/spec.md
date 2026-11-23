@@ -22,3 +22,9 @@ A successful compilation SHALL list the engine session properties its SQL needs,
 #### Scenario: B0-RESULT-003 Session properties
 - **WHEN** a query with and without an offset is compiled for Presto and for Doris
 - **THEN** only the Presto result with an offset lists offset_clause_enabled as true, and every other result lists none
+
+### Requirement: Prepared model
+The facade SHALL offer a prepared model that validates and digests a model once and compiles any number of queries against it. Preparing an invalid model SHALL return the model issues that compiling it would. Every compilation through a prepared model SHALL equal compiling the same query against the same model directly: SQL, parameters, columns, used cubes, session properties, fingerprint, and the class of any failure.
+#### Scenario: B0-RESULT-004 Prepared compilation
+- **WHEN** valid, invalid and unsupported queries are compiled for both dialects through a prepared model and directly, and an invalid model is prepared
+- **THEN** each pair of results is equal including the fingerprint, and preparing the invalid model returns the issues direct compilation reports

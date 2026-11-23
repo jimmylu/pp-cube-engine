@@ -256,3 +256,62 @@ fn session_properties_follow_the_dialect_and_the_offset() {
     assert!(properties(DialectId::Doris, &paged).is_empty());
     assert!(properties(DialectId::Doris, &plain).is_empty());
 }
+
+// scenario: B0-RESULT-004
+#[test]
+fn a_prepared_model_compiles_exactly_as_the_model_does() {
+    use pp_cube_compile::{CompileError, PreparedModel};
+    let model = Arc::new(load_yaml(include_str!("fixtures/retail.yaml")).unwrap());
+    let prepared = PreparedModel::new(Arc::clone(&model)).unwrap();
+    assert_eq!(
+        prepared.digest(),
+        pp_cube_compile::model_digest(&model).unwrap()
+    );
+    assert!(Arc::ptr_eq(prepared.model(), &model));
+    let security = load_query(
+        r#"{"filters":[{"member":"regions.region_name","operator":"equals","values":["north"]}]}"#,
+    )
+    .unwrap()
+    .filters;
+    for dialect in [DialectId::Presto, DialectId::Doris] {
+        for (text, filters) in [
+            (
+                r#"{"measures":["sales.amount"],"dimensions":["stores.store_name"],"limit":5,"offset":5}"#,
+                vec![],
+            ),
+            (r#"{"measures":["sales.amount"]}"#, security.clone()),
+            // The same failures, in the same class, without SQL.
+            (r#"{"measures":["sales.missing"]}"#, vec![]),
+            (r#"{"measures":["sales.amount"],"ungrouped":true}"#, vec![]),
+            (
+                r#"{"measures":["sales.amount"]}"#,
+                vec![pp_cube_model::Filter::Or(vec![])],
+            ),
+        ] {
+            let query = load_query(text).unwrap();
+            let ctx = CompileContext {
+                dialect,
+                security_filters: filters,
+                ..context()
+            };
+            // Sql, parameters, columns, lineage, session properties and fingerprint alike.
+            assert_eq!(
+                prepared.compile(&query, &ctx),
+                compile(&model, &query, &ctx),
+                "{dialect:?} {text}"
+            );
+        }
+    }
+    // An invalid model cannot be prepared, and reports the issues `compile` would.
+    let mut invalid = (*model).clone();
+    invalid.cubes[0].sql_table = None;
+    let invalid = Arc::new(invalid);
+    let query = load_query(r#"{"measures":["sales.amount"]}"#).unwrap();
+    let Err(CompileError::Model(issues)) = PreparedModel::new(Arc::clone(&invalid)) else {
+        panic!("an invalid model was prepared")
+    };
+    assert_eq!(
+        compile(&invalid, &query, &context()),
+        Err(CompileError::Model(issues))
+    );
+}
