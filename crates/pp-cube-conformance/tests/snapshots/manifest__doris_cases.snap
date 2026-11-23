@@ -199,6 +199,12 @@ FROM  dw.sales_dtl  AS `sales` GROUP BY 1, 2 ORDER BY  1  DESC,  2  ASC
 LIMIT 2 OFFSET 1
 -- parameters: []
 
+-- page_past_last_group
+SELECT `sales`.channel_cd `sales__channel_cd`, `sales`.category_cd `sales__category_cd`, sum(`sales`.amount) `sales__amount`  
+FROM  dw.sales_dtl  AS `sales` GROUP BY 1, 2 ORDER BY  1  DESC,  2  ASC
+LIMIT 2 OFFSET 4
+-- parameters: []
+
 -- plain_range
 SELECT sum(`sales`.amount) `sales__amount`  
 FROM  dw.sales_dtl  AS `sales`
