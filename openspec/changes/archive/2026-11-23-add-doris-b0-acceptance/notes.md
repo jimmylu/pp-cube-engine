@@ -47,3 +47,11 @@ Split: the `insta` dev-dependency and the golden test travel first in
 `add-execution-case-goldens` with the thirteen existing cases. After it merges,
 merge main into this branch; this change then no longer touches `Cargo.lock`
 and only grows the snapshot. No review has run on this branch yet.
+
+## 2026-11-23: resumed after add-execution-case-goldens merged
+
+Main (#65) is merged into this branch. The `insta` dev-dependency and the golden
+test now come from main, so this change no longer touches `Cargo.lock`; the
+golden test names B0-EXEC-003 and B0-DORIS-001 and the snapshot grows from
+thirteen to thirty-nine blocks. proposal.md and design.md describe the golden
+as introduced here; the mechanism landed in #65 and only its content is new.

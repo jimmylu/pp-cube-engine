@@ -16,3 +16,9 @@ The emitter SHALL fail without a manifest when a case does not compile, when a p
 #### Scenario: B0-EXEC-002 Unusable case
 - **WHEN** a case fails to compile, and separately a manifest is requested for a dialect without cases
 - **THEN** each request fails, names the case or dialect, and emits no manifest
+
+### Requirement: Reviewed case goldens
+The SQL and ordered parameters of every execution case SHALL equal a reviewed golden snapshot, so that a change in what an engine tier executes is visible in review. A case without a golden SHALL fail the check.
+#### Scenario: B0-EXEC-003 Doris case goldens
+- **WHEN** the Doris manifest is compiled
+- **THEN** the SQL and ordered parameters of every case equal the reviewed golden snapshot, in manifest order

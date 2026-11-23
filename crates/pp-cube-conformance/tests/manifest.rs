@@ -59,6 +59,7 @@ fn doris_manifest_is_stable_and_complete() {
     assert_eq!(cases[0]["rows"][0][0]["timestamp"], "2026-10-01T00:00:00");
 }
 
+// scenario: B0-EXEC-003
 // scenario: B0-DORIS-001
 #[test]
 fn doris_cases_match_their_goldens() {
