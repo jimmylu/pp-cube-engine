@@ -47,6 +47,14 @@ A working local Docker daemon with amd64 support/emulation is required. Every
 round runs `scripts/check.sh ci` followed by `scripts/check.sh engines-container` and `scripts/check.sh doris-container`
 before review; Docker or engine failure stops delivery without a model repair.
 Remote engine success does not substitute for this local execution.
+
+One exception, decided by the owner on 2026-11-23: a pull request whose whole
+diff against its base is harness paths, none of them under `scripts/engines/`
+and not `scripts/check.sh`, skips both engine containers. Such a change cannot
+alter compiled SQL, the cases or how a tier runs. The controller prints
+`local engine containers SKIPPED` and its evidence comment says the containers
+were not run; it never reports them as passed. Any product path, any engine
+tier file or an empty diff keeps the containers mandatory.
 Remote t0 must pass for the exact reviewed head before Ready. It never waits for owner
 approval itself. The final gate runs only for a Ready PR. Owner approval stays in the
 existing protected environment; switching its authorization mechanism is a separate

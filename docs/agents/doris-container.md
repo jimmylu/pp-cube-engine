@@ -37,7 +37,8 @@ or real clusters (T3).
 ## Delivery
 
 The delivery controller runs local CI, Presto Docker and Doris Docker on every
-round before cross-vendor review. T0 remains Docker-free. Engine or Docker
+round before cross-vendor review, except for a harness-only change outside the
+engine tiers (see [delivery.md](delivery.md)). T0 remains Docker-free. Engine or Docker
 failure leaves the PR Draft. Cleanup failure also fails the run. SIGKILL can
 leave a uniquely named cube-doris- container requiring manual removal.
 

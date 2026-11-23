@@ -14,7 +14,9 @@ T1 is not built yet and exits 2. T2 has three Presto smoke cases (grouped sum, t
 not a passing or complete T2 result. The container mode requires a Docker daemon,
 provisions its own fixture and needs no PRESTO_URL. Doris smoke execution is available through `scripts/check.sh doris-container`, which runs the live-compiled execution manifest on a disposable engine; see [doris-container.md](doris-container.md). Druid execution is not built.
 `scripts/dev deliver` requires local `ci`, `engines-container` and `doris-container`
-to pass before cross-vendor review, on every delivery round. T0 remains Docker-free.
+to pass before cross-vendor review, on every delivery round. A harness-only change
+outside `scripts/engines/` and `scripts/check.sh` skips the two containers and is
+reported as not run; see [delivery.md](delivery.md). T0 remains Docker-free.
 Results from T3 are recorded publicly only as pass or fail per scenario.
 
 ## Tools

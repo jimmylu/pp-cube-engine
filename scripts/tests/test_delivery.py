@@ -24,6 +24,10 @@ class DeliveryTests(unittest.TestCase):
         dev.state = dev.root
         dev.repo = 'example/kernel'
         (dev.root / 'AGENTS.md').write_text('Review only.')
+        # Delivery tests exercise the mandatory-engine path unless they say otherwise.
+        self.engines = patch.object(dev, 'engines_required', return_value=True)
+        self.engines_required = self.engines.start()
+        self.addCleanup(self.engines.stop)
 
     def test_ready_transition_triggers_gate(self):
         workflow = (Path(__file__).parents[2] / '.github/workflows/gate.yml').read_text()
@@ -104,6 +108,47 @@ class DeliveryTests(unittest.TestCase):
             model.assert_not_called()
             self.assertFalse((dev.state / 'evidence.md').exists())
 
+    def test_engines_are_required_unless_harness_only_outside_engine_tiers(self):
+        self.engines.stop()
+        self.addCleanup(self.engines.start)
+        bound = {'base': 'a', 'head': 'b'}
+        cases = [
+            ('docs/agents/review.md\nscripts/dev\nscripts/tests/test_delivery.py', False),
+            ('.github/workflows/t0.yml\nAGENTS.md\ndeny.toml', False),
+            ('scripts/dev\nscripts/engines/doris-container.py', True),
+            ('scripts/check.sh', True),
+            ('scripts/dev\ncrates/pp-cube-dialect/src/lib.rs', True),
+            ('templates/doris.yaml', True),
+            ('openspec/specs/dialect-doris/spec.md', True),
+            ('Cargo.lock', True),
+            ('', True),
+        ]
+        for changed, required in cases:
+            with self.subTest(changed=changed), patch.object(dev, 'git', return_value=changed) as git:
+                self.assertIs(dev.engines_required(bound), required)
+                git.assert_called_once_with('diff', '--no-renames', '--name-only', 'a...b')
+
+    def test_harness_only_delivery_skips_engines_and_says_so(self):
+        self.engines_required.return_value = False
+        success = dict(id=1, name='t0', app={'slug': 'github-actions'},
+                       status='completed', conclusion='success')
+
+        def run_result(*args, **kwargs):
+            return json.dumps({'check_runs': [success]}) if args[:2] == ('gh', 'api') else ''
+
+        with patch.object(dev, 'publish'), \
+             patch.object(dev, 'binding', return_value={'head': 'a', 'number': 1}), \
+             patch.object(dev, 'check') as check, \
+             patch.object(dev, 'review', return_value={'findings': [], 'reviewer': 'other/model'}), \
+             patch.object(dev, 'config', return_value={'implementer': 'example/model'}), \
+             patch.object(dev, 'pr', return_value={'isDraft': True, 'url': 'https://example.test/1'}), \
+             patch.object(dev, 'run', side_effect=run_result):
+            dev.deliver(0)
+        self.assertEqual([call.args for call in check.call_args_list], [('ci',)])
+        evidence = (dev.state / 'evidence.md').read_text()
+        self.assertIn('local Docker Presto and Doris were not run', evidence)
+        self.assertNotIn('smoke passed', evidence)
+
     def test_doris_failure_blocks_review_and_ready(self):
         def fail_doris(mode):
             if mode == 'doris-container':
@@ -183,7 +228,8 @@ class DeliveryTests(unittest.TestCase):
             runner.assert_any_call('gh', 'api',
                                    f'repos/{dev.repo}/commits/a/check-runs?check_name=t0&filter=latest')
             runner.assert_any_call('gh', 'pr', 'ready', '1', '--repo', dev.repo)
-            self.assertIn('remote t0 passed', (dev.state / 'evidence.md').read_text())
+            evidence = (dev.state / 'evidence.md').read_text()
+            self.assertIn('local Docker Presto and Doris smoke passed; remote t0 passed', evidence)
 
     def test_atomic_state_roundtrip(self):
         p = dev.state / 'evidence.json'
@@ -264,7 +310,7 @@ class DeliveryTests(unittest.TestCase):
 class ReviewQuestionTests(unittest.TestCase):
     def test_context_questions_block_without_code_repair(self):
         with patch.object(dev, 'publish'), patch.object(dev, 'binding', return_value={'head': 'a'}), \
-             patch.object(dev, 'check'), \
+             patch.object(dev, 'check'), patch.object(dev, 'engines_required', return_value=True), \
              patch.object(dev, 'review', return_value={'findings': [], 'questions': ['Need full type']}), \
              patch.object(dev, 'model') as model:
             with self.assertRaisesRegex(ValueError, 'context clarification'):

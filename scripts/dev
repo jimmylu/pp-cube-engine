@@ -70,10 +70,22 @@ def check(mode):
 
 
 
+HARNESS_PATHS = re.compile(r'^(\.github/|scripts/|\.agents/|\.claude/|\.codex/|\.omp/|docs/agents/|AGENTS\.md$|CLAUDE\.md$|deny\.toml$|clippy\.toml$|rustfmt\.toml$|typos\.toml$|taplo\.toml$|rust-toolchain\.toml$)')
+# Harness files that decide what the engine tiers run or how they are invoked.
+ENGINE_PATHS = re.compile(r'^(scripts/engines/|scripts/check\.sh$)')
+
+
+def engines_required(bound):
+    """Only a harness-only diff that leaves the engine tiers alone may skip the containers."""
+    changed = git('diff', '--no-renames', '--name-only',
+                  bound['base'] + '...' + bound['head']).splitlines()
+    return not changed or any(not HARNESS_PATHS.match(p) or ENGINE_PATHS.match(p) for p in changed)
+
+
 def validate_scope(branch):
     paths = set(git('diff', '--name-only', 'HEAD').splitlines())
     paths.update(git('ls-files', '--others', '--exclude-standard').splitlines())
-    harness = re.compile(r'^(\.github/|scripts/|\.agents/|\.claude/|\.codex/|\.omp/|docs/agents/|AGENTS\.md$|CLAUDE\.md$|deny\.toml$|clippy\.toml$|rustfmt\.toml$|typos\.toml$|taplo\.toml$|rust-toolchain\.toml$)')
+    harness = HARNESS_PATHS
     if any(p.endswith(('.snap.new', '.pending-snap')) for p in paths) or any(
             (root / 'crates').rglob('*.snap.new')) or any((root / 'crates').rglob('*.pending-snap')):
         raise ValueError('Pending snapshots must be reviewed before checkpoint')
@@ -341,10 +353,15 @@ def deliver(rounds):
         except subprocess.CalledProcessError as e:
             failure = f'Local CI failed: {e}. Inspect output and rerun checks.'
         else:
-            # Real local execution is mandatory before every review. Docker/engine
-            # failures stop delivery without asking a model to repair infrastructure.
-            check('engines-container')
-            check('doris-container')
+            # Real local execution is mandatory before every review of a change that can
+            # alter compiled SQL or the engine tiers. Docker/engine failures stop delivery
+            # without asking a model to repair infrastructure.
+            engines = engines_required(bound)
+            if engines:
+                check('engines-container')
+                check('doris-container')
+            else:
+                print('delivery: local engine containers SKIPPED — harness-only change outside the engine tiers', flush=True)
             # Service/auth failures must not trigger a code repair or consume model budget.
             report = review()
             if report.get('questions'):
@@ -369,7 +386,11 @@ def deliver(rounds):
                 run('gh', 'pr', 'ready', str(bound['number']), '--repo', repo)
             evidence = state / 'evidence.md'
             evidence.write_text(f'<!-- dev-evidence:{bound["head"]} -->\n'
-                                f'Local CI and local Docker Presto and Doris smoke passed; remote t0 passed at `{bound["head"]}`.\n'
+                                + ('Local CI and local Docker Presto and Doris smoke passed'
+                                   if engines else
+                                   'Local CI passed; local Docker Presto and Doris were not run '
+                                   '(harness-only change outside the engine tiers)')
+                                + f'; remote t0 passed at `{bound["head"]}`.\n'
                                 f'Implemented by {config()["implementer"]}; reviewed by {report["reviewer"]}.\n')
             run('gh', 'pr', 'comment', str(bound['number']), '--repo', repo, '--body-file', str(evidence))
             print('READY: ' + current['url'] + ' @ ' + bound['head'] + '; owner reviews and merges')
