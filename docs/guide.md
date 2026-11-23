@@ -9,10 +9,13 @@ implemented behaviour is recorded in [openspec/specs](../openspec/specs).
 
 - **Model**: Cube's data model in YAML or JSON, narrowed to the baseline. A
   field outside it is an error, never ignored. Validate before use. A measure
-  may roll over time (`rolling_window`, also `type: to_date`) or be another
-  measure at another time (`multi_stage` with `time_shift`).
+  may roll over time (`rolling_window`, also `type: to_date`), be another
+  measure at another time (`multi_stage` with `time_shift`) or estimate a
+  distinct count (`count_distinct_approx`). A time dimension may declare
+  `granularities` of its own.
 - **Query**: Cube's REST query format: measures, dimensions, segments, filters,
-  time dimensions with absolute date ranges, order, limit, offset, timezone.
+  time dimensions with absolute date ranges, order, limit, offset, timezone,
+  and `ungrouped` for rows instead of totals.
 - **Context**: the dialect, a default timezone, a request id, and the security
   filters the caller derived from its access rules.
 
@@ -102,7 +105,7 @@ No failure returns SQL, and no message contains table names or SQL text.
 
 For every execution case, Cube Core 1.8.28 (the release of the pinned upstream
 commit) was asked for the SQL of the same model and query on Presto. Its SQL
-and parameters equal the kernel's in all fifty-nine cases, with one difference:
+and parameters equal the kernel's in all sixty-five cases, with one difference:
 
 - **Default row limit.** Cube's API adds `LIMIT 10000` to a query that sets no
   limit. The kernel adds none: a query without a limit compiles without one.
@@ -152,6 +155,20 @@ measure, some queries Cube compiles:
   starts where the date range starts, so a range from the 15th by month gives
   periods from the 15th. Start the range at the start of a day, month or year.
 
+Ungrouped queries, approximate distinct counts and declared granularities
+were compared in twenty-five more queries, with the same result. Again the
+kernel refuses some things Cube compiles:
+
+- **An interval of several units without an origin** is a model error. Cube
+  counts such periods from the start of the current year, so its SQL changes
+  with the calendar; the kernel reads no clock.
+- **A granularity counted from an origin, over a range that starts before
+  it.** Cube's expression puts every row before the origin one period late.
+  Give the time dimension a date range that starts at the origin or later.
+- **A rolling window by a declared granularity**, and **an ungrouped query
+  with measures that need an aggregation of their own** (several cubes, rows a
+  join repeats, rolling or shifted), where Cube's result is partly grouped.
+
 Cube Core has no Doris dialect, so Doris output is accepted by execution only.
 On Doris the periods of a rolling window are written out one by one, aligned
 to the granularity: every unit and any range compile, but rolling by a
@@ -159,5 +176,4 @@ granularity needs a date range.
 
 ## Not supported yet
 
-Apache Druid, views, ungrouped queries, approximate distinct counts, custom granularities and relative date
-ranges. See [performance](performance.md) for latency figures.
+Apache Druid, views and relative date ranges. See [performance](performance.md) for latency figures.

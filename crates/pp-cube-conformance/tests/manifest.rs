@@ -29,7 +29,7 @@ fn doris_manifest_is_stable_and_complete() {
             scenario("B0-DORIS-002"),
             scenario("B0-DORIS-011")
         ),
-        (59, 14, 44, 1)
+        (65, 14, 50, 1)
     );
     let mut names = std::collections::BTreeSet::new();
     for case in cases {
@@ -103,7 +103,7 @@ fn presto_shares_the_doris_cases_and_matches_its_goldens() {
         doris["cases"].as_array().unwrap(),
         presto["cases"].as_array().unwrap(),
     );
-    assert_eq!(presto_cases.len(), 59);
+    assert_eq!(presto_cases.len(), 65);
     assert_eq!(doris_cases.len(), presto_cases.len());
     // Same questions and the same answers on both engines; only SQL and fixtures differ.
     for (doris, presto) in doris_cases.iter().zip(presto_cases) {
@@ -135,7 +135,8 @@ fn presto_shares_the_doris_cases_and_matches_its_goldens() {
         [
             "order_limit_offset",
             "page_past_last_group",
-            "multi_fact_page"
+            "multi_fact_page",
+            "ungrouped_joined_page"
         ]
     );
     insta::assert_snapshot!("presto_cases", golden_text("presto"));

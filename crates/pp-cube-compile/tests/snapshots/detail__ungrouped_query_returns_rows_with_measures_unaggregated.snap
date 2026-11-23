@@ -1,0 +1,15 @@
+---
+source: crates/pp-cube-compile/tests/detail.rs
+expression: "[ROWS,\nJOINED_ROWS].map(|query| compiled(DialectId::Presto, query)).join(\"\\n\\n\")"
+---
+SELECT "sales".sale_id "sales__sale_id", "sales".amount "sales__amount", CASE WHEN ("sales".sale_id) IS NOT NULL THEN 1 END "sales__sale_count", CASE WHEN ("sales".buyer_id) IS NOT NULL THEN 1 END "sales__buyers", CASE WHEN ("sales".category_cd = 'TOY') THEN "sales".amount END "sales__toy_amount"  
+FROM  dw.sales_dtl  AS "sales" ORDER BY  2  DESC
+-- parameters: []
+
+SELECT "sales".sale_id "sales__sale_id", "stores".store_name "stores__store_name", date_trunc('day', CAST(date_add('minute', timezone_minute(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), date_add('hour', timezone_hour(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP)) "sales__sold_at_day", "sales".amount "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+LEFT JOIN  dw.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+WHERE ("sales".sold_at >= from_iso8601_timestamp(?) AND "sales".sold_at <= from_iso8601_timestamp(?)) AND ("sales".channel_cd = ?) ORDER BY  1  ASC
+OFFSET 5
+LIMIT 5
+-- parameters: [Text("2026-10-01T00:00:00.000Z"), Text("2026-10-31T23:59:59.999Z"), Text("C1")]

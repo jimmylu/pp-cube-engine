@@ -53,6 +53,23 @@ pub struct Dimension {
     pub public: Option<bool>,
     #[serde(default, deserialize_with = "crate::meta::deserialize")]
     pub meta: Option<Value>,
+    /// Granularities of a time dimension besides the predefined ones. Not
+    /// written when empty, so a model without them keeps its digest.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub granularities: Vec<CustomGranularity>,
+}
+
+/// Periods of `interval`, `<n> <unit>`, counted from `origin`, or natural
+/// periods moved by `offset`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CustomGranularity {
+    pub name: String,
+    pub interval: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -150,6 +167,8 @@ impl Serialize for Measure {
 pub enum MeasureType {
     Count,
     CountDistinct,
+    /// An estimate of the distinct count, by the engine's own sketch.
+    CountDistinctApprox,
     Sum,
     Avg,
     Min,

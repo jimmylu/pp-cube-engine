@@ -190,19 +190,25 @@ fn relative_range_is_refused_instead_of_being_resolved_from_the_clock() {
 
 // scenario: B0-QUERY-008
 #[test]
-fn unknown_granularity_is_refused_naming_the_five_b0_units() {
-    let granularity = "fortnight";
-    let message = load_failure(&format!(
-        r#"{{"dimension": "sales.sold_at", "granularity": "{granularity}"}}"#
-    ));
-
+fn unknown_granularity_is_refused_naming_the_rule() {
+    // Not a name at all: refused where the query is read.
+    let message = load_failure(r#"{"dimension": "sales.sold_at", "granularity": "Fort Night"}"#);
     assert!(
-        message.contains(granularity)
-            && message.contains("B0 granularities are `day`, `week`, `month`, `quarter`, `year`")
+        message.contains("Fort Night")
+            && message
+                .contains("predefined granularities are `day`, `week`, `month`, `quarter`, `year`")
             && ["`second`", "`minute`", "`hour`"]
                 .iter()
                 .all(|name| !message.contains(name)),
         "{message}"
+    );
+    // A name the time dimension does not declare: refused against the model.
+    assert_eq!(
+        query_failure(
+            "UTC",
+            r#""timeDimensions": [{"dimension": "sales.sold_at", "granularity": "fortnight"}]"#
+        ),
+        "Granularity `fortnight` is not one `sales.sold_at` declares"
     );
 }
 

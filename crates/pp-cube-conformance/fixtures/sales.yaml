@@ -14,10 +14,19 @@ cubes:
       - { name: region_cd, sql: "{CUBE}.region_cd", type: string }
       - { name: is_valid, sql: "{CUBE}.is_valid = 1", type: boolean }
       - { name: qty, sql: "{CUBE}.qty", type: number }
-      - { name: sold_at, sql: "{CUBE}.sold_at", type: time }
+      - name: sold_at
+        sql: "{CUBE}.sold_at"
+        type: time
+        granularities:
+          # Counted from an origin, in days and in quarters.
+          - { name: two_days, interval: 2 day, origin: "2026-10-01" }
+          - { name: half_year, interval: 2 quarter, origin: "2026-01-01" }
+          # Weeks that start on Thursday: natural weeks, moved.
+          - { name: retail_week, interval: 1 week, offset: 3 day }
     measures:
       - { name: row_count, type: count }
       - { name: order_count, type: count_distinct, sql: "{CUBE}.order_no" }
+      - { name: order_count_approx, type: count_distinct_approx, sql: "{CUBE}.order_no" }
       - { name: amount, type: sum, sql: "{CUBE}.amount" }
       - { name: avg_amount, type: avg, sql: "{CUBE}.amount" }
       - { name: min_amount, type: min, sql: "{CUBE}.amount" }

@@ -22,10 +22,19 @@ versions even when the SQL does not.
   `trailing`, `leading` and `offset`, or `type: to_date` and a granularity.
 - Time shifts: `multi_stage` number measures with `time_shift`, and formulas
   over shifted and unshifted measures.
+- Ungrouped queries: `ungrouped: true` returns rows, measures unaggregated.
+- Approximate distinct counts: the measure type `count_distinct_approx`.
+- Declared granularities: `granularities` on a time dimension, by interval
+  with an origin or an offset, and queries that group by one.
 
 **Changed**
 - SQL may begin with `WITH`. The result is still one statement.
-- The Rust type `Measure` has three more public fields.
+- A granularity name no time dimension declares is a query error at
+  compilation; it was an error when the query was read.
+- Rust API: `Measure` has three more public fields and `Dimension` one;
+  `MeasureType` and `Granularity` have a variant more each, and `Granularity`
+  is no longer `Copy`; `Query::unsupported_b0_features` is now
+  `unsupported_features`.
 
 **Breaking**
 - A filter on a count of a cube reached through a many_to_one join returns
@@ -33,7 +42,7 @@ versions even when the SQL does not.
   contradict the selected count.
 
 **Evidence**
-- Fifty-nine shared cases on Presto 0.293, Doris 4.1.3 and against Cube Core 1.8.28.
+- Sixty-five shared cases on Presto 0.293, Doris 4.1.3 and against Cube Core 1.8.28.
 
 ## 0.1.0
 

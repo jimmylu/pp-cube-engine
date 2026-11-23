@@ -116,18 +116,7 @@ fn filter_item(filter: &Filter) -> FilterItem {
 }
 
 fn time_dimension(time_dimension: &TimeDimension) -> base_query_options::TimeDimension {
-    let granularity = time_dimension
-        .granularity
-        .map(|granularity| match granularity {
-            Granularity::Second => "second",
-            Granularity::Minute => "minute",
-            Granularity::Hour => "hour",
-            Granularity::Day => "day",
-            Granularity::Week => "week",
-            Granularity::Month => "month",
-            Granularity::Quarter => "quarter",
-            Granularity::Year => "year",
-        });
+    let granularity = time_dimension.granularity.as_ref().map(Granularity::name);
     base_query_options::TimeDimension {
         dimension: time_dimension.dimension.clone(),
         granularity: granularity.map(str::to_owned),
@@ -198,7 +187,7 @@ impl Options {
                 // The planner reads the row limit from here, not from `limit`.
                 row_limit: query.limit.map(|limit| limit.to_string()),
                 offset: query.offset.map(|offset| offset.to_string()),
-                ungrouped: None,
+                ungrouped: query.ungrouped,
                 export_annotated_sql: false,
                 pre_aggregation_query: None,
                 pre_aggregations_match_only: None,

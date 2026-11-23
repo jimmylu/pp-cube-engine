@@ -75,6 +75,7 @@ fn optional_dimension_fields_and_meta_are_loaded_as_written() {
             "certified": true, "retired_on": null, "tags": ["finance", "daily"],
             "contact": {"channel": "analytics"}
         })),
+        granularities: vec![],
     };
 
     assert_eq!(yaml_model().cubes[0].dimensions[0], expected);

@@ -1,0 +1,33 @@
+---
+source: crates/pp-cube-compile/tests/detail.rs
+expression: "[\"half_year\", \"fortnight\", \"fiscal_year\",\n\"month_from_15\"].map(|granularity|\ncompiled(DialectId::Presto, &by(granularity))).join(\"\\n\\n\")"
+---
+SELECT date_add('month',
+      floor(
+        date_diff('month', CAST(from_iso8601_timestamp('2026-01-01T00:00:00.000') AS TIMESTAMP), CAST(date_add('minute', timezone_minute(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), date_add('hour', timezone_hour(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP)) / 6
+      ) * 6,
+      CAST(from_iso8601_timestamp('2026-01-01T00:00:00.000') AS TIMESTAMP)
+    ) "sales__sold_at_half_year", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".sold_at >= from_iso8601_timestamp(?) AND "sales".sold_at <= from_iso8601_timestamp(?)) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: [Text("2026-01-01T00:00:00.000Z"), Text("2026-12-31T23:59:59.999Z")]
+
+SELECT date_add('week',
+      floor(
+        date_diff('week', CAST(from_iso8601_timestamp('2025-12-29T00:00:00.000') AS TIMESTAMP), CAST(date_add('minute', timezone_minute(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), date_add('hour', timezone_hour(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP)) / 2
+      ) * 2,
+      CAST(from_iso8601_timestamp('2025-12-29T00:00:00.000') AS TIMESTAMP)
+    ) "sales__sold_at_fortnight", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".sold_at >= from_iso8601_timestamp(?) AND "sales".sold_at <= from_iso8601_timestamp(?)) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: [Text("2026-01-01T00:00:00.000Z"), Text("2026-12-31T23:59:59.999Z")]
+
+SELECT date_trunc('year', CAST(date_add('minute', timezone_minute(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), date_add('hour', timezone_hour(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP) - interval '3' month) + interval '3' month "sales__sold_at_fiscal_year", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".sold_at >= from_iso8601_timestamp(?) AND "sales".sold_at <= from_iso8601_timestamp(?)) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: [Text("2026-01-01T00:00:00.000Z"), Text("2026-12-31T23:59:59.999Z")]
+
+SELECT date_trunc('month', CAST(date_add('minute', timezone_minute(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), date_add('hour', timezone_hour(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP) - interval '14' day) + interval '14' day "sales__sold_at_month_from_15", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".sold_at >= from_iso8601_timestamp(?) AND "sales".sold_at <= from_iso8601_timestamp(?)) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: [Text("2026-01-01T00:00:00.000Z"), Text("2026-12-31T23:59:59.999Z")]

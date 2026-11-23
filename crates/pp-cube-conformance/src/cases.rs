@@ -262,6 +262,71 @@ fn windows() -> Vec<Declared> {
     ]
 }
 
+/// Rows as they are, an estimated distinct count, and periods a time dimension
+/// declares. The retail sales are one a day from Thursday 1 to Tuesday 6 October.
+fn detail() -> Vec<Declared> {
+    let by = |granularity: &str| {
+        format!(
+            r#"{{"measures":["sales.amount"],"timeDimensions":[{{"dimension":"sales.sold_at","granularity":"{granularity}","dateRange":["2026-10-01","2026-10-31"]}}],"order":[["sales.sold_at","asc"]]}}"#
+        )
+    };
+    vec![
+        // One row per sale: the sum is the amount, the count is one, and the
+        // filtered sum is absent on the sale that is not a toy.
+        retail(
+            "ungrouped_rows",
+            r#"{"ungrouped":true,"dimensions":["sales.sale_id","sales.channel_cd"],"measures":["sales.amount","sales.row_count","sales.toy_amount"],"filters":[{"member":"sales.channel_cd","operator":"equals","values":["C2"]}],"order":[["sales.sale_id","asc"]]}"#,
+            &[
+                "sales__sale_id",
+                "sales__channel_cd",
+                "sales__amount",
+                "sales__row_count",
+                "sales__toy_amount",
+            ],
+            json!([[3, "C2", 5, 1, null], [4, "C2", 7, 1, 7]]),
+        ),
+        // Rows of a joined cube beside those of the fact, a page of them.
+        retail(
+            "ungrouped_joined_page",
+            r#"{"ungrouped":true,"dimensions":["sales.sale_id","stores.store_name"],"measures":["sales.amount"],"order":[["sales.sale_id","desc"]],"limit":2,"offset":1}"#,
+            &["sales__sale_id", "stores__store_name", "sales__amount"],
+            json!([[5, "uptown", 11], [4, "harbor", 7]]),
+        ),
+        // With so few values the engines' estimates are exact: the two sales of
+        // C1 are one order, those of C3 another.
+        retail(
+            "approximate_distinct_count",
+            r#"{"measures":["sales.order_count_approx"],"dimensions":["sales.channel_cd"],"order":[["sales.channel_cd","asc"]]}"#,
+            &["sales__channel_cd", "sales__order_count_approx"],
+            json!([["C1", 1], ["C2", 2], ["C3", 1]]),
+        ),
+        retail(
+            "granularity_of_two_days",
+            &by("two_days"),
+            &["sales__sold_at_two_days", "sales__amount"],
+            json!([
+                [midnight("2026-10-01"), 30],
+                [midnight("2026-10-03"), 12],
+                [midnight("2026-10-05"), 110]
+            ]),
+        ),
+        // Two quarters from January: October lies in the half that starts in July.
+        retail(
+            "granularity_of_two_quarters",
+            &by("half_year"),
+            &["sales__sold_at_half_year", "sales__amount"],
+            json!([[midnight("2026-07-01"), 152]]),
+        ),
+        // A natural week would split these six days at Monday the 5th.
+        retail(
+            "granularity_with_offset",
+            &by("retail_week"),
+            &["sales__sold_at_retail_week", "sales__amount"],
+            json!([[midnight("2026-10-01"), 152]]),
+        ),
+    ]
+}
+
 fn temporal() -> Vec<Declared> {
     let range = r#"["2026-10-01","2026-10-31"]"#;
     let day = r#"["2026-10-01"]"#;
@@ -581,5 +646,6 @@ pub fn declared() -> Vec<Declared> {
     let mut cases = temporal();
     cases.extend(matrix());
     cases.extend(windows());
+    cases.extend(detail());
     cases
 }

@@ -6,6 +6,7 @@
 //! other crate touches the planner's interfaces.
 
 mod expression;
+mod granularities;
 mod result;
 pub use result::{OutputColumn, UsedCube};
 mod joins;
@@ -138,7 +139,7 @@ pub fn plan(
     dialect: &'static Dialect,
     timezone: &str,
 ) -> Result<Planned, PlanError> {
-    if let Some(feature) = query.unsupported_b0_features().first() {
+    if let Some(feature) = query.unsupported_features().first() {
         return Err(PlanError::Unsupported(format!(
             "The recognized Cube feature `{feature}` is outside B0"
         )));
@@ -149,6 +150,7 @@ pub fn plan(
         .map_err(|_| PlanError::User(format!("Timezone `{timezone}` is not known")))?;
     let evaluator = Rc::new(Evaluator::new(model.clone()));
     evaluator.check(query).map_err(PlanError::local)?;
+    granularities::check(model, query)?;
     windows::check(model, query, dialect)?;
     let joins = Rc::new(Joins::new(model.clone(), query)?);
     let tools = Rc::new(Tools::new(evaluator.clone(), dialect, zone, joins.clone()));
@@ -204,6 +206,15 @@ pub fn plan(
             FilterValue::Null => Parameter::Null,
         })
         .collect();
+    // Detail rows are the rows of one SELECT. Where a measure needs an aggregation
+    // of its own, the planner groups part of the statement after all.
+    if query.ungrouped == Some(true) && sql.trim_start().starts_with("WITH") {
+        return Err(PlanError::Unsupported(
+            "An ungrouped query cannot take measures that need an aggregation of their own: \
+             measures of several cubes, over rows a join repeats, rolling or shifted"
+                .into(),
+        ));
+    }
     let (columns, used_cubes) = result::metadata(&sql, request.all_members(false), model)?;
     Ok(Planned {
         sql,
@@ -258,7 +269,6 @@ fn direct_planning_rejects_recognized_boundary_features_before_building_options(
     );
     let dialect = pp_cube_dialect::dialect(pp_cube_dialect::DialectId::Presto).unwrap();
     for text in [
-        r#"{"ungrouped":true}"#,
         r#"{"timeDimensions":[{"dimension":"sales.sold_at","compareDateRange":[]}]}"#,
         r#"{"timeDimensions":[{"dimension":"sales.sold_at","granularity":"second"}]}"#,
         r#"{"timeDimensions":[{"dimension":"sales.sold_at","granularity":"minute"}]}"#,

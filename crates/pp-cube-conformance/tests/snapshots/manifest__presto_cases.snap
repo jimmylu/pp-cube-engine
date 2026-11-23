@@ -551,3 +551,50 @@ cte_1 AS (  SELECT "time_series"."date_from" "sales__sold_at_day", sum("rolling_
 SELECT "fk_aggregate"."sales__sold_at_day" "sales__sold_at_day", "fk_aggregate"."sales__amount_3d" "sales__amount_3d"  
 FROM  cte_1  AS "fk_aggregate" ORDER BY  1  ASC
 -- parameters: ["2026-09-28T00:00:00.000", "2026-10-04T23:59:58.999", "C1"]
+
+-- ungrouped_rows
+SELECT "sales".sale_id "sales__sale_id", "sales".channel_cd "sales__channel_cd", "sales".amount "sales__amount", CASE WHEN ("sales".sale_id) IS NOT NULL THEN 1 END "sales__row_count", CASE WHEN ("sales".category_cd = 'TOY') THEN "sales".amount END "sales__toy_amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".channel_cd = ?) ORDER BY  1  ASC
+-- parameters: ["C2"]
+
+-- ungrouped_joined_page
+SELECT "sales".sale_id "sales__sale_id", "stores".store_name "stores__store_name", "sales".amount "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+LEFT JOIN  dw.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd ORDER BY  1  DESC
+OFFSET 1
+LIMIT 2
+-- parameters: []
+
+-- approximate_distinct_count
+SELECT "sales".channel_cd "sales__channel_cd", approx_distinct("sales".order_no) "sales__order_count_approx"  
+FROM  dw.sales_dtl  AS "sales" GROUP BY 1 ORDER BY  1  ASC
+-- parameters: []
+
+-- granularity_of_two_days
+SELECT date_add('day',
+      floor(
+        date_diff('day', CAST(from_iso8601_timestamp('2026-10-01T00:00:00.000') AS TIMESTAMP), CAST(date_add('minute', timezone_minute(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), date_add('hour', timezone_hour(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP)) / 2
+      ) * 2,
+      CAST(from_iso8601_timestamp('2026-10-01T00:00:00.000') AS TIMESTAMP)
+    ) "sales__sold_at_two_days", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".sold_at >= from_iso8601_timestamp(?) AND "sales".sold_at <= from_iso8601_timestamp(?)) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: ["2026-10-01T00:00:00.000Z", "2026-10-31T23:59:59.999Z"]
+
+-- granularity_of_two_quarters
+SELECT date_add('quarter',
+      floor(
+        date_diff('quarter', CAST(from_iso8601_timestamp('2026-01-01T00:00:00.000') AS TIMESTAMP), CAST(date_add('minute', timezone_minute(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), date_add('hour', timezone_hour(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP)) / 2
+      ) * 2,
+      CAST(from_iso8601_timestamp('2026-01-01T00:00:00.000') AS TIMESTAMP)
+    ) "sales__sold_at_half_year", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".sold_at >= from_iso8601_timestamp(?) AND "sales".sold_at <= from_iso8601_timestamp(?)) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: ["2026-10-01T00:00:00.000Z", "2026-10-31T23:59:59.999Z"]
+
+-- granularity_with_offset
+SELECT date_trunc('week', CAST(date_add('minute', timezone_minute(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), date_add('hour', timezone_hour(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP) - interval '3' day) + interval '3' day "sales__sold_at_retail_week", sum("sales".amount) "sales__amount"  
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".sold_at >= from_iso8601_timestamp(?) AND "sales".sold_at <= from_iso8601_timestamp(?)) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: ["2026-10-01T00:00:00.000Z", "2026-10-31T23:59:59.999Z"]
