@@ -11,7 +11,7 @@ use pp_cube_adapter::{plan, PlanError};
 use pp_cube_dialect::dialect;
 use pp_cube_model::{validate_model, Filter, Model, Query, ValidationIssue};
 
-pub use fingerprint::UPSTREAM_PIN;
+pub use fingerprint::{model_digest, UPSTREAM_PIN};
 pub use pp_cube_adapter::{OutputColumn, Parameter, UsedCube};
 pub use pp_cube_dialect::{DialectId, SessionProperty};
 

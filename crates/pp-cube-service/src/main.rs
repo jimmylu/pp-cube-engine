@@ -10,7 +10,25 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let mut options = BTreeMap::new();
     let mut data_sources = BTreeMap::new();
+    let mut models = BTreeMap::new();
+    let mut management = false;
     while let Some(key) = args.next() {
+        if key == "--allow-publish" {
+            management = true;
+            continue;
+        }
+        if key == "--model" {
+            // Repeatable: `--model v1=model.yaml`.
+            let value = args.next().ok_or("missing option value")?;
+            let (version, path) = value.split_once('=').ok_or("--model takes version=path")?;
+            if version.trim().is_empty()
+                || path.trim().is_empty()
+                || models.insert(version.to_owned(), path.to_owned()).is_some()
+            {
+                return Err("blank or duplicate model version".into());
+            }
+            continue;
+        }
         if key == "--data-source" {
             // Repeatable: `--data-source warehouse=doris`.
             let value = args.next().ok_or("missing option value")?;
@@ -24,16 +42,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
             continue;
         }
-        if ![
-            "--model",
-            "--version",
-            "--digest",
-            "--listen",
-            "--workers",
-            "--queue",
-        ]
-        .contains(&key.as_str())
-        {
+        if !["--listen", "--workers", "--queue"].contains(&key.as_str()) {
             return Err("unknown option; see crates/pp-cube-service/README.md".into());
         }
         let value = args.next().ok_or("missing option value")?;
@@ -47,7 +56,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let required = |name| {
         options
             .get(name)
-            .ok_or("required options: --model --version --digest --listen --data-source")
+            .ok_or("required options: --model version=path, --listen, --data-source name=dialect")
     };
     let address: SocketAddr = required("--listen")?.parse()?;
     if !address.ip().is_loopback() {
@@ -61,19 +70,20 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .get("--queue")
         .map_or("16", String::as_str)
         .parse()?;
-    let text = std::fs::read_to_string(required("--model")?)?;
-    let model = if serde_json::from_str::<serde_json::Value>(&text).is_ok() {
-        pp_cube_model::load_json(&text)?
-    } else {
-        pp_cube_model::load_yaml(&text)?
-    };
-    let mut core = CubeService::new(data_sources);
-    core.register(
-        required("--version")?.clone(),
-        required("--digest")?.clone(),
-        model,
-    )?;
-    let service = GrpcService::new(Arc::new(core), workers, queue)?;
+    if models.is_empty() && !management {
+        return Err("give at least one --model version=path, or --allow-publish".into());
+    }
+    let core = CubeService::new(data_sources);
+    for (version, path) in models {
+        let text = std::fs::read_to_string(path)?;
+        let model = if serde_json::from_str::<serde_json::Value>(&text).is_ok() {
+            pp_cube_model::load_json(&text)?
+        } else {
+            pp_cube_model::load_yaml(&text)?
+        };
+        core.publish(version, model, None)?;
+    }
+    let service = GrpcService::new(Arc::new(core), workers, queue)?.with_management(management);
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;

@@ -7,6 +7,17 @@ use sha2::{Digest, Sha256};
 /// The upstream planner commit this kernel is built against.
 pub const UPSTREAM_PIN: &str = "486f0d26bab58ab4fe0be0e4cdd39818b35a7870";
 
+/// The digest of a model's typed content: `sha256:` and 64 hex digits. It does not
+/// depend on YAML or JSON formatting, key order or comments, only on what loads.
+pub fn model_digest(model: &Model) -> Result<String, CompileError> {
+    let model = canonical(serde_json::to_value(model).map_err(error)?).map_err(error)?;
+    let digest = Sha256::digest(model);
+    Ok(digest.iter().fold("sha256:".to_owned(), |mut text, byte| {
+        text.push_str(&format!("{byte:02x}"));
+        text
+    }))
+}
+
 pub(crate) fn fingerprint(
     model: &Model,
     query: &Query,

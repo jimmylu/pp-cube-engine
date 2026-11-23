@@ -1,5 +1,9 @@
 //! Synchronous versioned service core. Does not execute SQL or start a server.
-use std::{collections::BTreeMap, fmt, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    fmt,
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
+};
 
 use pp_cube_compile::{CompileContext, CompileError, Compiled, DialectId};
 use pp_cube_model::{
@@ -65,6 +69,14 @@ pub struct CubeMeta {
     pub meta: Option<serde_json::Value>,
 }
 
+/// The outcome of publishing a version.
+#[derive(Debug, Clone)]
+pub struct Published {
+    pub bundle: Arc<ModelBundle>,
+    /// False when this exact content was already available under the version.
+    pub created: bool,
+}
+
 /// What produced a result: the kernel build and the selected model version.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identity {
@@ -78,7 +90,8 @@ pub struct Identity {
 /// Calls are synchronous; a network host must arrange its own worker dispatch.
 #[derive(Debug, Default)]
 pub struct CubeService {
-    catalog: ModelCatalog,
+    /// Readers clone a bundle handle and release the lock before compiling.
+    catalog: RwLock<ModelCatalog>,
     /// Which dialect serves each data source. A deployment fact, not model content.
     data_sources: BTreeMap<String, DialectId>,
 }
@@ -86,19 +99,44 @@ impl CubeService {
     /// `data_sources` names the dialect of every data source the registered models may use.
     pub fn new(data_sources: impl IntoIterator<Item = (String, DialectId)>) -> Self {
         Self {
-            catalog: ModelCatalog::default(),
+            catalog: RwLock::default(),
             data_sources: data_sources.into_iter().collect(),
         }
     }
 
-    /// Validate before availability; invalid or duplicate versions leave existing ones intact.
-    /// A model that names a data source this service has no dialect for is refused.
-    pub fn register(
-        &mut self,
+    // A panic while holding the lock cannot leave the map half-updated: every
+    // write is one insert or one remove.
+    fn read(&self) -> RwLockReadGuard<'_, ModelCatalog> {
+        self.catalog.read().unwrap_or_else(|e| e.into_inner())
+    }
+    fn write(&self) -> RwLockWriteGuard<'_, ModelCatalog> {
+        self.catalog.write().unwrap_or_else(|e| e.into_inner())
+    }
+    fn bundle(&self, version: &str) -> Result<Arc<ModelBundle>, BundleError> {
+        self.read().get(version)
+    }
+
+    /// Make a model version available, validating it first. A version is immutable:
+    /// publishing the same content again changes nothing and reports `created: false`;
+    /// different content under an existing version is refused. `expected_digest`, when
+    /// given, must equal the content digest. Other versions are never affected, and a
+    /// model on a data source this service has no dialect for is refused.
+    pub fn publish(
+        &self,
         version: impl Into<String>,
-        digest: impl Into<String>,
         model: Model,
-    ) -> Result<Arc<ModelBundle>, BundleError> {
+        expected_digest: Option<&str>,
+    ) -> Result<Published, BundleError> {
+        // Validation precedes the digest so an invalid model reports its issues.
+        let issues = pp_cube_model::validate_model(&model);
+        if !issues.is_empty() {
+            return Err(BundleError::Model(issues));
+        }
+        let digest = pp_cube_compile::model_digest(&model)
+            .map_err(|_| BundleError::InvalidIdentifier { field: "digest" })?;
+        if expected_digest.is_some_and(|expected| expected != digest) {
+            return Err(BundleError::DigestMismatch);
+        }
         let bundle = ModelBundle::new(version, digest, model)?;
         if let Some(cube) = bundle
             .model()
@@ -110,7 +148,32 @@ impl CubeService {
                 data_source: cube.data_source.clone(),
             });
         }
-        self.catalog.register(bundle)
+        let mut catalog = self.write();
+        match catalog.get(bundle.version()) {
+            Ok(existing) if existing.digest() == bundle.digest() => Ok(Published {
+                bundle: existing,
+                created: false,
+            }),
+            Ok(_) => Err(BundleError::DuplicateVersion),
+            Err(_) => Ok(Published {
+                bundle: catalog.register(bundle)?,
+                created: true,
+            }),
+        }
+    }
+
+    /// Stop offering a version. Compilations that already selected it finish on it.
+    pub fn retire(&self, version: &str) -> Result<Arc<ModelBundle>, BundleError> {
+        self.write().retire(version)
+    }
+
+    /// Available versions with their content digests, ordered by version.
+    pub fn versions(&self) -> Vec<(String, String)> {
+        self.read()
+            .bundles()
+            .iter()
+            .map(|bundle| (bundle.version().to_owned(), bundle.digest().to_owned()))
+            .collect()
     }
 
     /// Validate without registering or modifying any available version.
@@ -119,7 +182,7 @@ impl CubeService {
     }
 
     pub fn identity(&self, version: &str) -> Result<Identity, BundleError> {
-        let bundle = self.catalog.get(version)?;
+        let bundle = self.bundle(version)?;
         Ok(Identity {
             kernel_version: pp_cube_compile::KERNEL_VERSION,
             upstream_pin: pp_cube_compile::UPSTREAM_PIN,
@@ -137,7 +200,7 @@ impl CubeService {
         query: &Query,
         context: &CompileContext,
     ) -> Result<Compiled, ServiceError> {
-        let bundle = self.catalog.get(version).map_err(ServiceError::Bundle)?;
+        let bundle = self.bundle(version).map_err(ServiceError::Bundle)?;
         let compiled = pp_cube_compile::compile(bundle.model(), query, context)
             .map_err(ServiceError::Compile)?;
         for used in &compiled.used_cubes {
@@ -160,13 +223,13 @@ impl CubeService {
 
     /// The data source of a cube of an available version, for result lineage.
     pub fn data_source(&self, version: &str, cube: &str) -> Option<String> {
-        let bundle = self.catalog.get(version).ok()?;
+        let bundle = self.bundle(version).ok()?;
         Some(bundle.model().cube(cube)?.data_source.clone())
     }
 
     /// Public cubes and members in model order; omitted visibility means public.
     pub fn get_meta(&self, version: &str) -> Result<Vec<CubeMeta>, BundleError> {
-        let bundle = self.catalog.get(version)?;
+        let bundle = self.bundle(version)?;
         let cubes = &bundle.model().cubes;
         let public = |name: &str| {
             cubes

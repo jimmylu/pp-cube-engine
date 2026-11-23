@@ -22,7 +22,7 @@ fn context() -> CompileContext {
 // scenario: B0-API-001
 #[test]
 fn versioned_operations_return_facade_result_and_only_public_metadata() {
-    let mut service = service();
+    let service = service();
     let mut m = model();
     m.cubes[0].title = Some("Sales".into());
     m.cubes[0].description = Some("Public catalog".into());
@@ -36,7 +36,7 @@ fn versioned_operations_return_facade_result_and_only_public_metadata() {
     hidden_cube.name = "hidden_cube".into();
     hidden_cube.public = Some(false);
     m.cubes.push(hidden_cube);
-    service.register("v1", "digest", m.clone()).unwrap();
+    service.publish("v1", m.clone(), None).unwrap();
     let query = Query {
         measures: vec!["sales.amount".into()],
         ..Query::default()
@@ -80,15 +80,15 @@ fn versioned_operations_return_facade_result_and_only_public_metadata() {
 #[test]
 fn invalid_registration_and_validation_preserve_available_versions() {
     use pp_cube_model::BundleError;
-    let mut service = service();
-    service.register("v1", "digest", model()).unwrap();
+    let service = service();
+    service.publish("v1", model(), None).unwrap();
     let mut invalid = model();
     invalid.cubes[0].measures[0].sql = None;
     let issues = service.validate_model(&invalid);
     assert!(!issues.is_empty());
     assert!(issues.iter().all(|issue| !issue.path.is_empty()));
     assert_eq!(
-        service.register("v2", "digest", invalid).unwrap_err(),
+        service.publish("v2", invalid, None).unwrap_err(),
         BundleError::Model(issues)
     );
     assert_eq!(service.get_meta("v2"), Err(BundleError::UnknownVersion));
@@ -99,8 +99,10 @@ fn invalid_registration_and_validation_preserve_available_versions() {
         ..Query::default()
     };
     assert!(service.compile("v1", &query, &context()).is_ok());
+    let mut changed = model();
+    changed.cubes[0].sql_table = Some("dw.other".into());
     assert_eq!(
-        service.register("v1", "different", model()).unwrap_err(),
+        service.publish("v1", changed, None).unwrap_err(),
         BundleError::DuplicateVersion
     );
 }
@@ -110,11 +112,11 @@ fn invalid_registration_and_validation_preserve_available_versions() {
 fn complete_context_and_security_reach_the_facade_unchanged() {
     use pp_cube_compile::CompileError;
     use pp_cube_model::{load_query, Filter};
-    let mut service = service();
-    let first = service.register("v1", "digest", model()).unwrap();
+    let service = service();
+    let first = service.publish("v1", model(), None).unwrap().bundle;
     let mut changed = model();
     changed.cubes[0].sql_table = Some("dw.sales_v2".into());
-    service.register("v2", "digest2", changed).unwrap();
+    service.publish("v2", changed, None).unwrap();
     let query = load_query(r#"{"measures":["sales.amount"],"filters":[{"or":[{"member":"sales.region","operator":"equals","values":["east"]},{"member":"sales.region","operator":"equals","values":["west"]}]}]}"#).unwrap();
     let mut ctx = context();
     ctx.security_filters = load_query(
@@ -148,9 +150,9 @@ fn the_requested_dialect_must_serve_every_data_source_the_query_reads() {
     use pp_cube_compile::CompileError;
     use pp_cube_model::BundleError;
     let source = "cubes:\n- name: sales\n  sql_table: dw.sales\n  data_source: warehouse\n  measures:\n  - {name: amount, type: sum, sql: '{CUBE}.amount'}\n- name: visits\n  sql_table: web.visit\n  data_source: lake\n  measures:\n  - {name: total, type: count}\n";
-    let mut service = service();
+    let service = service();
     service
-        .register("v1", "digest", load_yaml(source).unwrap())
+        .publish("v1", load_yaml(source).unwrap(), None)
         .unwrap();
     let query = |member: &str| Query {
         measures: vec![member.into()],
@@ -192,7 +194,7 @@ fn the_requested_dialect_must_serve_every_data_source_the_query_reads() {
     let unmapped = source.replace("data_source: lake", "data_source: archive");
     assert_eq!(
         service
-            .register("v2", "digest", load_yaml(&unmapped).unwrap())
+            .publish("v2", load_yaml(&unmapped).unwrap(), None)
             .unwrap_err(),
         BundleError::UnmappedDataSource {
             data_source: "archive".into()
@@ -235,9 +237,9 @@ fn metadata_describes_public_members_without_sql_or_tables() {
   dimensions:
   - {name: sale_id, type: number, sql: "{CUBE}.sale_id", primary_key: true}
 "#;
-    let mut service = service();
+    let service = service();
     service
-        .register("v1", "digest", load_yaml(source).unwrap())
+        .publish("v1", load_yaml(source).unwrap(), None)
         .unwrap();
     let meta = service.get_meta("v1").unwrap();
     assert_eq!(
@@ -283,8 +285,137 @@ fn metadata_describes_public_members_without_sql_or_tables() {
     }
     let identity = service.identity("v1").unwrap();
     assert_eq!(identity.model_version, "v1");
-    assert_eq!(identity.model_digest, "digest");
+    assert_eq!(
+        identity.model_digest,
+        pp_cube_compile::model_digest(&load_yaml(source).unwrap()).unwrap()
+    );
     assert_eq!(identity.kernel_version, pp_cube_compile::KERNEL_VERSION);
     assert_eq!(identity.upstream_pin.len(), 40);
     assert!(service.identity("missing").is_err());
+}
+
+// scenario: B0-API-013
+#[test]
+fn versions_are_published_listed_and_retired_without_disturbing_others() {
+    use pp_cube_model::BundleError;
+    let service = std::sync::Arc::new(service());
+    let query = Query {
+        measures: vec!["sales.amount".into()],
+        ..Query::default()
+    };
+    let mut second = model();
+    second.cubes[0].sql_table = Some("dw.sales_v2".into());
+    assert!(service.versions().is_empty());
+    assert!(service.publish("v2", second.clone(), None).unwrap().created);
+    assert!(service.publish("v1", model(), None).unwrap().created);
+    // Ordered by version, each with its content digest.
+    let versions = service.versions();
+    assert_eq!(
+        versions.iter().map(|v| v.0.as_str()).collect::<Vec<_>>(),
+        ["v1", "v2"]
+    );
+    assert_ne!(versions[0].1, versions[1].1);
+    // The same content again is accepted and changes nothing; other content is refused.
+    let again = service.publish("v1", model(), None).unwrap();
+    assert!(!again.created);
+    assert_eq!(again.bundle.digest(), versions[0].1);
+    assert_eq!(
+        service.publish("v1", second, None).unwrap_err(),
+        BundleError::DuplicateVersion
+    );
+    assert!(service
+        .compile("v1", &query, &context())
+        .unwrap()
+        .sql
+        .contains("dw.sales "));
+    // Publishing and retiring while other threads compile never breaks a selected version.
+    let workers: Vec<_> = (0..4)
+        .map(|_| {
+            let (service, query) = (std::sync::Arc::clone(&service), query.clone());
+            std::thread::spawn(move || {
+                for _ in 0..50 {
+                    assert!(service
+                        .compile("v2", &query, &context())
+                        .unwrap()
+                        .sql
+                        .contains("dw.sales_v2"));
+                }
+            })
+        })
+        .collect();
+    for round in 0..20 {
+        let version = format!("temp{round}");
+        service.publish(version.clone(), model(), None).unwrap();
+        service.retire(&version).unwrap();
+    }
+    for worker in workers {
+        worker.join().unwrap();
+    }
+    // A retired version is gone for new requests; work that already holds it is unaffected.
+    let held = service.retire("v1").unwrap();
+    assert_eq!(held.version(), "v1");
+    assert!(pp_cube_compile::compile(held.model(), &query, &context()).is_ok());
+    assert!(matches!(
+        service.compile("v1", &query, &context()),
+        Err(ServiceError::Bundle(BundleError::UnknownVersion))
+    ));
+    assert_eq!(service.get_meta("v1"), Err(BundleError::UnknownVersion));
+    assert_eq!(
+        service.retire("v1").unwrap_err(),
+        BundleError::UnknownVersion
+    );
+    assert_eq!(service.versions().len(), 1);
+    assert!(service.compile("v2", &query, &context()).is_ok());
+    // A retired version name can be published again, with any content.
+    assert!(service.publish("v1", model(), None).unwrap().created);
+}
+
+// scenario: B0-API-014
+#[test]
+fn the_digest_is_of_the_content_and_an_expected_digest_must_match() {
+    use pp_cube_model::BundleError;
+    let yaml = "# a comment\ncubes:\n- name: sales\n  data_source: warehouse\n  sql_table: dw.sales\n  measures:\n  - {name: amount, type: sum, sql: '{CUBE}.amount'}\n";
+    let json = r#"{"cubes":[{"measures":[{"sql":"{CUBE}.amount","type":"sum","name":"amount"}],"sql_table":"dw.sales","name":"sales","data_source":"warehouse"}]}"#;
+    let digest = pp_cube_compile::model_digest(&load_yaml(yaml).unwrap()).unwrap();
+    // Formatting, key order and comments do not matter; content does.
+    assert_eq!(
+        digest,
+        pp_cube_compile::model_digest(&pp_cube_model::load_json(json).unwrap()).unwrap()
+    );
+    assert!(digest.starts_with("sha256:") && digest.len() == 71);
+    assert!(digest[7..]
+        .bytes()
+        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()));
+    let other = yaml.replace("dw.sales", "dw.sales_v2");
+    assert_ne!(
+        digest,
+        pp_cube_compile::model_digest(&load_yaml(&other).unwrap()).unwrap()
+    );
+    let service = service();
+    // A wrong expectation publishes nothing; the right one does, and identifies the version.
+    assert_eq!(
+        service
+            .publish("v1", load_yaml(yaml).unwrap(), Some("sha256:0000"))
+            .unwrap_err(),
+        BundleError::DigestMismatch
+    );
+    assert!(service.versions().is_empty());
+    let published = service
+        .publish("v1", load_yaml(yaml).unwrap(), Some(&digest))
+        .unwrap();
+    assert!(published.created);
+    assert_eq!(service.identity("v1").unwrap().model_digest, digest);
+    // The JSON form is the same content, so it is the same version.
+    assert!(
+        !service
+            .publish("v1", pp_cube_model::load_json(json).unwrap(), Some(&digest))
+            .unwrap()
+            .created
+    );
+    assert_eq!(
+        service
+            .publish(" ", load_yaml(yaml).unwrap(), None)
+            .unwrap_err(),
+        BundleError::InvalidIdentifier { field: "version" }
+    );
 }

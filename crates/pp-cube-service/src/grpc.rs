@@ -13,13 +13,31 @@ use wire::*;
 pub struct GrpcService {
     core: Arc<CubeService>,
     pool: CompilePool,
+    management: bool,
 }
 impl GrpcService {
     pub fn new(core: Arc<CubeService>, workers: usize, queue: usize) -> Result<Self, PoolError> {
         Ok(Self {
             pool: CompilePool::new(Arc::clone(&core), workers, queue)?,
             core,
+            management: false,
         })
+    }
+
+    /// Allow ListModels, PublishModel and RetireModel. Off by default: whoever may
+    /// publish decides what SQL every caller gets, so the host must opt in and
+    /// must control who can reach the service.
+    pub fn with_management(mut self, enabled: bool) -> Self {
+        self.management = enabled;
+        self
+    }
+
+    fn manage(&self) -> Result<(), Status> {
+        if self.management {
+            Ok(())
+        } else {
+            Err(Status::permission_denied("model management is not enabled"))
+        }
     }
 }
 fn internal() -> Status {
@@ -28,8 +46,37 @@ fn internal() -> Status {
 fn bundle_error(error: BundleError) -> Status {
     match error {
         BundleError::UnknownVersion => Status::not_found("model version not available"),
-        _ => internal(),
+        BundleError::DuplicateVersion => {
+            Status::already_exists("model version is available with different content")
+        }
+        BundleError::DigestMismatch => {
+            Status::failed_precondition("model content does not match the expected digest")
+        }
+        BundleError::InvalidIdentifier { .. } => {
+            Status::invalid_argument("model version must not be blank")
+        }
+        BundleError::UnmappedDataSource { data_source } => Status::failed_precondition(format!(
+            "no dialect is configured for data source `{data_source}`"
+        )),
+        BundleError::Model(_) => internal(),
     }
+}
+fn parse_model(bytes: Vec<u8>) -> Result<String, Status> {
+    String::from_utf8(bytes)
+        .map_err(|_| Status::invalid_argument("model must be UTF-8 YAML or JSON"))
+}
+fn is_json(text: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(text).is_ok()
+}
+fn issues(issues: Vec<pp_cube_model::ValidationIssue>) -> Vec<ModelIssue> {
+    issues
+        .into_iter()
+        .map(|i| ModelIssue {
+            path: i.path,
+            rule: i.rule_id,
+            message: i.message,
+        })
+        .collect()
 }
 fn failure(kind: FailureKind, message: String, identity: Identity) -> Response<CompileResponse> {
     Response::new(CompileResponse {
@@ -192,27 +239,114 @@ impl cube_engine_server::CubeEngine for GrpcService {
         &self,
         request: Request<ValidateModelRequest>,
     ) -> Result<Response<ValidateModelResponse>, Status> {
-        let bytes = request.into_inner().model_bundle;
-        let text = String::from_utf8(bytes)
-            .map_err(|_| Status::invalid_argument("model must be UTF-8 YAML or JSON"))?;
-        let issues = tokio::task::spawn_blocking(move || {
-            if serde_json::from_str::<serde_json::Value>(&text).is_ok() {
-                pp_cube_model::validate_json(&text)
+        let text = parse_model(request.into_inner().model_bundle)?;
+        let (found, model_digest) = tokio::task::spawn_blocking(move || {
+            let (found, model) = if is_json(&text) {
+                (
+                    pp_cube_model::validate_json(&text),
+                    pp_cube_model::load_json(&text).ok(),
+                )
             } else {
-                pp_cube_model::validate_yaml(&text)
-            }
+                (
+                    pp_cube_model::validate_yaml(&text),
+                    pp_cube_model::load_yaml(&text).ok(),
+                )
+            };
+            let digest = model
+                .filter(|_| found.is_empty())
+                .and_then(|model| pp_cube_compile::model_digest(&model).ok());
+            (found, digest)
         })
         .await
         .map_err(|_| internal())?;
         Ok(Response::new(ValidateModelResponse {
-            issues: issues
+            issues: issues(found),
+            model_digest,
+        }))
+    }
+    async fn list_models(
+        &self,
+        _request: Request<ListModelsRequest>,
+    ) -> Result<Response<ListModelsResponse>, Status> {
+        self.manage()?;
+        Ok(Response::new(ListModelsResponse {
+            models: self
+                .core
+                .versions()
                 .into_iter()
-                .map(|i| ModelIssue {
-                    path: i.path,
-                    rule: i.rule_id,
-                    message: i.message,
+                .map(|(model_version, model_digest)| ModelVersion {
+                    model_version,
+                    model_digest,
                 })
                 .collect(),
+            kernel_version: pp_cube_compile::KERNEL_VERSION.into(),
+            upstream_pin: pp_cube_compile::UPSTREAM_PIN.into(),
+        }))
+    }
+    async fn publish_model(
+        &self,
+        request: Request<PublishModelRequest>,
+    ) -> Result<Response<PublishModelResponse>, Status> {
+        self.manage()?;
+        let request = request.into_inner();
+        let text = parse_model(request.model_bundle)?;
+        let core = Arc::clone(&self.core);
+        let version = request.model_version;
+        let outcome = tokio::task::spawn_blocking(move || {
+            // Report located issues from the text; a model that does not load has them.
+            let (found, model) = if is_json(&text) {
+                (
+                    pp_cube_model::validate_json(&text),
+                    pp_cube_model::load_json(&text).ok(),
+                )
+            } else {
+                (
+                    pp_cube_model::validate_yaml(&text),
+                    pp_cube_model::load_yaml(&text).ok(),
+                )
+            };
+            match model {
+                Some(model) if found.is_empty() => core
+                    .publish(version.clone(), model, request.expected_digest.as_deref())
+                    .map(|published| (published.created, version))
+                    .map_err(Ok),
+                _ => Err(Err(found)),
+            }
+        })
+        .await
+        .map_err(|_| internal())?;
+        let result = match outcome {
+            Ok((created, version)) => publish_model_response::Result::Published(Published {
+                identity: Some(identity(&self.core, &version)?),
+                created,
+            }),
+            Err(Err(found)) | Err(Ok(BundleError::Model(found))) => {
+                publish_model_response::Result::Rejected(Rejected {
+                    issues: issues(found),
+                })
+            }
+            Err(Ok(error)) => return Err(bundle_error(error)),
+        };
+        Ok(Response::new(PublishModelResponse {
+            result: Some(result),
+        }))
+    }
+    async fn retire_model(
+        &self,
+        request: Request<RetireModelRequest>,
+    ) -> Result<Response<RetireModelResponse>, Status> {
+        self.manage()?;
+        let bundle = self
+            .core
+            .retire(&request.into_inner().model_version)
+            .map_err(bundle_error)?;
+        Ok(Response::new(RetireModelResponse {
+            identity: Some(Identity {
+                kernel_version: pp_cube_compile::KERNEL_VERSION.into(),
+                upstream_pin: pp_cube_compile::UPSTREAM_PIN.into(),
+                model_version: bundle.version().to_owned(),
+                model_digest: bundle.digest().to_owned(),
+            }),
         }))
     }
     async fn get_meta(

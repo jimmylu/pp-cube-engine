@@ -6,6 +6,14 @@ service CubeEngine {
   rpc Compile(CompileRequest) returns (CompileResponse);
   rpc ValidateModel(ValidateModelRequest) returns (ValidateModelResponse);
   rpc GetMeta(GetMetaRequest) returns (GetMetaResponse);
+
+  // Model version management. Refused with PERMISSION_DENIED unless the host enabled it.
+  rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
+  // Validates and makes a version available. Versions are immutable: the same content
+  // again is accepted and changes nothing; different content is ALREADY_EXISTS.
+  rpc PublishModel(PublishModelRequest) returns (PublishModelResponse);
+  // Stops offering a version. Compilations that already selected it finish on it.
+  rpc RetireModel(RetireModelRequest) returns (RetireModelResponse);
 }
 
 // What produced a response: fixed for a running service and a model version.
@@ -13,7 +21,8 @@ message Identity {
   string kernel_version = 1;
   string upstream_pin = 2;
   string model_version = 3;
-  // The caller-supplied digest of the model version; opaque to the service.
+  // The service's digest of the version's typed content: "sha256:" and 64 hex digits.
+  // Independent of YAML or JSON formatting.
   string model_digest = 4;
 }
 
@@ -88,7 +97,11 @@ message CompileFailure {
 }
 
 message ValidateModelRequest { bytes model_bundle = 1; }
-message ValidateModelResponse { repeated ModelIssue issues = 1; }
+message ValidateModelResponse {
+  repeated ModelIssue issues = 1;
+  // The content digest, present only when there are no issues.
+  optional string model_digest = 2;
+}
 message ModelIssue { string path = 1; string rule = 2; string message = 3; }
 
 message GetMetaRequest { string model_version = 1; }
@@ -128,3 +141,36 @@ message JoinMeta {
   string cube = 1;
   string relationship = 2;           // many_to_one | one_to_one
 }
+
+message ListModelsRequest {}
+message ListModelsResponse {
+  repeated ModelVersion models = 1;  // ordered by version
+  string kernel_version = 2;
+  string upstream_pin = 3;
+}
+message ModelVersion {
+  string model_version = 1;
+  string model_digest = 2;
+}
+
+message PublishModelRequest {
+  string model_version = 1;
+  bytes model_bundle = 2;            // UTF-8 YAML or JSON
+  // When set, the content digest must equal it or nothing is published.
+  optional string expected_digest = 3;
+}
+message PublishModelResponse {
+  oneof result {
+    Published published = 1;
+    Rejected rejected = 2;
+  }
+}
+message Published {
+  Identity identity = 1;
+  bool created = 2;                  // false when this content was already available
+}
+// The model is invalid; nothing was published.
+message Rejected { repeated ModelIssue issues = 1; }
+
+message RetireModelRequest { string model_version = 1; }
+message RetireModelResponse { Identity identity = 1; }  // what was retired

@@ -12,12 +12,12 @@ use std::sync::Arc;
 // scenario: B0-DORIS-003
 #[tokio::test(flavor = "current_thread")]
 async fn real_tcp_operations_preserve_compilation_validation_and_public_metadata() {
-    let mut core = CubeService::new([
+    let core = CubeService::new([
         ("warehouse".to_owned(), pp_cube_compile::DialectId::Presto),
         ("lake".to_owned(), pp_cube_compile::DialectId::Doris),
     ]);
     let source = "cubes:\n- name: sales\n  data_source: warehouse\n  sql_table: dw.sales\n  measures:\n  - {name: amount, type: sum, sql: '{CUBE}.amount'}\n  dimensions:\n  - {name: region, type: string, sql: '{CUBE}.region'}\n  - {name: hidden, type: string, sql: '{CUBE}.hidden', public: false}\n  segments:\n  - {name: north, sql: \"{CUBE}.region = 'north'\"}\n- name: visits\n  data_source: lake\n  sql_table: web.visit\n  measures:\n  - {name: total, type: count}\n";
-    core.register("v1", "digest", pp_cube_model::load_yaml(source).unwrap())
+    core.publish("v1", pp_cube_model::load_yaml(source).unwrap(), None)
         .unwrap();
     let core = Arc::new(core);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -54,7 +54,12 @@ async fn real_tcp_operations_preserve_compilation_validation_and_public_metadata
             identity.model_version.as_str(),
             identity.model_digest.as_str()
         ),
-        ("v1", "digest")
+        (
+            "v1",
+            pp_cube_compile::model_digest(&pp_cube_model::load_yaml(source).unwrap())
+                .unwrap()
+                .as_str()
+        )
     );
     assert_eq!(identity.kernel_version, pp_cube_compile::KERNEL_VERSION);
     assert_eq!(identity.upstream_pin, pp_cube_compile::UPSTREAM_PIN);
@@ -222,6 +227,260 @@ async fn real_tcp_operations_preserve_compilation_validation_and_public_metadata
     assert!(
         matches!(client.compile(invalid).await.unwrap().into_inner().result, Some(compile_response::Result::Failure(CompileFailure { kind, .. })) if kind == FailureKind::Query as i32)
     );
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+}
+
+async fn serve(
+    management: bool,
+) -> (
+    CubeEngineClient<tonic::transport::Channel>,
+    tokio::sync::oneshot::Sender<()>,
+    tokio::task::JoinHandle<Result<(), tonic::transport::Error>>,
+) {
+    let core = Arc::new(CubeService::new([(
+        "warehouse".to_owned(),
+        pp_cube_compile::DialectId::Presto,
+    )]));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (stop, stopping) = tokio::sync::oneshot::channel();
+    let service = GrpcService::new(core, 2, 4)
+        .unwrap()
+        .with_management(management);
+    let server = tokio::spawn(
+        tonic::transport::Server::builder()
+            .add_service(CubeEngineServer::new(service))
+            .serve_with_incoming_shutdown(
+                tokio_stream::wrappers::TcpListenerStream::new(listener),
+                async {
+                    let _ = stopping.await;
+                },
+            ),
+    );
+    let client = CubeEngineClient::connect(format!("http://{address}"))
+        .await
+        .unwrap();
+    (client, stop, server)
+}
+
+const SALES: &str = "cubes:\n- name: sales\n  data_source: warehouse\n  sql_table: dw.sales\n  measures:\n  - {name: amount, type: sum, sql: '{CUBE}.amount'}\n";
+
+// scenario: B0-API-015
+#[tokio::test(flavor = "current_thread")]
+async fn management_is_refused_unless_the_host_enabled_it() {
+    let (mut client, stop, server) = serve(false).await;
+    let publish = PublishModelRequest {
+        model_version: "v1".into(),
+        model_bundle: SALES.as_bytes().to_vec(),
+        expected_digest: None,
+    };
+    assert_eq!(
+        client.publish_model(publish).await.unwrap_err().code(),
+        tonic::Code::PermissionDenied
+    );
+    assert_eq!(
+        client
+            .retire_model(RetireModelRequest {
+                model_version: "v1".into()
+            })
+            .await
+            .unwrap_err()
+            .code(),
+        tonic::Code::PermissionDenied
+    );
+    assert_eq!(
+        client
+            .list_models(ListModelsRequest {})
+            .await
+            .unwrap_err()
+            .code(),
+        tonic::Code::PermissionDenied
+    );
+    // Nothing was published, and the read operations still answer.
+    assert_eq!(
+        client
+            .get_meta(GetMetaRequest {
+                model_version: "v1".into()
+            })
+            .await
+            .unwrap_err()
+            .code(),
+        tonic::Code::NotFound
+    );
+    let validation = client
+        .validate_model(ValidateModelRequest {
+            model_bundle: SALES.as_bytes().to_vec(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(validation.issues.is_empty());
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+}
+
+// scenario: B0-API-013
+// scenario: B0-API-014
+#[tokio::test(flavor = "current_thread")]
+async fn a_version_is_published_compiled_listed_and_retired_over_the_wire() {
+    let (mut client, stop, server) = serve(true).await;
+    let compile = CompileRequest {
+        model_version: "v1".into(),
+        query_json: r#"{"measures":["sales.amount"]}"#.into(),
+        dialect: "presto".into(),
+        timezone: "UTC".into(),
+        ..Default::default()
+    };
+    assert_eq!(
+        client.compile(compile.clone()).await.unwrap_err().code(),
+        tonic::Code::NotFound
+    );
+    // ValidateModel tells a publisher the digest to expect; an invalid model has none.
+    let digest = client
+        .validate_model(ValidateModelRequest {
+            model_bundle: SALES.as_bytes().to_vec(),
+        })
+        .await
+        .unwrap()
+        .into_inner()
+        .model_digest
+        .unwrap();
+    let invalid = client
+        .validate_model(ValidateModelRequest {
+            model_bundle: b"cubes: [{name: invalid}]".to_vec(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(invalid.model_digest.is_none() && !invalid.issues.is_empty());
+    let mut publish = PublishModelRequest {
+        model_version: "v1".into(),
+        model_bundle: SALES.as_bytes().to_vec(),
+        expected_digest: Some("sha256:wrong".into()),
+    };
+    assert_eq!(
+        client
+            .publish_model(publish.clone())
+            .await
+            .unwrap_err()
+            .code(),
+        tonic::Code::FailedPrecondition
+    );
+    publish.expected_digest = Some(digest.clone());
+    let published = |response: PublishModelResponse| match response.result {
+        Some(publish_model_response::Result::Published(published)) => published,
+        other => panic!("expected a published version, got {other:?}"),
+    };
+    let first = published(
+        client
+            .publish_model(publish.clone())
+            .await
+            .unwrap()
+            .into_inner(),
+    );
+    assert!(first.created);
+    let identity = first.identity.unwrap();
+    assert_eq!(
+        (identity.model_version.as_str(), &identity.model_digest),
+        ("v1", &digest)
+    );
+    // The same content again is accepted and creates nothing; other content is refused.
+    assert!(
+        !published(
+            client
+                .publish_model(publish.clone())
+                .await
+                .unwrap()
+                .into_inner()
+        )
+        .created
+    );
+    let mut other = publish.clone();
+    other.expected_digest = None;
+    other.model_bundle = SALES.replace("dw.sales", "dw.sales_v2").into_bytes();
+    assert_eq!(
+        client
+            .publish_model(other.clone())
+            .await
+            .unwrap_err()
+            .code(),
+        tonic::Code::AlreadyExists
+    );
+    // An invalid model is rejected with its issues; an unmapped data source and a blank
+    // version are refused; none of them becomes available.
+    let mut rejected = other.clone();
+    rejected.model_version = "v2".into();
+    rejected.model_bundle = b"cubes: [{name: invalid}]".to_vec();
+    assert!(matches!(
+        client.publish_model(rejected).await.unwrap().into_inner().result,
+        Some(publish_model_response::Result::Rejected(Rejected { issues })) if !issues.is_empty()
+    ));
+    let mut unmapped = other.clone();
+    unmapped.model_version = "v2".into();
+    unmapped.model_bundle = SALES.replace("warehouse", "archive").into_bytes();
+    let status = client.publish_model(unmapped).await.unwrap_err();
+    assert_eq!(status.code(), tonic::Code::FailedPrecondition);
+    assert!(status.message().contains("archive"));
+    let mut blank = other.clone();
+    blank.model_version = " ".into();
+    assert_eq!(
+        client.publish_model(blank).await.unwrap_err().code(),
+        tonic::Code::InvalidArgument
+    );
+    other.model_version = "v3".into();
+    assert!(published(client.publish_model(other).await.unwrap().into_inner()).created);
+    let listed = client
+        .list_models(ListModelsRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(
+        listed
+            .models
+            .iter()
+            .map(|m| m.model_version.as_str())
+            .collect::<Vec<_>>(),
+        ["v1", "v3"]
+    );
+    assert_eq!(listed.models[0].model_digest, digest);
+    assert_eq!(listed.kernel_version, pp_cube_compile::KERNEL_VERSION);
+    assert_eq!(listed.upstream_pin, pp_cube_compile::UPSTREAM_PIN);
+    // The published version compiles under the identity that was returned.
+    let compiled = client.compile(compile.clone()).await.unwrap().into_inner();
+    assert_eq!(compiled.identity, Some(identity.clone()));
+    assert!(matches!(
+        compiled.result,
+        Some(compile_response::Result::Compiled(_))
+    ));
+    let retired = client
+        .retire_model(RetireModelRequest {
+            model_version: "v1".into(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(retired.identity, Some(identity));
+    assert_eq!(
+        client.compile(compile.clone()).await.unwrap_err().code(),
+        tonic::Code::NotFound
+    );
+    assert_eq!(
+        client
+            .retire_model(RetireModelRequest {
+                model_version: "v1".into()
+            })
+            .await
+            .unwrap_err()
+            .code(),
+        tonic::Code::NotFound
+    );
+    let mut v3 = compile;
+    v3.model_version = "v3".into();
+    assert!(matches!(
+        client.compile(v3).await.unwrap().into_inner().result,
+        Some(compile_response::Result::Compiled(value)) if value.sql.contains("dw.sales_v2")
+    ));
     stop.send(()).unwrap();
     server.await.unwrap().unwrap();
 }
