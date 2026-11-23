@@ -94,6 +94,8 @@ pub struct CubeService {
     catalog: RwLock<ModelCatalog>,
     /// Which dialect serves each data source. A deployment fact, not model content.
     data_sources: BTreeMap<String, DialectId>,
+    /// How many versions may be available at once; `None` is unbounded.
+    max_versions: Option<usize>,
 }
 impl CubeService {
     /// `data_sources` names the dialect of every data source the registered models may use.
@@ -101,7 +103,14 @@ impl CubeService {
         Self {
             catalog: RwLock::default(),
             data_sources: data_sources.into_iter().collect(),
+            max_versions: None,
         }
+    }
+
+    /// Bound the number of available versions. Each one holds a whole model in memory.
+    pub fn with_max_versions(mut self, limit: usize) -> Self {
+        self.max_versions = Some(limit);
+        self
     }
 
     // A panic while holding the lock cannot leave the map half-updated: every
@@ -155,6 +164,13 @@ impl CubeService {
                 created: false,
             }),
             Ok(_) => Err(BundleError::DuplicateVersion),
+            Err(_)
+                if self
+                    .max_versions
+                    .is_some_and(|limit| catalog.bundles().len() >= limit) =>
+            {
+                Err(BundleError::CatalogFull)
+            }
             Err(_) => Ok(Published {
                 bundle: catalog.register(bundle)?,
                 created: true,
@@ -290,3 +306,4 @@ mod workers;
 pub use workers::{CompilePool, CompileTask, PoolError};
 
 pub mod grpc;
+pub mod telemetry;

@@ -16,6 +16,8 @@ pub enum BundleError {
     UnknownVersion,
     /// The content does not have the digest its publisher expected.
     DigestMismatch,
+    /// The host's limit on available versions is reached; retire one first.
+    CatalogFull,
     /// A host that maps data sources to dialects has no dialect for this one.
     UnmappedDataSource {
         data_source: String,
@@ -29,6 +31,7 @@ impl fmt::Display for BundleError {
             Self::Model(_) => f.write_str("the bundle model could not be validated"),
             Self::DuplicateVersion => f.write_str("the bundle version is already registered"),
             Self::UnknownVersion => f.write_str("the bundle version is not available"),
+            Self::CatalogFull => f.write_str("the limit on available versions is reached"),
             Self::DigestMismatch => {
                 f.write_str("the bundle content does not match the expected digest")
             }

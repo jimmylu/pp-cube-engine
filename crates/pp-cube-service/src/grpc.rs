@@ -1,12 +1,90 @@
-//! Host-mounted gRPC transport for trusted callers; no listener or authentication defaults.
+//! Host-mounted gRPC transport. The host chooses the listener and TLS; this layer
+//! offers bearer-token access control, a compilation deadline, request telemetry
+//! and the standard health protocol.
+use crate::telemetry::{Event, Telemetry};
 use crate::{CompilePool, CubeService, PoolError, ServiceError};
 use pp_cube_compile::{CompileContext, CompileError, DialectId, Parameter as CompiledParameter};
 use pp_cube_model::{load_query, BundleError};
-use std::sync::Arc;
-use tonic::{Request, Response, Status};
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::{Duration, Instant},
+};
+use tonic::{metadata::MetadataMap, Request, Response, Status};
 
 pub mod wire {
     tonic::include_proto!("ppcube.engine.v1");
+}
+/// The standard `grpc.health.v1` protocol.
+pub mod health {
+    tonic::include_proto!("grpc.health.v1");
+}
+
+/// The name health probes may ask about, besides the empty name for the whole server.
+pub const SERVICE_NAME: &str = "ppcube.engine.v1.CubeEngine";
+
+/// Bearer tokens for callers. With no token configured every caller is trusted,
+/// which is only acceptable on a socket the host controls.
+#[derive(Clone, Default)]
+pub struct Access {
+    read: Option<Vec<u8>>,
+    admin: Option<Vec<u8>>,
+}
+impl Access {
+    /// `read` admits Compile, ValidateModel and GetMeta; `admin` admits everything.
+    /// Tokens are at least 16 visible ASCII characters and must differ.
+    pub fn new(read: Option<&str>, admin: Option<&str>) -> Result<Self, &'static str> {
+        for token in [read, admin].into_iter().flatten() {
+            if token.len() < 16 || !token.bytes().all(|b| b.is_ascii_graphic()) {
+                return Err("a token is at least 16 visible ASCII characters");
+            }
+        }
+        if read.is_some() && read == admin {
+            return Err("the read and admin tokens must differ");
+        }
+        Ok(Self {
+            read: read.map(|token| token.as_bytes().to_vec()),
+            admin: admin.map(|token| token.as_bytes().to_vec()),
+        })
+    }
+
+    pub fn requires_token(&self) -> bool {
+        self.read.is_some() || self.admin.is_some()
+    }
+    pub fn has_admin_token(&self) -> bool {
+        self.admin.is_some()
+    }
+}
+#[derive(Clone, Copy, PartialEq)]
+enum Role {
+    Read,
+    Admin,
+}
+/// Compares every byte whatever the first difference, so timing does not locate it.
+fn same(a: &[u8], b: &[u8]) -> bool {
+    let mut difference = a.len() ^ b.len();
+    for index in 0..a.len().max(b.len()) {
+        let (x, y) = (a.get(index).copied(), b.get(index).copied());
+        difference |= usize::from(x.unwrap_or(0) ^ y.unwrap_or(0));
+    }
+    difference == 0
+}
+
+/// Bounds a host sets on what one request may cost.
+#[derive(Debug, Clone, Copy)]
+pub struct Limits {
+    /// How long a caller waits for a compilation. The planner cannot be
+    /// interrupted, so a compilation that overruns still occupies its worker.
+    pub compile_timeout: Duration,
+}
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            compile_timeout: Duration::from_secs(10),
+        }
+    }
 }
 use wire::*;
 
@@ -14,6 +92,9 @@ pub struct GrpcService {
     core: Arc<CubeService>,
     pool: CompilePool,
     management: bool,
+    access: Access,
+    limits: Limits,
+    telemetry: Telemetry,
 }
 impl GrpcService {
     pub fn new(core: Arc<CubeService>, workers: usize, queue: usize) -> Result<Self, PoolError> {
@@ -21,7 +102,73 @@ impl GrpcService {
             pool: CompilePool::new(Arc::clone(&core), workers, queue)?,
             core,
             management: false,
+            access: Access::default(),
+            limits: Limits::default(),
+            telemetry: Telemetry::default(),
         })
+    }
+
+    pub fn with_access(mut self, access: Access) -> Self {
+        self.access = access;
+        self
+    }
+    pub fn with_limits(mut self, limits: Limits) -> Self {
+        self.limits = limits;
+        self
+    }
+    pub fn with_telemetry(mut self, telemetry: Telemetry) -> Self {
+        self.telemetry = telemetry;
+        self
+    }
+
+    /// Who may call: nobody is asked for a token when none is configured.
+    /// A valid read token on a management operation is a permission error;
+    /// a missing or unknown token is an authentication error.
+    fn authorize(&self, metadata: &MetadataMap, role: Role) -> Result<(), Status> {
+        if !self.access.requires_token() || (role == Role::Read && self.access.read.is_none()) {
+            return Ok(());
+        }
+        let presented = metadata
+            .get("authorization")
+            .and_then(|value| value.as_bytes().strip_prefix(b"Bearer "))
+            .ok_or_else(|| Status::unauthenticated("a bearer token is required"))?;
+        let is = |token: &Option<Vec<u8>>| token.as_deref().is_some_and(|t| same(t, presented));
+        // Evaluate both so a wrong token costs the same whichever it resembles.
+        let (read, admin) = (is(&self.access.read), is(&self.access.admin));
+        match (role, read, admin) {
+            (_, _, true) | (Role::Read, true, _) => Ok(()),
+            (Role::Admin, true, false) => Err(Status::permission_denied(
+                "this token does not allow model management",
+            )),
+            _ => Err(Status::unauthenticated("the bearer token is not valid")),
+        }
+    }
+
+    /// Runs one operation between the access check and the telemetry record.
+    async fn observed<T>(
+        &self,
+        mut event: Event,
+        allowed: Result<(), Status>,
+        operation: impl std::future::Future<Output = Result<Response<T>, Status>>,
+        outcome: impl FnOnce(&T) -> Outcome,
+    ) -> Result<Response<T>, Status> {
+        let started = Instant::now();
+        self.telemetry.metrics.started();
+        let result = match allowed {
+            Ok(()) => operation.await,
+            Err(status) => Err(status),
+        };
+        event.duration = started.elapsed();
+        event.outcome = match &result {
+            Ok(response) => {
+                let outcome = outcome(response.get_ref());
+                event.fingerprint = outcome.fingerprint;
+                outcome.name
+            }
+            Err(status) => format!("{:?}", status.code()),
+        };
+        self.telemetry.finish(event);
+        result
     }
 
     /// Allow ListModels, PublishModel and RetireModel. Off by default: whoever may
@@ -32,13 +179,31 @@ impl GrpcService {
         self
     }
 
-    fn manage(&self) -> Result<(), Status> {
-        if self.management {
-            Ok(())
-        } else {
-            Err(Status::permission_denied("model management is not enabled"))
+    fn manage(&self, metadata: &MetadataMap) -> Result<(), Status> {
+        if !self.management {
+            return Err(Status::permission_denied("model management is not enabled"));
         }
+        // With tokens in use, management needs the admin token; a host that set
+        // only a read token has not said who may publish.
+        if self.access.requires_token() && !self.access.has_admin_token() {
+            return Err(Status::permission_denied("no admin token is configured"));
+        }
+        self.authorize(metadata, Role::Admin)
     }
+}
+/// How an answered request ended, for telemetry.
+struct Outcome {
+    name: String,
+    fingerprint: Option<String>,
+}
+fn ok() -> Outcome {
+    Outcome {
+        name: "ok".into(),
+        fingerprint: None,
+    }
+}
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 fn internal() -> Status {
     Status::internal("service operation failed")
@@ -58,6 +223,9 @@ fn bundle_error(error: BundleError) -> Status {
         BundleError::UnmappedDataSource { data_source } => Status::failed_precondition(format!(
             "no dialect is configured for data source `{data_source}`"
         )),
+        BundleError::CatalogFull => {
+            Status::resource_exhausted("the limit on available model versions is reached")
+        }
         BundleError::Model(_) => internal(),
     }
 }
@@ -107,13 +275,11 @@ fn meta_json(value: Option<serde_json::Value>) -> Result<Option<String>, Status>
         .map(|value| serde_json::to_string(&value).map_err(|_| internal()))
         .transpose()
 }
-#[tonic::async_trait]
-impl cube_engine_server::CubeEngine for GrpcService {
-    async fn compile(
+impl GrpcService {
+    async fn compile_inner(
         &self,
-        request: Request<CompileRequest>,
+        request: CompileRequest,
     ) -> Result<Response<CompileResponse>, Status> {
-        let request = request.into_inner();
         let query = load_query(&request.query_json)
             .map_err(|_| Status::invalid_argument("invalid query JSON"))?;
         let mut security_filters = Vec::new();
@@ -155,7 +321,11 @@ impl cube_engine_server::CubeEngine for GrpcService {
             .pool
             .submit(request.model_version, query, context)
             .map_err(pool_status)?;
-        match task.wait().await {
+        let waited = tokio::time::timeout(self.limits.compile_timeout, task.wait()).await;
+        let finished = waited.map_err(|_| {
+            Status::deadline_exceeded("the compilation did not finish within the service deadline")
+        })?;
+        match finished {
             Ok(result) => {
                 let params = result
                     .parameters
@@ -235,11 +405,11 @@ impl cube_engine_server::CubeEngine for GrpcService {
             Err(error) => Err(pool_status(error)),
         }
     }
-    async fn validate_model(
+    async fn validate_model_inner(
         &self,
-        request: Request<ValidateModelRequest>,
+        request: ValidateModelRequest,
     ) -> Result<Response<ValidateModelResponse>, Status> {
-        let text = parse_model(request.into_inner().model_bundle)?;
+        let text = parse_model(request.model_bundle)?;
         let (found, model_digest) = tokio::task::spawn_blocking(move || {
             let (found, model) = if is_json(&text) {
                 (
@@ -264,11 +434,7 @@ impl cube_engine_server::CubeEngine for GrpcService {
             model_digest,
         }))
     }
-    async fn list_models(
-        &self,
-        _request: Request<ListModelsRequest>,
-    ) -> Result<Response<ListModelsResponse>, Status> {
-        self.manage()?;
+    async fn list_models_inner(&self) -> Result<Response<ListModelsResponse>, Status> {
         Ok(Response::new(ListModelsResponse {
             models: self
                 .core
@@ -283,12 +449,10 @@ impl cube_engine_server::CubeEngine for GrpcService {
             upstream_pin: pp_cube_compile::UPSTREAM_PIN.into(),
         }))
     }
-    async fn publish_model(
+    async fn publish_model_inner(
         &self,
-        request: Request<PublishModelRequest>,
+        request: PublishModelRequest,
     ) -> Result<Response<PublishModelResponse>, Status> {
-        self.manage()?;
-        let request = request.into_inner();
         let text = parse_model(request.model_bundle)?;
         let core = Arc::clone(&self.core);
         let version = request.model_version;
@@ -331,14 +495,13 @@ impl cube_engine_server::CubeEngine for GrpcService {
             result: Some(result),
         }))
     }
-    async fn retire_model(
+    async fn retire_model_inner(
         &self,
-        request: Request<RetireModelRequest>,
+        request: RetireModelRequest,
     ) -> Result<Response<RetireModelResponse>, Status> {
-        self.manage()?;
         let bundle = self
             .core
-            .retire(&request.into_inner().model_version)
+            .retire(&request.model_version)
             .map_err(bundle_error)?;
         Ok(Response::new(RetireModelResponse {
             identity: Some(Identity {
@@ -349,12 +512,12 @@ impl cube_engine_server::CubeEngine for GrpcService {
             }),
         }))
     }
-    async fn get_meta(
+    async fn get_meta_inner(
         &self,
-        request: Request<GetMetaRequest>,
+        request: GetMetaRequest,
     ) -> Result<Response<GetMetaResponse>, Status> {
         let core = Arc::clone(&self.core);
-        let version = request.into_inner().model_version;
+        let version = request.model_version;
         let identity = identity(&self.core, &version)?;
         let meta = tokio::task::spawn_blocking(move || core.get_meta(&version))
             .await
@@ -417,10 +580,223 @@ impl cube_engine_server::CubeEngine for GrpcService {
         }))
     }
 }
+fn event(rpc: &'static str, model_version: Option<&str>) -> Event {
+    Event {
+        rpc,
+        model_version: model_version.map(str::to_owned),
+        ..Event::default()
+    }
+}
+
+#[tonic::async_trait]
+impl cube_engine_server::CubeEngine for GrpcService {
+    async fn compile(
+        &self,
+        request: Request<CompileRequest>,
+    ) -> Result<Response<CompileResponse>, Status> {
+        let allowed = self.authorize(request.metadata(), Role::Read);
+        let request = request.into_inner();
+        let event = Event {
+            request_id: Some(request.request_id.clone()),
+            // Only a known dialect name is logged; anything else is the caller's text.
+            dialect: DialectId::from_name(&request.dialect).map(|d| d.name().to_owned()),
+            ..event("Compile", Some(&request.model_version))
+        };
+        let outcome = |response: &CompileResponse| match &response.result {
+            Some(compile_response::Result::Compiled(compiled)) => Outcome {
+                name: "ok".into(),
+                fingerprint: Some(hex(&compiled.fingerprint)),
+            },
+            Some(compile_response::Result::Failure(failure)) => Outcome {
+                name: match FailureKind::try_from(failure.kind) {
+                    Ok(FailureKind::Model) => "model",
+                    Ok(FailureKind::Query) => "query",
+                    Ok(FailureKind::Unsupported) => "unsupported",
+                    _ => "internal",
+                }
+                .into(),
+                fingerprint: None,
+            },
+            None => ok(),
+        };
+        self.observed(event, allowed, self.compile_inner(request), outcome)
+            .await
+    }
+    async fn validate_model(
+        &self,
+        request: Request<ValidateModelRequest>,
+    ) -> Result<Response<ValidateModelResponse>, Status> {
+        let allowed = self.authorize(request.metadata(), Role::Read);
+        let operation = self.validate_model_inner(request.into_inner());
+        self.observed(event("ValidateModel", None), allowed, operation, |_| ok())
+            .await
+    }
+    async fn get_meta(
+        &self,
+        request: Request<GetMetaRequest>,
+    ) -> Result<Response<GetMetaResponse>, Status> {
+        let allowed = self.authorize(request.metadata(), Role::Read);
+        let request = request.into_inner();
+        let event = event("GetMeta", Some(&request.model_version));
+        self.observed(event, allowed, self.get_meta_inner(request), |_| ok())
+            .await
+    }
+    async fn list_models(
+        &self,
+        request: Request<ListModelsRequest>,
+    ) -> Result<Response<ListModelsResponse>, Status> {
+        let allowed = self.manage(request.metadata());
+        self.observed(
+            event("ListModels", None),
+            allowed,
+            self.list_models_inner(),
+            |_| ok(),
+        )
+        .await
+    }
+    async fn publish_model(
+        &self,
+        request: Request<PublishModelRequest>,
+    ) -> Result<Response<PublishModelResponse>, Status> {
+        let allowed = self.manage(request.metadata());
+        let request = request.into_inner();
+        let event = event("PublishModel", Some(&request.model_version));
+        let outcome = |response: &PublishModelResponse| match response.result {
+            Some(publish_model_response::Result::Rejected(_)) => Outcome {
+                name: "model".into(),
+                fingerprint: None,
+            },
+            _ => ok(),
+        };
+        self.observed(event, allowed, self.publish_model_inner(request), outcome)
+            .await
+    }
+    async fn retire_model(
+        &self,
+        request: Request<RetireModelRequest>,
+    ) -> Result<Response<RetireModelResponse>, Status> {
+        let allowed = self.manage(request.metadata());
+        let request = request.into_inner();
+        let event = event("RetireModel", Some(&request.model_version));
+        self.observed(event, allowed, self.retire_model_inner(request), |_| ok())
+            .await
+    }
+}
+
+/// The standard health service. It needs no token: a probe learns only whether
+/// the server is accepting work.
+#[derive(Clone)]
+pub struct HealthService {
+    serving: Arc<AtomicBool>,
+}
+impl HealthService {
+    /// `serving` is shared with the host, which clears it when it starts to drain.
+    pub fn new(serving: Arc<AtomicBool>) -> Self {
+        Self { serving }
+    }
+}
+#[tonic::async_trait]
+impl health::health_server::Health for HealthService {
+    async fn check(
+        &self,
+        request: Request<health::HealthCheckRequest>,
+    ) -> Result<Response<health::HealthCheckResponse>, Status> {
+        use health::health_check_response::ServingStatus;
+        let service = request.into_inner().service;
+        if !service.is_empty() && service != SERVICE_NAME {
+            return Err(Status::not_found("unknown service"));
+        }
+        let status = if self.serving.load(Ordering::Relaxed) {
+            ServingStatus::Serving
+        } else {
+            ServingStatus::NotServing
+        };
+        Ok(Response::new(health::HealthCheckResponse {
+            status: status.into(),
+        }))
+    }
+    type WatchStream = tokio_stream::Empty<Result<health::HealthCheckResponse, Status>>;
+    /// Not offered: the protocol tells a client that receives UNIMPLEMENTED to
+    /// stop watching and treat the server as healthy; probes use Check.
+    async fn watch(
+        &self,
+        _request: Request<health::HealthCheckRequest>,
+    ) -> Result<Response<Self::WatchStream>, Status> {
+        Err(Status::unimplemented("use Check"))
+    }
+}
+
 fn pool_status(error: PoolError) -> Status {
     match error {
         PoolError::Busy => Status::resource_exhausted("compilation queue is full"),
         PoolError::Unavailable => Status::unavailable("compilation worker unavailable"),
         _ => internal(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cube_engine_server::CubeEngine;
+    use std::sync::mpsc;
+
+    // scenario: B0-API-019
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_compilation_that_overruns_the_deadline_is_reported_and_the_service_recovers() {
+        let core = Arc::new(CubeService::new([(
+            "warehouse".to_owned(),
+            DialectId::Presto,
+        )]));
+        let source = "cubes:\n- name: sales\n  data_source: warehouse\n  sql_table: dw.sales\n  measures:\n  - {name: amount, type: sum, sql: '{CUBE}.amount'}\n";
+        core.publish("v1", pp_cube_model::load_yaml(source).unwrap(), None)
+            .unwrap();
+        let telemetry = Telemetry::default();
+        let service = GrpcService::new(core, 1, 4)
+            .unwrap()
+            .with_telemetry(telemetry.clone())
+            .with_limits(Limits {
+                compile_timeout: Duration::from_millis(50),
+            });
+        // Occupy the only worker, so the request is accepted but cannot start.
+        let (started, running) = mpsc::channel();
+        let (release, gate) = mpsc::channel::<()>();
+        service
+            .pool
+            .enqueue(Box::new(move || {
+                started.send(()).unwrap();
+                let _ = gate.recv_timeout(Duration::from_secs(10));
+            }))
+            .unwrap();
+        running.recv_timeout(Duration::from_secs(5)).unwrap();
+        let request = || {
+            Request::new(CompileRequest {
+                model_version: "v1".into(),
+                query_json: r#"{"measures":["sales.amount"]}"#.into(),
+                dialect: "presto".into(),
+                timezone: "UTC".into(),
+                ..Default::default()
+            })
+        };
+        let status = service.compile(request()).await.unwrap_err();
+        assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
+        assert_eq!(telemetry.metrics.requests("Compile", "DeadlineExceeded"), 1);
+        // Once the worker is free the abandoned compilation drains and requests succeed
+        // again. How soon depends on the machine, so allow several deadlines.
+        release.send(()).unwrap();
+        let started = Instant::now();
+        let recovered = loop {
+            match service.compile(request()).await {
+                Ok(response) => break response.into_inner(),
+                Err(status) => {
+                    assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
+                    assert!(started.elapsed() < Duration::from_secs(20), "no recovery");
+                }
+            }
+        };
+        assert!(matches!(
+            recovered.result,
+            Some(compile_response::Result::Compiled(_))
+        ));
+        assert_eq!(telemetry.metrics.requests("Compile", "ok"), 1);
     }
 }

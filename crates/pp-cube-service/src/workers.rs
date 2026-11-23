@@ -10,7 +10,7 @@ use std::{
 };
 use tokio::sync::oneshot;
 
-type Job = Box<dyn FnOnce() + Send + 'static>;
+pub(crate) type Job = Box<dyn FnOnce() + Send + 'static>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PoolError {
@@ -96,7 +96,7 @@ impl CompilePool {
         Ok(CompileTask(receiver))
     }
 
-    fn enqueue(&self, job: Job) -> Result<(), PoolError> {
+    pub(crate) fn enqueue(&self, job: Job) -> Result<(), PoolError> {
         self.sender
             .as_ref()
             .ok_or(PoolError::Unavailable)?
