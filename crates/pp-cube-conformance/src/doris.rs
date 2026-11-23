@@ -11,6 +11,7 @@ pub const MODEL: &str = include_str!("../fixtures/sales.yaml");
 
 const TEMPORAL: &str = "B0-DORIS-010";
 const MATRIX: &str = "B0-DORIS-002";
+const EMPTY_PAGE: &str = "B0-DORIS-011";
 
 const DATABASE: &str = "CREATE DATABASE IF NOT EXISTS dw";
 const SALES: &str =
@@ -293,6 +294,16 @@ fn matrix() -> Vec<Case> {
             &["sales__channel_cd", "sales__category_cd", "sales__amount"],
             json!([["C2", "BOOK", 5], ["C2", "TOY", 7]]),
         ),
+        // The same four groups; a page that starts after the last one is empty.
+        Case {
+            scenario: EMPTY_PAGE,
+            ..retail(
+                "page_past_last_group",
+                r#"{"measures":["sales.amount"],"dimensions":["sales.channel_cd","sales.category_cd"],"order":[["sales.channel_cd","desc"],["sales.category_cd","asc"]],"limit":2,"offset":4}"#,
+                &["sales__channel_cd", "sales__category_cd", "sales__amount"],
+                json!([]),
+            )
+        },
         retail(
             "plain_range",
             &sales(
@@ -349,6 +360,7 @@ fn matrix() -> Vec<Case> {
 
 // scenario: B0-DORIS-010
 // scenario: B0-DORIS-002
+// scenario: B0-DORIS-011
 // Executed on a real engine by the Doris container tier, not by T0.
 pub fn cases() -> Vec<Case> {
     let mut cases = temporal();

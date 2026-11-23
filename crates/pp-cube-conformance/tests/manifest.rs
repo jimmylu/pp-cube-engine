@@ -26,9 +26,10 @@ fn doris_manifest_is_stable_and_complete() {
         (
             cases.len(),
             scenario("B0-DORIS-010"),
-            scenario("B0-DORIS-002")
+            scenario("B0-DORIS-002"),
+            scenario("B0-DORIS-011")
         ),
-        (39, 13, 26)
+        (40, 13, 26, 1)
     );
     let mut names = std::collections::BTreeSet::new();
     for case in cases {
@@ -51,7 +52,8 @@ fn doris_manifest_is_stable_and_complete() {
         }
         let columns = case["columns"].as_array().unwrap();
         let rows = case["rows"].as_array().unwrap();
-        assert!(!rows.is_empty(), "{name}");
+        // Only the page past the last group expects no rows.
+        assert_eq!(rows.is_empty(), name == "page_past_last_group", "{name}");
         for row in rows {
             assert_eq!(row.as_array().unwrap().len(), columns.len(), "{name}");
         }
