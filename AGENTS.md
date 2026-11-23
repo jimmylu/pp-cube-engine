@@ -59,6 +59,7 @@ One agent at a time owns a change's branch. Review by a second model is on deman
 | `docs/agents/delivery.md` | committing, publishing, reviewing or resuming delivery |
 | `docs/agents/workflow.md` | starting, proposing, implementing, reviewing or archiving a change |
 | `docs/agents/verification.md` | a check fails, a tool is missing, or you need a tier beyond `ci` |
+| `docs/agents/cube-core.md` | the Cube Core comparison fails, or the upstream pin moves |
 | `docs/agents/skills.md` | choosing a skill for a task |
 | `docs/agents/glossary.md` | a project term is unclear (B0, B1, facade, adapter, golden, scenario) |
 | `docs/agents/launch.md` | setting up or starting an agent session (tokens, local guard) |

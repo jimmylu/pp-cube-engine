@@ -11,7 +11,8 @@ properties and their reviewed golden are product files in
 cases run on Doris; see [doris-container.md](doris-container.md).
 
 A pass is Presto T2 for the scenarios the final line names (B0-PRESTO-003). It
-says nothing about Cube Core comparison (T1, not built), Druid or real clusters.
+says nothing about Druid or real clusters. Agreement with Cube Core is tier T1; see
+[cube-core.md](cube-core.md).
 
 ## Run locally
 

@@ -4,7 +4,7 @@
 #
 #   scripts/check.sh fast          before every commit
 #   scripts/check.sh ci            before a pull request; this is the t0 check
-#   scripts/check.sh conformance   comparison with Cube Core (not built yet)
+#   scripts/check.sh conformance   the kernel's Presto SQL against pinned Cube Core
 #   scripts/check.sh engines       live-compiled manifest on a prepared Presto
 #   scripts/check.sh engines-container  the same on a disposable pinned Presto
 #   scripts/check.sh doris-container    live-compiled manifest on a disposable pinned Doris
@@ -250,8 +250,8 @@ case "$MODE" in
     exit $?
     ;;
   conformance)
-    echo "check $MODE: not built yet (it arrives with the first conformance work)." >&2
-    exit 2
+    python3 scripts/engines/cube-core.py
+    exit $?
     ;;
   *)
     echo "usage: scripts/check.sh fast|ci|conformance|engines|engines-container|doris-container|image" >&2

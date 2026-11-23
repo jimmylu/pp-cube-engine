@@ -54,6 +54,34 @@ jobs:
           cat /tmp/presto-evidence.txt >> "$GITHUB_STEP_SUMMARY"
           exit "$result"
 
+  cube-core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the pinned upstream
+        run: scripts/vendor-sync.sh
+
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Compare with pinned Cube Core
+        shell: bash
+        run: |
+          set -o pipefail
+          echo "SHA: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          scripts/check.sh conformance > /tmp/cube-core-evidence.txt 2>&1
+          result=$?
+          cat /tmp/cube-core-evidence.txt
+          tail -1 /tmp/cube-core-evidence.txt >> "$GITHUB_STEP_SUMMARY"
+          exit "$result"
+
   doris-smoke:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
