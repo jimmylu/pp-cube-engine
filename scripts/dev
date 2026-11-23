@@ -142,6 +142,8 @@ def binding():
 
 
 REVIEW_PROTOCOL = 8
+# Changed files travel whole at base and head; a lockfile edit alone costs about 160 KB.
+REVIEW_PACKET_LIMIT = 750_000
 context_paths = []
 
 
@@ -185,8 +187,8 @@ def review_packet(bound, read_git=None, extra_paths=()):
             raise ValueError('Extra context must be a tracked non-vendor file: ' + path)
     packet = {'binding': bound, 'revisions': revisions, 'files': files, 'binary_files': binary_files,
               'diff': read_git('diff', '--no-ext-diff', bound['base'] + '...' + bound['head'])}
-    if len(json.dumps(packet).encode()) > 500_000:
-        raise ValueError('Review context exceeds 500 KB; split scope before review (no truncation)')
+    if len(json.dumps(packet).encode()) > REVIEW_PACKET_LIMIT:
+        raise ValueError('Review context exceeds 750 KB; split scope before review (no truncation)')
     return packet
 
 
@@ -205,8 +207,8 @@ def encode_review_packet(packet):
         + ('\n' if source.endswith('\n') else '')
         for path, source in packet['files'].items()})
     encoded = json.dumps(numbered, ensure_ascii=True, separators=(',', ':'))
-    if len(encoded.encode()) > 500_000:
-        raise ValueError('Review context exceeds 500 KB; no truncation')
+    if len(encoded.encode()) > REVIEW_PACKET_LIMIT:
+        raise ValueError('Review context exceeds 750 KB; no truncation')
     return encoded
 
 

@@ -61,12 +61,17 @@ class ReviewContextTests(unittest.TestCase):
             pinned = dev.review_packet(dict(base=base, head=git('rev-parse', 'HEAD'),
                                            branch='change/dependency'), git)
             self.assertEqual(pinned['files'], packet['files'])
-            self.assertLess(len(dev.encode_review_packet(pinned).encode()), 500_000)
+            self.assertLess(len(dev.encode_review_packet(pinned).encode()), dev.REVIEW_PACKET_LIMIT)
         encoded = dev.encode_review_packet(packet)
-        self.assertLess(len(encoded.encode()), 500_000)
+        self.assertLess(len(encoded.encode()), dev.REVIEW_PACKET_LIMIT)
         self.assertEqual(set(json.loads(encoded)['files']), set(packet['files']))
-        with self.assertRaisesRegex(ValueError, '500 KB'):
-            dev.encode_review_packet({'files': {'head:large': 'x' * 500_000}})
+        self.assertEqual(dev.REVIEW_PACKET_LIMIT, 750_000)
+        # A lockfile edit beside 300 KB of other evidence exceeded the earlier 500 KB cap.
+        roomy = dict(packet, files=dict(packet['files'], **{'head:evidence': ('x' * 99 + '\n') * 3000}))
+        size = len(dev.encode_review_packet(roomy).encode())
+        self.assertTrue(500_000 < size < dev.REVIEW_PACKET_LIMIT, size)
+        with self.assertRaisesRegex(ValueError, '750 KB'):
+            dev.encode_review_packet({'files': {'head:large': 'x' * 750_000}})
 
     def test_archived_change_and_deleted_base_are_available(self):
         with tempfile.TemporaryDirectory() as directory:
