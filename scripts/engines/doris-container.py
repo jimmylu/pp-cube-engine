@@ -63,14 +63,54 @@ def cell(value):
 PROGRESS = {}
 
 
+# Fixed phrases a server message may be reduced to; the message itself is never printed.
+PHRASES = ('backend', 'replica', 'storage medium', 'capacity', 'tablet', 'timeout', 'not found',
+           'already exists', 'syntax')
+# A backend can report alive before its storage is registered; table creation then
+# fails with the generic code and one of these phrases until the next heartbeat.
+STORAGE_NOT_READY = ('backend', 'replica', 'storage medium', 'capacity')
+
+
+def phrases(error):
+    message = str(getattr(error, 'msg', '') or '').lower()
+    return [phrase for phrase in PHRASES if phrase in message]
+
+
+def await_storage(connection, pause=time.sleep, clock=time.monotonic, limit=120):
+    """Alive backends are not enough: wait until a one-replica table can really be created."""
+    PROGRESS.update(stage='storage-readiness')
+    deadline = clock() + limit
+    cursor = connection.cursor()
+    try:
+        cursor.execute('CREATE DATABASE IF NOT EXISTS cube_readiness')
+        while True:
+            try:
+                cursor.execute("CREATE TABLE IF NOT EXISTS cube_readiness.probe (value INT) DUPLICATE KEY(value) "
+                               "DISTRIBUTED BY HASH(value) BUCKETS 1 PROPERTIES ('replication_num'='1')")
+                break
+            except Exception as error:
+                # Only the known not-yet-registered condition is retried; anything else is a failure.
+                if getattr(error, 'errno', None) != 1105 or not set(phrases(error)) & set(STORAGE_NOT_READY):
+                    raise
+                if clock() >= deadline:
+                    raise TimeoutError('Doris storage not ready') from None
+                pause(2)
+        cursor.execute('DROP DATABASE cube_readiness FORCE')
+    finally:
+        cursor.close()
+
+
 def failure_point(error):
-    """Stage, case name and numeric server code only; never a server message, SQL or endpoint."""
+    """Stage, case name, numeric server code and fixed phrases only; never a server message,
+    SQL or endpoint."""
     name = str(PROGRESS.get('case', ''))
     code = getattr(error, 'errno', None)
     return ('stage=' + PROGRESS.get('stage', 'setup')
-            + (' case=' + name if re.fullmatch(r'[A-Za-z0-9_]{1,64}', name) else '')
+            + (' case=' + name if PROGRESS.get('stage') in ('fixture', 'case')
+               and re.fullmatch(r'[A-Za-z0-9_]{1,64}', name) else '')
             + (' statement=%d' % PROGRESS['statement'] if PROGRESS.get('stage') == 'fixture' else '')
-            + (' code=%d' % code if type(code) is int else ''))
+            + (' code=%d' % code if type(code) is int else '')
+            + (' phrases=' + ','.join(phrases(error)) if phrases(error) else ''))
 
 
 def suite(connection, cases):
@@ -138,6 +178,8 @@ def run(cases, command=docker, pause=time.sleep):
         try:
             if not all(version.startswith('doris-' + VERSION + '-') for version in versions):
                 raise ValueError('unexpected Doris runtime version')
+            print('Doris container: waiting for backend storage', flush=True)
+            await_storage(connection, pause)
             print('Doris container: executing live-compiled manifest', flush=True)
             suite(connection, cases)
         finally:

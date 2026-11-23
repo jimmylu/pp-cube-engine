@@ -77,17 +77,44 @@ class DorisTests(unittest.TestCase):
     def test_failure_point_names_stage_case_and_code_but_no_server_text(self):
         class ServerError(Exception):
             errno = 1105
-            msg = 'private server message about dw.sales_dtl'
+            msg = 'private server message: dw.sales_dtl not found'
         cases = self.manifest()['cases']
         connection = Mock()
         connection.cursor.return_value.execute.side_effect = [None, ServerError('private')]
         with self.assertRaises(ServerError) as failure:
             doris.suite(connection, cases)
-        self.assertEqual(doris.failure_point(failure.exception), 'stage=fixture case=day statement=2 code=1105')
+        self.assertEqual(doris.failure_point(failure.exception),
+                         'stage=fixture case=day statement=2 code=1105 phrases=not found')
         connection = Mock()
         with unittest.mock.patch.object(doris, 'verify', side_effect=[None, ValueError('differs')]):
             with self.assertRaises(ValueError) as failure:
                 doris.suite(connection, cases)
         self.assertEqual(doris.failure_point(failure.exception), 'stage=case case=week')
         doris.PROGRESS.update(stage='case', case='x; DROP TABLE y')
-        self.assertEqual(doris.failure_point(ServerError('p')), 'stage=case code=1105')
+        self.assertEqual(doris.failure_point(ServerError('p')), 'stage=case code=1105 phrases=not found')
+
+    def test_storage_readiness_retries_only_the_unregistered_backend_condition(self):
+        class ServerError(Exception):
+            def __init__(self, errno, msg):
+                self.errno, self.msg = errno, msg
+        not_ready = ServerError(1105, 'errCode = 2, detailMessage = Failed to find enough backend')
+        connection, pauses = Mock(), []
+        connection.cursor.return_value.execute.side_effect = [None, not_ready, not_ready, None, None]
+        doris.await_storage(connection, pauses.append)
+        statements = [call.args[0] for call in connection.cursor.return_value.execute.call_args_list]
+        self.assertEqual(pauses, [2, 2])
+        self.assertTrue(statements[1].startswith('CREATE TABLE IF NOT EXISTS cube_readiness.probe'))
+        self.assertEqual(statements[-1], 'DROP DATABASE cube_readiness FORCE')
+        connection.cursor.return_value.close.assert_called_once()
+        for error in (ServerError(1105, 'syntax error near value'), ServerError(1064, 'backend'),
+                      ValueError('backend')):
+            connection = Mock()
+            connection.cursor.return_value.execute.side_effect = [None, error]
+            with self.subTest(error=error), self.assertRaises(type(error)):
+                doris.await_storage(connection, pauses.append)
+            self.assertEqual(doris.failure_point(error).split()[0], 'stage=storage-readiness')
+        ticks = iter([0, 0, 200])
+        connection = Mock()
+        connection.cursor.return_value.execute.side_effect = [None, not_ready, not_ready]
+        with self.assertRaisesRegex(TimeoutError, 'storage not ready'):
+            doris.await_storage(connection, pauses.append, lambda: next(ticks))

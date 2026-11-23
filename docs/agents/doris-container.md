@@ -24,8 +24,15 @@ literal expected columns and rows. The tier loads a fixture once for consecutive
 cases that share it, binds parameters through the native MySQL prepared
 statement protocol, never SQL text substitution, and compares column names and
 ordered rows. An unknown manifest schema, dialect, case field, parameter type or
-cell shape fails the run. A failure line names the stage, the case and the
-numeric server code, never a server message, SQL or endpoint.
+cell shape fails the run. A failure line names the stage, the case, the
+numeric server code and fixed phrases found in the message, never the server message,
+SQL or endpoint.
+
+Readiness has two steps. `SHOW BACKENDS` must report every backend alive, and then a
+one-replica probe table must really be created: a backend can be alive before its
+storage is registered with the frontend, and the first `CREATE TABLE` then fails
+with code 1105 (seen on GitHub runners at `stage=fixture case=day statement=2`).
+Only that condition is retried, for up to two minutes; the probe database is dropped.
 
 Cases, fixtures, expectations and their reviewed golden are product files in
 `crates/pp-cube-conformance`; add or change them there, in a product change.
