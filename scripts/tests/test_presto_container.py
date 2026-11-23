@@ -12,6 +12,10 @@ runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(runner)
 
 
+CASES = [{'name': 'day'}]
+SESSION = {'offset_clause_enabled': 'true'}
+
+
 class LifecycleTests(unittest.TestCase):
     def exercise(self, fail=None, verify_failure=False, version='"0.293-2f48ff6"'):
         calls, endpoints = [], []
@@ -26,29 +30,30 @@ class LifecycleTests(unittest.TestCase):
                 return version
             return ''
 
-        def verify(endpoint):
-            endpoints.append(endpoint)
+        def verify(endpoint, cases, session):
+            endpoints.append((endpoint, cases, session))
             if verify_failure:
                 raise ValueError('mismatch')
 
         if fail or verify_failure or version != '"0.293-2f48ff6"':
             with self.assertRaises((subprocess.SubprocessError, ValueError, TimeoutError)):
-                runner.run(command, verify, lambda _: None)
+                runner.run(CASES, SESSION, command, verify, lambda _: None)
         else:
-            runner.run(command, verify, lambda _: None)
+            runner.run(CASES, SESSION, command, verify, lambda _: None)
         return calls, endpoints
 
-    def test_success_sets_up_fixture_verifies_and_removes_owned_container(self):
+    def test_success_executes_the_manifest_and_removes_owned_container(self):
         calls, endpoints = self.exercise()
-        self.assertEqual(endpoints, ['http://127.0.0.1:12345'])
+        self.assertEqual(endpoints, [('http://127.0.0.1:12345', CASES, SESSION)])
         self.assertEqual(calls[0][0][0], 'info')
         self.assertIn(runner.IMAGE, calls[1][0])
         create = next(args for args, _ in calls if args[0] == 'create')
         self.assertIn('127.0.0.1::8080', create)
         name = create[create.index('--name') + 1]
         self.assertEqual(calls[-1][0], ('rm', '--force', name))
-        setup = next(kwargs['input'] for _, kwargs in calls if 'input' in kwargs)
-        self.assertEqual(setup, (runner.ROOT / 'scripts/engines/presto-fixture.sql').read_text())
+        # Fixtures travel in the manifest over HTTP; the runner pipes no SQL file into the engine.
+        self.assertFalse(any('input' in kwargs for _, kwargs in calls))
+        self.assertFalse((runner.ROOT / 'scripts/engines/presto-fixture.sql').exists())
 
     def test_failures_after_creation_always_remove_container(self):
         for stage in ['create', 'cp', 'start', 'inspect']:
@@ -59,13 +64,12 @@ class LifecycleTests(unittest.TestCase):
         calls, _ = self.exercise(verify_failure=True)
         self.assertEqual(calls[-1][0][0], 'rm')
 
-    def test_unexpected_version_fails_before_fixture_and_cleans_up(self):
+    def test_unexpected_version_fails_before_execution_and_cleans_up(self):
         calls, endpoints = self.exercise(version='"0.294-other"')
         self.assertEqual(calls[-1][0][0], 'rm')
         self.assertEqual(endpoints, [])
-        self.assertFalse(any('input' in kwargs for _, kwargs in calls))
 
-    def test_memory_worker_readiness_precedes_fixture_and_retries_only_no_nodes(self):
+    def test_memory_worker_readiness_precedes_execution_and_retries_only_no_nodes(self):
         calls = []
 
         def command(*args, **kwargs):
@@ -78,18 +82,17 @@ class LifecycleTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(1, 'docker', stderr='No nodes available')
             return ''
 
-        runner.run(command, lambda _: None, lambda _: None)
+        runner.run(CASES, SESSION, command, lambda *_: calls.append(('verify',)), lambda _: None)
         probes = [args for args in calls if any(' AS SELECT 1' in arg for arg in args)]
         self.assertEqual(len(probes), 2)
-        fixture = next(i for i, args in enumerate(calls) if '--file' in args)
-        self.assertLess(calls.index(probes[-1]), fixture)
+        self.assertLess(calls.index(probes[-1]), calls.index(('verify',)))
         self.assertEqual(calls[-1][0], 'rm')
 
     def test_failure_diagnostics_are_fixed_and_preserve_cleanup(self):
         output = io.StringIO()
         with contextlib.redirect_stderr(output):
             calls, _ = self.exercise(verify_failure=True)
-        self.assertIn('engine failure stage: golden-verification', output.getvalue())
+        self.assertIn('engine failure stage: manifest-execution', output.getvalue())
         self.assertEqual(calls[-1][0][0], 'rm')
         safe = 'nextUri must remain on the configured origin'
         self.assertEqual(runner.SMOKE.failure_category(ValueError(safe)), safe)
@@ -105,7 +108,7 @@ class LifecycleTests(unittest.TestCase):
             return ''
 
         with self.assertRaises(subprocess.TimeoutExpired):
-            runner.run(command)
+            runner.run(CASES, SESSION, command)
         self.assertEqual(calls[-1][0], 'rm')
 
     def test_pre_creation_failure_does_not_remove_unowned_container(self):

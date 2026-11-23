@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Provision one disposable, pinned Presto engine and execute the smoke golden."""
+"""Provision one disposable, pinned Presto engine and execute the live-compiled manifest."""
 import importlib.util
 import json
 import re
@@ -26,7 +26,7 @@ def docker(*args, input=None, timeout=60):
     return (result.stdout + (result.stderr if args[0] == 'logs' else '')).strip()
 
 
-def run(command=docker, verify=SMOKE.verify_suite, pause=time.sleep):
+def run(cases, session=None, command=docker, verify=SMOKE.verify_manifest, pause=time.sleep):
     """Only remove the uniquely named container created by this invocation."""
     command('info', '--format', '{{.ServerVersion}}', timeout=15)
     print('Presto container: pulling pinned amd64 image', flush=True)
@@ -100,23 +100,9 @@ def run(command=docker, verify=SMOKE.verify_suite, pause=time.sleep):
                     raise TimeoutError('Memory workers did not become ready') from None
                 pause(1)
         command('exec', name, '/opt/presto-cli', '--execute', 'DROP TABLE ' + table, timeout=5)
-        stage = 'fixture'
-        print('Presto container: loading memory fixture', flush=True)
-        try:
-            command('exec', '-i', name, '/opt/presto-cli', '--file', '/dev/stdin',
-                    input=(ROOT / 'scripts/engines/presto-fixture.sql').read_text(), timeout=30)
-        except subprocess.CalledProcessError as error:
-            raw = (error.stdout or '') + (error.stderr or '')
-            phrases = ['No nodes available', 'Insufficient active worker nodes',
-                       'does not exist', 'already exists', 'not found', 'not registered',
-                       'memory', 'Server starting', 'starting up', 'Connection refused',
-                       'timeout', 'not supported', 'Permission denied', 'line 1']
-            print('fixture categories: ' + ','.join(p for p in phrases if p.lower() in raw.lower()),
-                  file=sys.stderr)
-            raise
-        stage = 'golden-verification'
-        print('Presto container: executing aggregate, text-binding and Tokyo day goldens over HTTP', flush=True)
-        verify(endpoint)
+        stage = 'manifest-execution'
+        print('Presto container: executing live-compiled manifest over HTTP', flush=True)
+        verify(endpoint, cases, session)
     except Exception:
         print('engine failure stage: ' + stage, file=sys.stderr)
         raise
@@ -129,12 +115,16 @@ def run(command=docker, verify=SMOKE.verify_suite, pause=time.sleep):
 
 def main():
     try:
-        run()
+        # Compile before provisioning, so a compiler failure never starts an engine.
+        print('Presto container: compiling execution manifest', flush=True)
+        cases, session = SMOKE.MANIFEST.compiled_manifest('presto')
+        run(cases, session)
     except (OSError, ValueError, KeyError, TypeError, IndexError,
             subprocess.SubprocessError, SMOKE.http.client.HTTPException) as error:
         print('check engines-container: FAILED — ' + SMOKE.failure_category(error), file=sys.stderr)
         return 1
-    print('check engines-container: PASSED — Presto 0.293, aggregate, text binding and Tokyo day goldens, 3 cases; not full T2 acceptance')
+    print('check engines-container: PASSED — Presto 0.293, %d live-compiled manifest cases (%s)'
+          % (len(cases), SMOKE.MANIFEST.scenarios(cases)))
     return 0
 
 

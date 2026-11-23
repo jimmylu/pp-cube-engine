@@ -18,12 +18,6 @@ presto = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(presto)
 
 
-class SnapshotTests(unittest.TestCase):
-    def test_parameterized_snapshot_is_not_silently_executed(self):
-        with self.assertRaisesRegex(ValueError, 'parameters'):
-            presto.snapshot_sql('---\nsource: test\n---\nSELECT ?\n-- parameters: [1]\n')
-
-
 @contextmanager
 def server(pages):
     requests = []
@@ -60,104 +54,120 @@ def server(pages):
         httpd.server_close()
 
 
-def result(rows):
-    return {'columns': [{'name': name} for name in presto.EXPECTED_COLUMNS], 'data': rows}
+COLUMNS = ['sales__channel_cd', 'sales__amount']
+
+
+def result(rows, columns=COLUMNS):
+    return {'columns': [{'name': name} for name in columns], 'data': rows}
+
+
+def case(**changes):
+    value = {'name': 'by_channel', 'scenario': 'B0-PRESTO-003', 'fixture': ['DROP X', 'CREATE X'],
+             'sql': 'SELECT ? AS a', 'params': [{'type': 'text', 'value': 'C1'}],
+             'columns': COLUMNS, 'rows': [['C1', 30]]}
+    value.update(changes)
+    return value
+
+
+class ManifestTests(unittest.TestCase):
+    def test_cases_share_fixtures_and_send_session_and_typed_parameters(self):
+        cases = [case(), case(name='again', rows=[['C1', 30.0]]),
+                 case(name='day', fixture=['CREATE Y'], columns=['day', 'amount'],
+                      params=[{'type': 'text', 'value': "a'b"}, {'type': 'number', 'value': 3},
+                              {'type': 'bool', 'value': True}, {'type': 'null'}],
+                      rows=[[{'timestamp': '2026-10-01T00:00:00'}, 20]])]
+        pages = [(200, {}), (200, {}), (200, result([['C1', 30]])), (200, result([['C1', 30]])), (200, {}),
+                 (200, result([['2026-10-01 00:00:00.000', 20]], ['day', 'amount']))]
+        with server(pages) as (origin, requests):
+            presto.verify_manifest(origin, cases, {'offset_clause_enabled': 'true'})
+        # One fixture load per distinct fixture, in order, then each case.
+        self.assertEqual([r[2].decode() for r in requests],
+                         ['DROP X', 'CREATE X', "EXECUTE cube_case USING 'C1'", "EXECUTE cube_case USING 'C1'",
+                          'CREATE Y', "EXECUTE cube_case USING 'a''b', DOUBLE '3.0', TRUE, NULL"])
+        for request in requests:
+            self.assertEqual(request[3]['X-Presto-Session'], 'offset_clause_enabled=true')
+        header = requests[2][3]['X-Presto-Prepared-Statement']
+        self.assertEqual(presto.urllib.parse.unquote_plus(header.split('=', 1)[1]), 'SELECT ? AS a')
+        self.assertIsNone(requests[0][3]['X-Presto-Prepared-Statement'])
+
+    def test_wrong_rows_columns_buckets_and_missing_results_fail(self):
+        day = case(columns=['day', 'amount'], rows=[[{'timestamp': '2026-10-01T00:00:00'}, 20]])
+        for expected, payload in [
+                (case(), result([['C1', 31]])), (case(), result([['C1', 30], ['C2', 7]])),
+                (case(), result([['C1', 30]], ['wrong', 'sales__amount'])), (case(), {}),
+                (case(rows=[]), result([['C1', 30]])),
+                (day, result([['2026-09-30 00:00:00.000', 20]], ['day', 'amount'])),
+                (day, result([['2026-10-01 00:00:00.000', 20], ['2026-11-01 00:00:00.000', 0]], ['day', 'amount']))]:
+            with self.subTest(payload=payload), server([(200, {}), (200, {}), (200, payload)]) as (origin, _):
+                with self.assertRaises(ValueError) as failure:
+                    presto.verify_manifest(origin, [expected])
+                self.assertEqual(presto.failure_category(failure.exception),
+                                 'result differs from the case expectation')
+
+    def test_an_empty_expected_page_passes_only_with_no_rows(self):
+        with server([(200, {}), (200, {}), (200, result([]))]) as (origin, _):
+            presto.verify_manifest(origin, [case(rows=[])])
+
+    def test_unknown_parameters_and_cells_fail_closed(self):
+        for item in [{'type': 'date', 'value': 'x'}, {'type': 'text', 'value': 1}, {'type': 'text'},
+                     {'type': 'text', 'value': 'a\x00'}, {'type': 'number', 'value': True},
+                     {'type': 'number', 'value': float('inf')}, {'type': 'null', 'value': 1},
+                     {'type': 'text', 'value': 'a', 'extra': 1}]:
+            with self.subTest(item=item), self.assertRaises(ValueError) as failure:
+                presto.literal(item)
+            self.assertEqual(presto.failure_category(failure.exception), 'unsupported manifest parameter')
+        for value in [{'date': '2026-10-01'}, {'timestamp': '2026-10-01'}, {'timestamp': 1}, [1]]:
+            with self.subTest(value=value), self.assertRaises(ValueError) as failure:
+                presto.cell(value)
+            self.assertEqual(presto.failure_category(failure.exception), 'unsupported expected cell')
+        self.assertIsNone(presto.cell(None))
 
 
 class ProtocolTests(unittest.TestCase):
-    def test_time_golden_preserves_both_range_parameters(self):
-        sql, params = presto.text_snapshot(presto.TIME_SNAPSHOT.read_text())
-        self.assertEqual(params, ('2026-09-30T15:00:00.000Z', '2026-10-31T14:59:59.999Z'))
-        with server([(200, {})]) as (origin, requests):
-            presto.execute(origin, sql, parameters=params)
-        self.assertEqual(requests[0][2],
-                         b"EXECUTE cube_smoke USING '2026-09-30T15:00:00.000Z', '2026-10-31T14:59:59.999Z'")
-        header = requests[0][3]['X-Presto-Prepared-Statement']
-        self.assertEqual(presto.urllib.parse.unquote_plus(header.split('=', 1)[1]), sql)
-
-    def test_suite_executes_three_golden_requests_and_checks_filtered_rows(self):
-        pages = [(200, result(presto.EXPECTED_ROWS)), (200, result([['C1', 30]])),
-                 (200, {'columns': [{'name': name} for name in presto.TIME_COLUMNS], 'data': presto.TIME_ROWS})]
-        with server(pages) as (origin, requests):
-            presto.verify_suite(origin)
-        self.assertEqual(len(requests), 3)
-        sql, params = presto.text_snapshot(presto.FILTER_SNAPSHOT.read_text())
-        self.assertEqual(params, ('C1',))
-        self.assertIn(' = ?', sql)
-        self.assertEqual(requests[1][2], b"EXECUTE cube_smoke USING 'C1'")
-        with server([(200, result(presto.EXPECTED_ROWS)),
-                     (200, result([['C2', 7]]))]) as (origin, _):
-            with self.assertRaisesRegex(ValueError, 'result differs'):
-                presto.verify_suite(origin)
-
-    def test_wrong_temporal_buckets_or_boundary_totals_fail(self):
-        for rows in [[['2026-10-01 00:00:00.000', 30]],
-                     [['2026-09-30 00:00:00.000', 20]],
-                     presto.TIME_ROWS + [['2026-11-01 00:00:00.000', 0]]]:
-            pages = [(200, result(presto.EXPECTED_ROWS)), (200, result([['C1', 30]])),
-                     (200, {'columns': [{'name': name} for name in presto.TIME_COLUMNS], 'data': rows})]
-            with self.subTest(rows=rows), server(pages) as (origin, _):
-                with self.assertRaisesRegex(ValueError, 'result differs'):
-                    presto.verify_suite(origin)
-
-    def test_unsupported_parameter_shapes_fail_before_http(self):
-        for value in ('[]', '[Int(1)]', '[Text("a"), Int(1)]', '[Text("a"), Text("b"), Text("c")]', '[Text(bad)]'):
-            with self.subTest(value=value), self.assertRaises(ValueError) as failure:
-                presto.text_snapshot('---\nsource: test\n---\nSELECT ?\n-- parameters: ' + value)
-            self.assertEqual(presto.failure_category(failure.exception),
-                             'expected one or two text snapshot parameters')
-
     def test_text_binding_uses_prepared_header_without_replacing_placeholders(self):
         sql = "SELECT ? AS value"
         value = "C1' OR 'x'='x; -- café"
         with server([(200, result([[value, 30]]))]) as (origin, requests):
-            presto.execute(origin, sql, parameters=(value,))
+            presto.execute(origin, sql, parameters=({'type': 'text', 'value': value},))
         self.assertEqual(requests[0][2].decode(),
-                         "EXECUTE cube_smoke USING 'C1'' OR ''x''=''x; -- café'")
+                         "EXECUTE cube_case USING 'C1'' OR ''x''=''x; -- café'")
         header = requests[0][3]['X-Presto-Prepared-Statement']
         self.assertEqual(presto.urllib.parse.unquote_plus(header.split('=', 1)[1]), sql)
+        self.assertIsNone(requests[0][3]['X-Presto-Session'])
 
-    def test_pages_and_busy_retry_execute_exact_golden(self):
+    def test_pages_and_busy_retry_collect_every_row(self):
         pages = [(503, {}), (200, {'nextUri': 'ORIGIN/v1/statement/next'}),
                  (200, dict(result([['C1', 30]]), nextUri='ORIGIN/v1/statement/last')),
                  (200, result([['C2', 7]]))]
         with server(pages) as (origin, requests):
-            presto.verify(origin)
+            self.assertEqual(presto.execute(origin, 'SELECT 1'), (COLUMNS, [['C1', 30], ['C2', 7]]))
         self.assertEqual([r[0] for r in requests], ['POST', 'POST', 'GET', 'GET'])
-        self.assertEqual(requests[0][2].decode(), presto.snapshot_sql(presto.SNAPSHOT.read_text()))
+        self.assertEqual(requests[0][2].decode(), 'SELECT 1')
         self.assertEqual(requests[0][3]['X-Presto-Catalog'], 'memory')
         self.assertEqual(requests[0][3]['X-Presto-Time-Zone'], 'UTC')
         self.assertEqual(pages, [])
-
-    def test_wrong_rows_columns_and_missing_results_fail(self):
-        for payload in [result([['C1', 31], ['C2', 7]]),
-                        {'columns': [{'name': 'wrong'}], 'data': [['C1', 30], ['C2', 7]]},
-                        {}]:
-            with self.subTest(payload=payload), server([(200, payload)]) as (origin, _):
-                with self.assertRaisesRegex(ValueError, 'result differs'):
-                    presto.verify(origin)
 
     def test_query_error_cancels_pending_query(self):
         with server([(200, {'error': {'message': 'bad'}, 'nextUri': 'ORIGIN/next'}),
                      (200, {})]) as (origin, requests):
             with self.assertRaisesRegex(ValueError, 'query error'):
-                presto.verify(origin)
+                presto.execute(origin, 'SELECT 1')
         self.assertEqual([r[0] for r in requests], ['POST', 'DELETE'])
 
     def test_cross_origin_next_uri_is_never_followed(self):
         with server([(200, {'nextUri': 'http://127.0.0.1:1/next'})]) as (origin, requests):
             with self.assertRaisesRegex(ValueError, 'configured origin'):
-                presto.verify(origin)
+                presto.execute(origin, 'SELECT 1')
         self.assertEqual(len(requests), 1)
 
     def test_no_redirect_or_http_error_is_success(self):
         with server([(302, {})]) as (origin, requests):
             with self.assertRaisesRegex(ValueError, 'redirects are not supported'):
-                presto.verify(origin)
+                presto.execute(origin, 'SELECT 1')
         self.assertEqual(len(requests), 1)
         with server([(500, {})]) as (origin, _):
             with self.assertRaises(OSError):
-                presto.verify(origin)
+                presto.execute(origin, 'SELECT 1')
 
     def test_slow_body_is_interrupted_by_wall_deadline(self):
         class SlowHandler(BaseHTTPRequestHandler):
@@ -194,7 +204,8 @@ class ProtocolTests(unittest.TestCase):
         for error in [http.client.BadStatusLine('private-response'),
                       http.client.IncompleteRead(b'private-response')]:
             output = io.StringIO()
-            with patch.object(presto, 'verify', side_effect=error), \
+            with patch.object(presto.MANIFEST, 'compiled_manifest', return_value=([case()], {})), \
+                    patch.object(presto, 'verify_manifest', side_effect=error), \
                     patch('sys.argv', ['presto.py', '--endpoint', 'http://localhost']), \
                     redirect_stderr(output):
                 self.assertEqual(presto.main(), 1)

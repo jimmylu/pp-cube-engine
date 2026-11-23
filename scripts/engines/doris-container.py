@@ -4,6 +4,7 @@ import datetime
 import importlib.util
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
@@ -16,9 +17,9 @@ SPEC = importlib.util.spec_from_file_location('presto_container', ROOT / 'script
 PRESTO = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PRESTO)
 docker = PRESTO.docker
-EMITTER = ('cargo', 'run', '-q', '--locked', '-p', 'pp-cube-conformance',
-           '--bin', 'execution-cases', '--', 'doris')
-CASE_KEYS = {'name', 'scenario', 'fixture', 'sql', 'params', 'columns', 'rows'}
+MANIFEST_SPEC = importlib.util.spec_from_file_location('engine_manifest', ROOT / 'scripts/engines/manifest.py')
+MANIFEST = importlib.util.module_from_spec(MANIFEST_SPEC)
+MANIFEST_SPEC.loader.exec_module(MANIFEST)
 
 
 def verify(cursor, sql, params, columns, rows):
@@ -30,14 +31,10 @@ def verify(cursor, sql, params, columns, rows):
 
 
 def compiled_cases(emit=subprocess.run):
-    """Compiles the conformance cases now; the kernel itself never executes them."""
-    output = emit(EMITTER, cwd=ROOT, text=True, stdout=subprocess.PIPE, timeout=900, check=True)
-    manifest = json.loads(output.stdout)
-    cases = manifest.get('cases')
-    if manifest.get('schema') != 1 or manifest.get('dialect') != 'doris' or not cases:
+    """The Doris manifest; this tier sets no session property, so it accepts none."""
+    cases, session = MANIFEST.compiled_manifest('doris', emit)
+    if session:
         raise ValueError('unsupported execution manifest')
-    if any(set(case) != CASE_KEYS or not case['fixture'] for case in cases):
-        raise ValueError('malformed execution case')
     return cases
 
 
@@ -62,16 +59,73 @@ def cell(value):
     return value
 
 
+# Where a run stopped, for the fixed failure line: a stage and a public case name.
+PROGRESS = {}
+
+
+# Fixed phrases a server message may be reduced to; the message itself is never printed.
+PHRASES = ('backend', 'replica', 'storage medium', 'capacity', 'tablet', 'timeout', 'not found',
+           'already exists', 'syntax')
+# A backend can report alive before its storage is registered; table creation then
+# fails with the generic code and one of these phrases until the next heartbeat.
+STORAGE_NOT_READY = ('backend', 'replica', 'storage medium', 'capacity')
+
+
+def phrases(error):
+    message = str(getattr(error, 'msg', '') or '').lower()
+    return [phrase for phrase in PHRASES if phrase in message]
+
+
+def await_storage(connection, pause=time.sleep, clock=time.monotonic, limit=120):
+    """Alive backends are not enough: wait until a one-replica table can really be created."""
+    PROGRESS.update(stage='storage-readiness')
+    deadline = clock() + limit
+    cursor = connection.cursor()
+    try:
+        cursor.execute('CREATE DATABASE IF NOT EXISTS cube_readiness')
+        while True:
+            try:
+                cursor.execute("CREATE TABLE IF NOT EXISTS cube_readiness.probe (value INT) DUPLICATE KEY(value) "
+                               "DISTRIBUTED BY HASH(value) BUCKETS 1 PROPERTIES ('replication_num'='1')")
+                break
+            except Exception as error:
+                # Only the known not-yet-registered condition is retried; anything else is a failure.
+                if getattr(error, 'errno', None) != 1105 or not set(phrases(error)) & set(STORAGE_NOT_READY):
+                    raise
+                if clock() >= deadline:
+                    raise TimeoutError('Doris storage not ready') from None
+                pause(2)
+        cursor.execute('DROP DATABASE cube_readiness FORCE')
+    finally:
+        cursor.close()
+
+
+def failure_point(error):
+    """Stage, case name, numeric server code and fixed phrases only; never a server message,
+    SQL or endpoint."""
+    name = str(PROGRESS.get('case', ''))
+    code = getattr(error, 'errno', None)
+    return ('stage=' + PROGRESS.get('stage', 'setup')
+            + (' case=' + name if PROGRESS.get('stage') in ('fixture', 'case')
+               and re.fullmatch(r'[A-Za-z0-9_]{1,64}', name) else '')
+            + (' statement=%d' % PROGRESS['statement'] if PROGRESS.get('stage') == 'fixture' else '')
+            + (' code=%d' % code if type(code) is int else '')
+            + (' phrases=' + ','.join(phrases(error)) if phrases(error) else ''))
+
+
 def suite(connection, cases):
     """Runs every live-compiled case; each fixture leaves exactly its own data."""
     loaded = None
     for case in cases:
+        PROGRESS.update(stage='fixture', case=case['name'])
         if case['fixture'] != loaded:
             cursor = connection.cursor()
-            for statement in case['fixture']:
+            for index, statement in enumerate(case['fixture'], 1):
+                PROGRESS['statement'] = index
                 cursor.execute(statement)
             cursor.close()
             loaded = case['fixture']
+        PROGRESS['stage'] = 'case'
         # Parameters travel separately through the native prepared protocol.
         cursor = connection.cursor(prepared=True)
         try:
@@ -124,6 +178,8 @@ def run(cases, command=docker, pause=time.sleep):
         try:
             if not all(version.startswith('doris-' + VERSION + '-') for version in versions):
                 raise ValueError('unexpected Doris runtime version')
+            print('Doris container: waiting for backend storage', flush=True)
+            await_storage(connection, pause)
             print('Doris container: executing live-compiled manifest', flush=True)
             suite(connection, cases)
         finally:
@@ -141,10 +197,11 @@ def main():
         run(cases)
     except Exception as error:
         # Never publish endpoints, driver/server responses or business input.
-        print('check doris-container: FAILED — ' + type(error).__name__, file=sys.stderr)
+        print('check doris-container: FAILED — ' + type(error).__name__ + ' at ' + failure_point(error),
+              file=sys.stderr)
         return 1
-    scenarios = ', '.join(sorted({case['scenario'] for case in cases}))
-    print('check doris-container: PASSED — Doris 4.1.3, %d live-compiled manifest cases (%s)' % (len(cases), scenarios))
+    print('check doris-container: PASSED — Doris 4.1.3, %d live-compiled manifest cases (%s)'
+          % (len(cases), MANIFEST.scenarios(cases)))
     return 0
 
 
