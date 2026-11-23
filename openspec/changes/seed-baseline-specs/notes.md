@@ -144,3 +144,9 @@ the live-compiled manifest. B0-DORIS-001 and B0-DORIS-002 remain proposed here.
 The complete Doris B0 compilation and Doris B0 acceptance requirements, with
 B0-DORIS-001 and B0-DORIS-002, move to add-doris-b0-acceptance. The emptied
 dialect-doris seed delta is deleted. Presto and Druid deltas remain proposed.
+
+## Presto execution cases
+add-presto-b0-acceptance adds forty Presto execution cases that carry
+B0-PRESTO-003. The requirement stays proposed here, reworded to literal expected
+rows as Doris was, until the Presto tier (a harness path) runs the manifest and
+passes on GitHub. B0-PRESTO-002 (T1) is untouched.

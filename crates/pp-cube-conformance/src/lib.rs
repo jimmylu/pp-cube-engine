@@ -4,7 +4,9 @@
 //! loads each case's fixture on a real engine and compares the result with the
 //! expectation written beside the case.
 
+pub mod cases;
 mod doris;
+mod presto;
 
 use std::sync::Arc;
 
@@ -41,18 +43,56 @@ pub fn midnight(day: &str) -> Value {
 /// Fails, without a partial document, for a dialect that has no cases.
 pub fn manifest(dialect: &str) -> Result<String, String> {
     match dialect {
-        "doris" => render(DialectId::Doris, dialect, doris::MODEL, &doris::cases()),
-        "presto" => render(DialectId::Presto, dialect, "", &[]),
+        "doris" => render(
+            DialectId::Doris,
+            dialect,
+            MODEL,
+            &[],
+            &dialect_cases(doris::fixture, doris::scenario),
+        ),
+        "presto" => render(
+            DialectId::Presto,
+            dialect,
+            MODEL,
+            presto::SESSION,
+            &dialect_cases(presto::fixture, presto::scenario),
+        ),
         other => Err(format!("unknown dialect `{other}`")),
     }
 }
 
+/// The model every shared case is compiled against.
+const MODEL: &str = include_str!("../fixtures/sales.yaml");
+
+/// The shared cases with one dialect's fixtures and scenario ids.
+fn dialect_cases(
+    fixture: fn(cases::Fixture) -> &'static [&'static str],
+    scenario: fn(cases::Group) -> &'static str,
+) -> Vec<Case> {
+    cases::declared()
+        .into_iter()
+        .map(|case| Case {
+            name: case.name,
+            scenario: scenario(case.group),
+            fixture: fixture(case.fixture),
+            query: case.query,
+            timezone: case.timezone,
+            security: case.security,
+            columns: case.columns,
+            rows: case.rows,
+        })
+        .collect()
+}
+
 /// Compiles `cases` against `model_yaml`. Any case that cannot be compiled or
 /// represented fails the whole manifest and is named in the error.
+/// `session` lists the engine session properties the compiled SQL needs; the
+/// kernel cannot set them, so whoever executes the SQL must.
 pub fn render(
     dialect: DialectId,
     label: &str,
     model_yaml: &str,
+    session: &[(&str, &str)],
     cases: &[Case],
 ) -> Result<String, String> {
     if cases.is_empty() {
@@ -101,7 +141,16 @@ pub fn render(
             "rows": case.rows,
         }));
     }
-    let document = json!({ "schema": SCHEMA, "dialect": label, "cases": entries });
+    let session: serde_json::Map<String, Value> = session
+        .iter()
+        .map(|(name, value)| ((*name).to_owned(), json!(value)))
+        .collect();
+    let document = json!({
+        "schema": SCHEMA,
+        "dialect": label,
+        "session": session,
+        "cases": entries,
+    });
     Ok(format!("{document:#}\n"))
 }
 
