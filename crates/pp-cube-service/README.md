@@ -44,6 +44,8 @@ pp-cube-service --model v1=model.yaml --data-source warehouse=doris \
 | `--compile-timeout-ms` | 10000 | How long a caller waits; then `DEADLINE_EXCEEDED`. The compilation itself cannot be interrupted and finishes on its worker |
 | `--max-request-bytes` | 4194304 | Largest request, model uploads included |
 | `--max-models` | 64 | Available versions; publishing beyond it fails until one is retired |
+| `--model-store` | off | A directory of published model versions to serve and follow; see below |
+| `--model-refresh-seconds` | 30 | How often the store is read again; `0` reads it at startup only |
 | `--drain-seconds` | 30 | Time for running requests to finish after SIGTERM or SIGINT |
 | `--metrics-listen` | off | Address answering `GET /metrics` in the Prometheus text format |
 | `--log` | `json` | `json` writes one line per request to stderr; `off` writes none |
@@ -68,6 +70,51 @@ exits successfully; if they outlast the drain time it exits unsuccessfully.
 A version is identified by the service's digest of its typed content, `sha256:`
 and 64 hex digits. The digest does not change with formatting, key order or
 YAML versus JSON; ValidateModel returns it for a valid model.
+
+### From shared storage
+
+With `--model-store <directory>` every replica serves the versions a publisher
+writes to shared storage, such as a NAS mount, and follows them while running.
+The layout keeps business lines and asset types apart:
+
+```text
+<business line>[/<sub line>[/<sub line>]]/models/<version>/manifest.json
+                                                          /cubes/<cube>.yml
+                                                          /views/<view>.yml
+```
+
+- **Business line**: one to three levels, lower case letters, digits, `_`, `-`.
+- **Asset type**: `models` is the one this service reads. Anything under another
+  name at that place is left alone, for other kinds of semantic assets.
+- **Version**: letters, digits, `.`, `_`, `-`. A caller names a version by its
+  business line and version: `property/motor/v12`.
+- **Model**: the directory Cube recommends, one cube or view per file, each file
+  named after what it defines in snake_case: `cubes/policies.yml` defines the
+  cube `policies`. `.yml` and `.yaml` are read; any other file fails the version.
+- **`manifest.json`**: `{"schema": 1}`, optionally with `"digest"`, the digest
+  ValidateModel returns for the content. Write it last: a version is offered
+  only once its manifest is there, and the digest, when given, must match.
+
+Versions are immutable. One that is loaded is not read again; publish a change
+as a new version. Removing a version's manifest retires it at the next pass.
+`RetireModel` on a version of the store lasts until that pass: the store decides.
+
+A store that cannot be listed stops the process at startup; later, a failed pass
+changes nothing and the loaded versions stay. A version that cannot be offered
+does not stop the others. It is logged as `{"event":"model_store",
+"model_version":…,"outcome":"rejected","reason":…}` with one of `layout`,
+`manifest`, `read`, `files`, `model`, `digest`, `data-source`, `full`, and counted
+in `ppcube_model_store_rejected_versions{reason}`; `ppcube_model_store_scans_total
+{outcome}` and `ppcube_model_store_last_scan_failed` describe the passes. Run
+ValidateModel on the content to see the issues.
+
+Replicas read the store independently, so a new version is available on all of
+them one refresh interval after its manifest is written, not at once.
+
+Entries whose name starts with a dot are not read. An S3-protocol bucket as a
+store is planned with the same layout; `--model-store` takes a directory today.
+
+### By request
 
 With `--allow-publish`, versions can also be managed while serving:
 

@@ -1,5 +1,8 @@
 //! Contract types, model loading and baseline validation.
 
+mod assemble;
+pub use assemble::{assemble, AssembleError, ModelFile};
+
 mod bundle;
 pub use bundle::{BundleError, ModelBundle, ModelCatalog};
 
