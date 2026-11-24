@@ -26,7 +26,8 @@ output is stable, this shows that it agrees with Cube.
 5. Removes both containers.
 
 A pass is tier T1 for the cases, scenario B0-PRESTO-002. Cube has no Doris
-dialect, so there is no Doris comparison.
+dialect, so there is no Doris comparison. The Druid comparison runs inside the
+Druid tier, on the SQL only; see [druid-container.md](druid-container.md).
 
 ## Run it
 

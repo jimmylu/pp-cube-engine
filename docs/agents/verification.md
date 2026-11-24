@@ -5,17 +5,18 @@
 | Tier | Command | Where it runs | Blocks |
 | --- | --- | --- | --- |
 | T0 | `scripts/check.sh ci` | Every pull request | Merge |
-| T1 | `scripts/check.sh conformance`: the kernel's Presto SQL against pinned Cube Core | GitHub `engines` workflow on pull requests that can affect engines; locally on demand | Milestone |
-| T2 | `scripts/check.sh engines` (prepared Presto), `scripts/check.sh engines-container` (disposable Docker Presto) or `scripts/check.sh doris-container` (disposable Docker Doris) | GitHub `engines` workflow on pull requests that can affect engines; locally on demand | Milestone |
+| T1 | `scripts/check.sh conformance`: the kernel's Presto SQL against pinned Cube Core; `scripts/check.sh druid-container` compares the Druid SQL in the same run as its execution | GitHub `engines` workflow on pull requests that can affect engines; locally on demand | Milestone |
+| T2 | `scripts/check.sh engines` (prepared Presto), `scripts/check.sh engines-container` (disposable Docker Presto) `scripts/check.sh doris-container` (disposable Docker Doris) or `scripts/check.sh druid-container` (disposable Docker Druid) | GitHub `engines` workflow on pull requests that can affect engines; locally on demand | Milestone |
 | T3 | Generated SQL on real clusters, run by a person | Outside this repository | Milestone acceptance |
 
 T1 compares the kernel's Presto SQL and its results with Cube Core at the release of the
 upstream pin; see [cube-core.md](cube-core.md). The Presto and Doris tiers execute the live-compiled
 execution manifest of `pp-cube-conformance`, the same cases on both engines; see
-[engines.md](engines.md) and [doris-container.md](doris-container.md). `engines` exits 2
+[engines.md](engines.md) and [doris-container.md](doris-container.md). The Druid tier
+executes the cases its dialect compiles and compares each with Cube Core's Druid
+dialect; see [druid-container.md](druid-container.md). `engines` exits 2
 without PRESTO_URL, which is not a passing result. The container modes need a Docker
-daemon and the pinned Rust toolchain and provision their own fixtures. Druid execution
-is not built.
+daemon and the pinned Rust toolchain and provision their own fixtures.
 ## Build checks
 
 `scripts/check.sh image` builds the service image and verifies a container made from
@@ -31,7 +32,7 @@ where a change to the crates alone is covered. A failure on main is fixed forwar
 
 `scripts/dev deliver` requires local `ci`, remote `t0`, remote `image` and `aarch64`
 when the `build` workflow is triggered and, when the `engines` workflow is
-triggered, remote `presto-smoke`, `doris-smoke` and `cube-core`. It starts no local container and runs
+triggered, remote `presto-smoke`, `doris-smoke`, `druid-smoke` and `cube-core`. It starts no local container and runs
 no review; see [delivery.md](delivery.md). T0 remains Docker-free.
 Results from T3 are recorded publicly only as pass or fail per scenario.
 
