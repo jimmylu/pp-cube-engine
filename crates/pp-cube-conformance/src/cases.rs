@@ -23,6 +23,8 @@ pub enum Fixture {
     /// and four visits: no refund at `uptown`, no visit at `harbor`, and both
     /// at the nameless store.
     Retail,
+    /// The property-insurance scenario: see the dialect modules for its rows.
+    Insurance,
 }
 
 /// What a case is evidence for; a dialect maps each group to its scenario id.
@@ -31,6 +33,8 @@ pub enum Group {
     Temporal,
     Matrix,
     EmptyPage,
+    /// Business queries of a domain scenario.
+    Domain,
 }
 
 /// One case before a dialect gives it a fixture and a scenario.
@@ -709,5 +713,6 @@ pub fn declared() -> Vec<Declared> {
     cases.extend(windows());
     cases.extend(detail());
     cases.extend(views());
+    cases.extend(crate::insurance::cases());
     cases
 }

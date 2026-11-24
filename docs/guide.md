@@ -106,7 +106,7 @@ No failure returns SQL, and no message contains table names or SQL text.
 
 For every execution case, Cube Core 1.8.28 (the release of the pinned upstream
 commit) was asked for the SQL of the same model and query on Presto. Its SQL
-and parameters equal the kernel's in all seventy cases, with one difference:
+and parameters equal the kernel's in all eighty-three cases, with one difference:
 
 - **Default row limit.** Cube's API adds `LIMIT 10000` to a query that sets no
   limit. The kernel adds none: a query without a limit compiles without one.
@@ -183,6 +183,33 @@ Cube Core has no Doris dialect, so Doris output is accepted by execution only.
 On Doris the periods of a rolling window are written out one by one, aligned
 to the granularity: every unit and any range compile, but rolling by a
 granularity needs a date range.
+
+## A domain scenario
+
+Besides the feature cases, a property-insurance scenario is kept with the
+kernel: a model of policies, earned premium, claims, payments, reserves and
+cessions, and thirty-three business questions. Twenty-four compile, to the SQL
+Cube Core writes; thirteen of those are executed on both engines. The nine
+that do not are a reviewed list, each with its reason:
+
+- outstanding reserves by a policy dimension (a defect, issue #88);
+- a ratio of two facts as one measure, and two facts over time, which Cube
+  refuses too (#89): select both measures and divide in the caller;
+- year to date by quarter on Presto (#90);
+- a filter on a count over repeated rows (#83);
+- relative date ranges and `compareDateRange`: resolve the dates in the caller;
+- hourly granularity.
+
+Two things a model author should know from it: two join paths between the
+same cubes are refused, so a dimension is joined from one place; and a ratio
+of counts needs `CAST(... AS DOUBLE)`, or Presto divides integers.
+
+One thing a caller on Presto should know: a prepared statement travels in an
+HTTP header, as it does through Presto's JDBC driver, and the SQL of a growth
+measure by a dimension is long. The scenario's query is 8.4 KB encoded, over
+the server's default header limit of 8 KB, and was refused with an HTTP error
+before it ran. Raise `http-server.max-request-header-size`, or send the
+statement with its values written in.
 
 ## Not supported yet
 

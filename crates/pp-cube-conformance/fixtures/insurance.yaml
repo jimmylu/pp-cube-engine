@@ -1,0 +1,172 @@
+cubes:
+  # One row per policy term. A renewal is a new row that names the term it renews.
+  - name: policies
+    sql_table: dw.ins_policy
+    data_source: warehouse
+    joins:
+      - { name: products, relationship: many_to_one, sql: "{CUBE}.product_cd = {products.product_cd}" }
+      - { name: channels, relationship: many_to_one, sql: "{CUBE}.channel_cd = {channels.channel_cd}" }
+      - { name: branches, relationship: many_to_one, sql: "{CUBE}.branch_cd = {branches.branch_cd}" }
+    dimensions:
+      - { name: policy_id, sql: "{CUBE}.policy_id", type: number, primary_key: true }
+      - { name: policy_no, sql: "{CUBE}.policy_no", type: string }
+      - { name: insured_type, sql: "{CUBE}.insured_type", type: string }
+      - { name: is_renewal, sql: "{CUBE}.renewal_of IS NOT NULL", type: boolean }
+      - name: issued_at
+        sql: "{CUBE}.issued_at"
+        type: time
+        granularities:
+          # The underwriting year starts in April.
+          - { name: underwriting_year, interval: 1 year, offset: 3 month }
+    measures:
+      - { name: policy_count, type: count }
+      - { name: written_premium, type: sum, sql: "{CUBE}.written_premium", format: currency }
+      - { name: sum_insured, type: sum, sql: "{CUBE}.sum_insured", format: currency }
+      - { name: avg_premium, type: avg, sql: "{CUBE}.written_premium" }
+      - { name: insured_count, type: count_distinct, sql: "{CUBE}.insured_id" }
+      - { name: insured_count_approx, type: count_distinct_approx, sql: "{CUBE}.insured_id" }
+      - name: renewed_count
+        type: count
+        filters:
+          - sql: "{CUBE}.renewal_of IS NOT NULL"
+      - { name: renewal_share, type: number, sql: "CAST({renewed_count} AS DOUBLE) / NULLIF({policy_count}, 0)", format: percent }
+      # Premium rate per thousand of sum insured.
+      - { name: rate_per_mille, type: number, sql: "1000 * {written_premium} / NULLIF({sum_insured}, 0)" }
+      - { name: written_premium_ytd, type: sum, sql: "{CUBE}.written_premium", rolling_window: { type: to_date, granularity: year } }
+      - { name: written_premium_qtd, type: sum, sql: "{CUBE}.written_premium", rolling_window: { type: to_date, granularity: quarter } }
+      - name: written_premium_prior_year
+        type: number
+        sql: "{written_premium}"
+        multi_stage: true
+        time_shift:
+          - { time_dimension: issued_at, interval: 1 year, type: prior }
+      - { name: written_premium_growth, type: number, sql: "({written_premium} - {written_premium_prior_year}) / NULLIF({written_premium_prior_year}, 0)", multi_stage: true, format: percent }
+    segments:
+      - { name: in_force, sql: "{CUBE}.status = 'IN_FORCE'" }
+  # Premium earned per policy and month, with the exposure earned in it.
+  - name: earned_premiums
+    sql_table: dw.ins_earned_premium
+    data_source: warehouse
+    joins:
+      - { name: policies, relationship: many_to_one, sql: "{CUBE}.policy_id = {policies.policy_id}" }
+    dimensions:
+      - { name: earned_id, sql: "{CUBE}.earned_id", type: number, primary_key: true }
+      - { name: earned_month, sql: "{CUBE}.earned_month", type: time }
+    measures:
+      - { name: earned_premium, type: sum, sql: "{CUBE}.earned_premium", format: currency }
+      - { name: exposure, type: sum, sql: "{CUBE}.exposure" }
+      - { name: earned_premium_12m, type: sum, sql: "{CUBE}.earned_premium", rolling_window: { trailing: 12 month } }
+      # The ratio analysts ask for first. Its numerator is another fact's measure.
+      - { name: paid_loss_ratio, type: number, sql: "{claim_payments.paid_amount} / NULLIF({earned_premium}, 0)", format: percent }
+  - name: claims
+    sql_table: dw.ins_claim
+    data_source: warehouse
+    joins:
+      - { name: policies, relationship: many_to_one, sql: "{CUBE}.policy_id = {policies.policy_id}" }
+      - { name: claim_reserves, relationship: one_to_one, sql: "{CUBE}.claim_id = {claim_reserves.claim_id}" }
+    dimensions:
+      - { name: claim_id, sql: "{CUBE}.claim_id", type: number, primary_key: true }
+      - { name: claim_no, sql: "{CUBE}.claim_no", type: string }
+      - { name: cause_cd, sql: "{CUBE}.cause_cd", type: string }
+      - { name: status, sql: "{CUBE}.status", type: string }
+      - { name: loss_at, sql: "{CUBE}.loss_at", type: time }
+      - { name: reported_at, sql: "{CUBE}.reported_at", type: time }
+    measures:
+      - { name: claim_count, type: count }
+      - name: open_count
+        type: count
+        filters:
+          - sql: "{CUBE}.status = 'OPEN'"
+      - { name: avg_report_lag_days, type: avg, sql: "{CUBE}.report_lag_days" }
+      - { name: max_report_lag_days, type: max, sql: "{CUBE}.report_lag_days" }
+      # Reported claims with their reserve: one row each, so one SELECT.
+      - { name: avg_outstanding, type: number, sql: "{claim_reserves.outstanding} / NULLIF({claim_count}, 0)" }
+    segments:
+      - { name: large_loss, sql: "{CUBE}.is_large_loss = 1" }
+  # The case reserve of a claim as it stands: at most one row per claim.
+  - name: claim_reserves
+    sql_table: dw.ins_claim_reserve
+    data_source: warehouse
+    dimensions:
+      - { name: claim_id, sql: "{CUBE}.claim_id", type: number, primary_key: true }
+    measures:
+      - { name: outstanding, type: sum, sql: "{CUBE}.outstanding", format: currency }
+  - name: claim_payments
+    sql_table: dw.ins_claim_payment
+    data_source: warehouse
+    joins:
+      - { name: claims, relationship: many_to_one, sql: "{CUBE}.claim_id = {claims.claim_id}" }
+    dimensions:
+      - { name: payment_id, sql: "{CUBE}.payment_id", type: number, primary_key: true }
+      - { name: payment_type, sql: "{CUBE}.payment_type", type: string }
+      - { name: paid_at, sql: "{CUBE}.paid_at", type: time }
+    measures:
+      - { name: paid_amount, type: sum, sql: "{CUBE}.paid_amount", format: currency }
+      - { name: payment_count, type: count }
+      - name: indemnity_paid
+        type: sum
+        sql: "{CUBE}.paid_amount"
+        filters:
+          - sql: "{CUBE}.payment_type = 'INDEMNITY'"
+      - name: expense_paid
+        type: sum
+        sql: "{CUBE}.paid_amount"
+        filters:
+          - sql: "{CUBE}.payment_type = 'EXPENSE'"
+      # Severity: paid per claim that has a payment.
+      - { name: paid_per_claim, type: number, sql: "{paid_amount} / NULLIF({claims.claim_count}, 0)" }
+      - { name: paid_amount_ytd, type: sum, sql: "{CUBE}.paid_amount", rolling_window: { type: to_date, granularity: year } }
+  # Premium ceded to reinsurers, per policy and treaty.
+  - name: cessions
+    sql_table: dw.ins_cession
+    data_source: warehouse
+    joins:
+      - { name: policies, relationship: many_to_one, sql: "{CUBE}.policy_id = {policies.policy_id}" }
+    dimensions:
+      - { name: cession_id, sql: "{CUBE}.cession_id", type: number, primary_key: true }
+      - { name: treaty_cd, sql: "{CUBE}.treaty_cd", type: string }
+    measures:
+      - { name: ceded_premium, type: sum, sql: "{CUBE}.ceded_premium", format: currency }
+  - name: products
+    sql_table: dw.ins_product
+    data_source: warehouse
+    dimensions:
+      - { name: product_cd, sql: "{CUBE}.product_cd", type: string, primary_key: true }
+      - { name: product_name, sql: "{CUBE}.product_name", type: string }
+      - { name: line_of_business, sql: "{CUBE}.line_of_business", type: string }
+  - name: channels
+    sql_table: dw.ins_channel
+    data_source: warehouse
+    dimensions:
+      - { name: channel_cd, sql: "{CUBE}.channel_cd", type: string, primary_key: true }
+      - { name: channel_name, sql: "{CUBE}.channel_name", type: string }
+  - name: branches
+    sql_table: dw.ins_branch
+    data_source: warehouse
+    dimensions:
+      - { name: branch_cd, sql: "{CUBE}.branch_cd", type: string, primary_key: true }
+      - { name: branch_name, sql: "{CUBE}.branch_name", type: string }
+      - { name: region_name, sql: "{CUBE}.region_name", type: string }
+views:
+  # What underwriting analysts query: policies with their product, channel and branch.
+  - name: underwriting
+    cubes:
+      - join_path: policies
+        includes: [policy_count, written_premium, sum_insured, renewal_share, written_premium_ytd, written_premium_prior_year, insured_type, issued_at]
+      - join_path: policies.products
+        includes: [product_name, line_of_business]
+      - join_path: policies.channels
+        includes: [channel_name]
+      - join_path: policies.branches
+        includes: [branch_name, region_name]
+  # What claims analysts query: payments with their claim, its reserve, policy and product.
+  - name: claims_overview
+    cubes:
+      - join_path: claim_payments
+        includes: [paid_amount, indemnity_paid, expense_paid, paid_per_claim, paid_at]
+      - join_path: claim_payments.claims
+        includes: [claim_count, cause_cd, status, loss_at]
+      - join_path: claim_payments.claims.policies.products
+        includes: [line_of_business]
+      - join_path: claim_payments.claims.policies.branches
+        includes: [region_name]
