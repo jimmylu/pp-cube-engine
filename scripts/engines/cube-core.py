@@ -121,16 +121,20 @@ def compare(endpoint, cube, cases, session, timeout=30, ask=cube_sql, execute=No
             raise ValueError('Cube Core result differs from the case expectation')
 
 
-def start_cube(command, directory, data_sources, pause=time.sleep, opener=urllib.request.urlopen):
+# Cube needs a database type to choose a dialect; these settings are never connected to.
+PRESTO_DATABASE = {'DB_TYPE': 'prestodb', 'DB_HOST': '127.0.0.1', 'DB_PORT': '8080',
+                   'DB_USER': 'cube', 'DB_PRESTO_CATALOG': 'memory', 'DB_SCHEMA': 'dw'}
+
+
+def start_cube(command, directory, data_sources, pause=time.sleep, opener=urllib.request.urlopen,
+               database=None):
     """One disposable Cube Core in development mode. It is given connection settings
     for every data source because it needs a dialect to write SQL; it never connects."""
     name = 'cube-core-' + uuid.uuid4().hex
     settings = {'CUBEJS_DEV_MODE': 'true', 'CUBEJS_TELEMETRY': 'false',
                 'CUBEJS_DATASOURCES': ','.join(['default'] + data_sources)}
     for prefix in ['CUBEJS_'] + ['CUBEJS_DS_' + source.upper() + '_' for source in data_sources]:
-        settings.update({prefix + 'DB_TYPE': 'prestodb', prefix + 'DB_HOST': '127.0.0.1',
-                         prefix + 'DB_PORT': '8080', prefix + 'DB_USER': 'cube',
-                         prefix + 'DB_PRESTO_CATALOG': 'memory', prefix + 'DB_SCHEMA': 'dw'})
+        settings.update({prefix + key: value for key, value in (database or PRESTO_DATABASE).items()})
     arguments = ['create', '--name', name, '--platform', 'linux/amd64',
                  '--publish', '127.0.0.1::4000', '--memory', '2g',
                  '--volume', str(directory) + ':/cube/conf/model:ro']

@@ -8,6 +8,7 @@
 #   scripts/check.sh engines       live-compiled manifest on a prepared Presto
 #   scripts/check.sh engines-container  the same on a disposable pinned Presto
 #   scripts/check.sh doris-container    live-compiled manifest on a disposable pinned Doris
+#   scripts/check.sh druid-container    the same on a disposable pinned Druid, compared with Cube Core
 #   scripts/check.sh image              build the service image and verify a container
 #
 # BASE_REF (default origin/main) is the branch a change is compared against.
@@ -237,6 +238,10 @@ case "$MODE" in
     "$engine_venv/bin/python" scripts/engines/doris-container.py
     exit $?
     ;;
+  druid-container)
+    python3 scripts/engines/druid-container.py
+    exit $?
+    ;;
   engines-container)
     python3 scripts/engines/presto-container.py
     exit $?
@@ -254,7 +259,7 @@ case "$MODE" in
     exit $?
     ;;
   *)
-    echo "usage: scripts/check.sh fast|ci|conformance|engines|engines-container|doris-container|image" >&2
+    echo "usage: scripts/check.sh fast|ci|conformance|engines|engines-container|doris-container|druid-container|image" >&2
     exit 64
     ;;
 esac

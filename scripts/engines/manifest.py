@@ -23,7 +23,7 @@ def validated(manifest, dialect, case_keys):
         raise ValueError('malformed execution case')
     session = manifest.get('session', {})
     if not isinstance(session, dict) or any(
-            not isinstance(value, str) or not re.fullmatch(r'[a-z_.]+', name)
+            not isinstance(value, str) or not re.fullmatch(r'[A-Za-z_.]+', name)
             or not re.fullmatch(r'[A-Za-z0-9_.]+', value) for name, value in session.items()):
         raise ValueError('unsupported execution manifest')
     return cases, session

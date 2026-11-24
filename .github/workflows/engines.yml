@@ -1,5 +1,5 @@
 # Real engine execution. Delivery no longer starts containers locally by default,
-# so these jobs are where compiled SQL meets Presto and Doris before merge.
+# so these jobs are where compiled SQL meets Presto, Doris and Druid before merge.
 # The path filter and job names are mirrored in scripts/dev (ENGINE_TRIGGER_PATHS,
 # ENGINE_CHECKS); scripts/tests/test_delivery.py keeps them in step.
 name: engines
@@ -114,4 +114,32 @@ jobs:
           result=$?
           cat /tmp/doris-evidence.txt
           cat /tmp/doris-evidence.txt >> "$GITHUB_STEP_SUMMARY"
+          exit "$result"
+
+  druid-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the pinned upstream
+        run: scripts/vendor-sync.sh
+
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Execute the live-compiled manifest on pinned Druid and compare with Cube Core
+        shell: bash
+        run: |
+          set -o pipefail
+          echo "SHA: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          scripts/check.sh druid-container > /tmp/druid-evidence.txt 2>&1
+          result=$?
+          cat /tmp/druid-evidence.txt
+          cat /tmp/druid-evidence.txt >> "$GITHUB_STEP_SUMMARY"
           exit "$result"

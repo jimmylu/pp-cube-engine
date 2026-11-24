@@ -131,7 +131,8 @@ class DeliveryTests(unittest.TestCase):
         bound = {'base': 'a', 'head': 'b'}
         for changed, expected in [
                 ('crates/pp-cube-dialect/src/lib.rs', True), ('templates/doris.yaml', True),
-                ('scripts/engines/doris-container.py', True), ('scripts/check.sh', True),
+                ('scripts/engines/doris-container.py', True),
+                ('scripts/engines/druid-container.py', True), ('scripts/check.sh', True),
                 ('Cargo.lock', True), ('.github/workflows/engines.yml', True),
                 ('docs/agents/delivery.md\0scripts/dev', False),
                 ('openspec/specs/dialect-doris/spec.md', False), ('scripts/check.sh.bak', False)]:
@@ -240,11 +241,11 @@ class DeliveryTests(unittest.TestCase):
                         status='completed' if done else 'in_progress',
                         conclusion='success' if done else None)
         t0, presto, doris = remote('t0', 1), remote('presto-smoke', 2), remote('doris-smoke', 3)
-        cube = remote('cube-core', 4)
+        cube, druid = remote('cube-core', 4), remote('druid-smoke', 5)
         # Engines that pass are not enough while the Cube Core comparison has not reported.
         responses = iter(json.dumps({'check_runs': rows}) for rows in (
             [], [remote('t0', 1, done=False)], [t0], [t0, presto, remote('doris-smoke', 3, done=False)],
-            [t0, presto, doris], [t0, presto, doris, cube]))
+            [t0, presto, doris, druid], [t0, presto, doris, druid, cube]))
 
         def run_result(*args, **kwargs):
             if args[:2] == ('gh', 'api'):
@@ -270,7 +271,7 @@ class DeliveryTests(unittest.TestCase):
             runner.assert_any_call('gh', 'pr', 'ready', '1', '--repo', dev.repo)
             evidence = (dev.state / 'evidence.md').read_text()
             self.assertIn('Local CI passed; remote t0 passed', evidence)
-            self.assertIn('Remote engine containers passed: presto-smoke, doris-smoke, cube-core', evidence)
+            self.assertIn('Remote engine containers passed: presto-smoke, doris-smoke, druid-smoke, cube-core', evidence)
             self.assertIn('Local engine containers are on demand and were not run', evidence)
             self.assertIn('Cross-model review is on demand and was not run at this head', evidence)
 
