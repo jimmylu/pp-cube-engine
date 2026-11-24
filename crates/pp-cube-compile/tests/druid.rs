@@ -1,0 +1,165 @@
+//! The Druid dialect: what it compiles, what it declares, what it refuses.
+//!
+//! The SQL of every Druid execution case is a golden of `pp-cube-conformance`,
+//! compared with Cube Core's Druid dialect and executed on Druid 26.
+
+mod support;
+use support::compile;
+
+use std::sync::Arc;
+
+use pp_cube_compile::{CompileContext, CompileError, Compiled, DialectId, SessionProperty};
+use pp_cube_model::{load_query, load_yaml};
+
+const RETAIL: &str = include_str!("fixtures/retail.yaml");
+const WINDOWS: &str = include_str!("fixtures/windows.yaml");
+const DETAIL: &str = include_str!("fixtures/detail.yaml");
+
+fn compile_in(model: &str, dialect: DialectId, query: &str) -> Result<Compiled, CompileError> {
+    let model = Arc::new(load_yaml(model).expect("the model loads"));
+    let query = load_query(query).expect("the query loads");
+    let context = CompileContext {
+        request_id: String::new(),
+        dialect,
+        timezone: "Asia/Tokyo".to_owned(),
+        security_filters: Vec::new(),
+    };
+    compile(&model, &query, &context)
+}
+
+fn druid(model: &str, query: &str) -> Result<Compiled, CompileError> {
+    compile_in(model, DialectId::Druid, query)
+}
+
+// scenario: B0-DRUID-001
+// scenario: B0-DET-001
+#[test]
+fn druid_writes_cubes_druid_dialect() {
+    // Joined dimensions, a segment, filters on a dimension and a measure, time
+    // in a zone, order and a page: one statement in Druid's functions.
+    let compiled = druid(
+        RETAIL,
+        r#"{"measures": ["sales.amount"], "dimensions": ["stores.store_name"], "segments": ["stores.open"],
+            "timeDimensions": [{"dimension": "sales.sold_at", "granularity": "month", "dateRange": ["2026-10-01", "2026-10-31"]}],
+            "filters": [{"member": "stores.store_name", "operator": "contains", "values": ["North"]},
+                        {"member": "sales.amount", "operator": "gt", "values": ["10"]}],
+            "order": [["sales.amount", "desc"]], "limit": 5, "offset": 5}"#,
+    )
+    .expect("the query compiles");
+    insta::assert_snapshot!(format!(
+        "{}\n-- parameters: {:?}",
+        compiled.sql, compiled.parameters
+    ));
+    // The same query has the same parameters, columns and lineage on Presto.
+    let query = r#"{"measures": ["sales.amount"], "dimensions": ["stores.store_name"],
+        "timeDimensions": [{"dimension": "sales.sold_at", "granularity": "day", "dateRange": ["2026-10-01", "2026-10-31"]}]}"#;
+    let (on_druid, on_presto) = (
+        druid(RETAIL, query).unwrap(),
+        compile_in(RETAIL, DialectId::Presto, query).unwrap(),
+    );
+    assert_eq!(on_druid.parameters, on_presto.parameters);
+    assert_eq!(on_druid.columns, on_presto.columns);
+    assert_eq!(on_druid.used_cubes, on_presto.used_cubes);
+    assert_ne!(on_druid.sql, on_presto.sql);
+    assert_ne!(on_druid.fingerprint, on_presto.fingerprint);
+}
+
+// scenario: B0-DRUID-005
+#[test]
+fn druid_declares_exact_distinct_counts_for_every_statement() {
+    // Druid estimates COUNT(DISTINCT) unless the query context says otherwise.
+    let exact = [SessionProperty {
+        name: "useApproximateCountDistinct".into(),
+        value: "false".into(),
+    }];
+    for query in [
+        r#"{"measures": ["stores.name_count"]}"#,
+        r#"{"measures": ["sales.amount"], "limit": 2, "offset": 2}"#,
+    ] {
+        assert_eq!(
+            druid(RETAIL, query).unwrap().session_properties,
+            exact,
+            "{query}"
+        );
+    }
+    // Presto's own property is still only for a page.
+    let presto = compile_in(
+        RETAIL,
+        DialectId::Presto,
+        r#"{"measures": ["sales.amount"]}"#,
+    );
+    assert!(presto.unwrap().session_properties.is_empty());
+}
+
+// scenario: B0-DRUID-002
+#[test]
+fn druid_refuses_by_name_what_it_cannot_answer() {
+    let refused = |model: &str, query: &str| match druid(model, query) {
+        Err(CompileError::Unsupported(message)) => message,
+        other => panic!("expected Unsupported, got {other:?}"),
+    };
+    let over = |measure: &str, time: &str| {
+        format!(
+            r#"{{"measures": ["{measure}"], "timeDimensions": [{{"dimension": "sales.sold_at", {time}}}]}}"#
+        )
+    };
+    let days = r#""granularity": "day", "dateRange": ["2026-10-01", "2026-10-03"]"#;
+    for (model, query, message) in [
+        (
+            RETAIL,
+            r#"{"measures": ["sales.amount", "refunds.amount"], "dimensions": ["stores.store_name"]}"#.to_owned(),
+            "The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats",
+        ),
+        (
+            RETAIL,
+            r#"{"measures": ["stores.floor_area"], "dimensions": ["sales.channel_cd"]}"#.to_owned(),
+            "The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats",
+        ),
+        (
+            DETAIL,
+            r#"{"ungrouped": true, "dimensions": ["sales.sale_id"]}"#.to_owned(),
+            "The query is ungrouped, which druid does not support",
+        ),
+        (
+            WINDOWS,
+            over("sales.amount_7d", days),
+            "Measure `sales.amount_7d` has a rolling window, which druid does not support",
+        ),
+        (
+            WINDOWS,
+            over("sales.amount_mtd", days),
+            "Measure `sales.amount_mtd` has a rolling window, which druid does not support",
+        ),
+        (
+            WINDOWS,
+            over("sales.growth", days),
+            "Measure `sales.amount_prior_year` is shifted in time, which druid does not support",
+        ),
+        (
+            DETAIL,
+            r#"{"measures": ["sales.per_buyer"]}"#.to_owned(),
+            "Measure `sales.buyers_approx` is an approximate distinct count, which druid does not support",
+        ),
+        (
+            DETAIL,
+            over("sales.amount", r#""granularity": "fiscal_year""#),
+            "`sales.sold_at` is grouped by `fiscal_year`, a granularity it declares, which druid does not support",
+        ),
+    ] {
+        assert_eq!(refused(model, &query), message, "{query}");
+    }
+    // The other dialects compile every one of these.
+    for dialect in [DialectId::Presto, DialectId::Doris] {
+        let query = over("sales.amount_mtd", days);
+        assert!(compile_in(WINDOWS, dialect, &query).is_ok(), "{dialect:?}");
+    }
+    // What a model or a query gets wrong is still a query error on Druid.
+    assert!(matches!(
+        druid(RETAIL, r#"{"measures": ["sales.missing"]}"#),
+        Err(CompileError::Query(_))
+    ));
+    assert!(matches!(
+        druid(RETAIL, r#"{"measures": ["refunds.amount"], "dimensions": ["regions.region_name"]}"#),
+        Err(CompileError::Query(message)) if message.contains("more than one join path")
+    ));
+}

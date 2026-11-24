@@ -1,0 +1,141 @@
+# Druid dialect templates, transcribed from Cube at the commit below: the base
+# templates of BaseQuery.ts with the overrides of
+# packages/cubejs-druid-driver/src/DruidQuery.ts. Only what B0 renders is here;
+# a request for any other template fails with an error naming it.
+commit: 486f0d26bab58ab4fe0be0e4cdd39818b35a7870
+# BaseQuery.ts, timestampPrecision; Druid does not override it.
+timestamp_precision: 3
+# No interval arithmetic is rendered for Druid yet.
+interval_units: []
+# What Druid 26 cannot answer, or what is not built for it yet. Established on
+# Druid 26.0.0: the SQL of several facts joins on `a = b OR (a IS NULL AND b IS
+# NULL)` and unions inside a subquery, both rejected; a scan cannot be ordered
+# by a column other than time. The other four await their Druid templates.
+refuses: [multi-stage, ungrouped, rolling-window, time-shift, approximate-distinct, declared-granularity]
+templates:
+  statements/select:
+    source: BaseQuery.ts
+    text: "{% if ctes %} WITH \n{{ ctes | join(',\n') }}\n{% endif %}SELECT {% if distinct %}DISTINCT {% endif %}{{ select_concat | map(attribute='aliased') | join(', ') }} {% if from %}\nFROM (\n{{ from | indent(2, true) }}\n) AS {{ from_alias }}{% elif from_prepared %}\nFROM {{ from_prepared }}{% endif %}{% for join in joins %}\n{{ join }}{% endfor %}{% if filter %}\nWHERE {{ filter }}{% endif %}{% if group_by %}\nGROUP BY {{ group_by }}{% endif %}{% if having %}\nHAVING {{ having }}{% endif %}{% if order_by %}\nORDER BY {{ order_by | map(attribute='expr') | join(', ') }}{% endif %}{% if limit is not none %}\nLIMIT {{ limit }}{% endif %}{% if offset is not none %}\nOFFSET {{ offset }}{% endif %}"
+  functions/COUNT_DISTINCT:
+    source: BaseQuery.ts
+    text: "COUNT(DISTINCT {{ args_concat }})"
+  statements/group_by_exprs:
+    source: BaseQuery.ts
+    text: "{{ group_by | map(attribute='index') | join(', ') }}"
+  expressions/column_aliased:
+    source: BaseQuery.ts
+    text: "{{expr}} {{quoted_alias}}"
+  expressions/query_aliased:
+    source: BaseQuery.ts
+    text: "{{ query }} AS {{ quoted_alias }}"
+  expressions/wrap_boolean_dimension:
+    source: BaseQuery.ts
+    text: "{{ expr }}"
+  expressions/cast:
+    source: BaseQuery.ts
+    text: "CAST({{ expr }} AS {{ data_type }})"
+  expressions/concat_strings:
+    source: BaseQuery.ts
+    text: "{{ strings | join(' || ' ) }}"
+  types/string:
+    source: BaseQuery.ts
+    text: "STRING"
+  expressions/order_by:
+    source: BaseQuery.ts
+    text: "{% if index %} {{ index }} {% else %} {{ expr }} {% endif %} {% if asc %}ASC{% else %}DESC{% endif %}{% if nulls_first %} NULLS FIRST{% endif %}"
+  quotes/identifiers:
+    source: BaseQuery.ts
+    text: '"'
+  quotes/escape:
+    source: BaseQuery.ts
+    text: '""'
+  params/param:
+    source: BaseQuery.ts
+    text: "?"
+  expressions/wrap_segment_filter:
+    source: BaseQuery.ts
+    text: "{{ expr }}"
+  filters/equals:
+    source: BaseQuery.ts
+    text: "{{ column }} = {{ value }}{{ is_null_check }}"
+  filters/not_equals:
+    source: BaseQuery.ts
+    text: "{{ column }} <> {{ value }}{{ is_null_check }}"
+  filters/or_is_null_check:
+    source: BaseQuery.ts
+    text: " OR {{ column }} IS NULL"
+  filters/set_where:
+    source: BaseQuery.ts
+    text: "{{ column }} IS NOT NULL"
+  filters/not_set_where:
+    source: BaseQuery.ts
+    text: "{{ column }} IS NULL"
+  filters/in:
+    source: BaseQuery.ts
+    text: "{{ column }} IN ({{ values_concat }}){{ is_null_check }}"
+  filters/not_in:
+    source: BaseQuery.ts
+    text: "{{ column }} NOT IN ({{ values_concat }}){{ is_null_check }}"
+  filters/gt:
+    source: BaseQuery.ts
+    text: "{{ column }} > {{ param }}"
+  filters/gte:
+    source: BaseQuery.ts
+    text: "{{ column }} >= {{ param }}"
+  filters/lt:
+    source: BaseQuery.ts
+    text: "{{ column }} < {{ param }}"
+  filters/lte:
+    source: BaseQuery.ts
+    text: "{{ column }} <= {{ param }}"
+  filters/like_pattern:
+    source: DruidQuery.ts
+    text: "CONCAT({% if start_wild %}'%'{% else %}''{% endif %}, LOWER({{ value }}), {% if end_wild %}'%'{% else %}''{% endif %})"
+  filters/like_escape_char:
+    source: BaseQuery.ts
+    text: "\\"
+  filters/always_true:
+    source: BaseQuery.ts
+    text: "1 = 1"
+  tesseract/ilike:
+    source: DruidQuery.ts
+    text: "LOWER({{ expr }}) {% if negated %}NOT {% endif %}LIKE {{ pattern }} ESCAPE '\\'"
+  tesseract/bool_param_cast:
+    source: BaseQuery.ts
+    text: "{{ expr }}"
+  tesseract/number_param_cast:
+    source: BaseQuery.ts
+    text: "{{ expr }}"
+  filters/time_range_filter:
+    source: BaseQuery.ts
+    text: "{{ column }} >= {{ from_timestamp }} AND {{ column }} <= {{ to_timestamp }}"
+  filters/time_not_in_range_filter:
+    source: BaseQuery.ts
+    text: "{{ column }} < {{ from_timestamp }} OR {{ column }} > {{ to_timestamp }}"
+  driver/time_stamp_cast:
+    source: DruidQuery.ts
+    text: "TIME_PARSE({{ value }})"
+  driver/time_grouped_column:
+    source: DruidQuery.ts
+    text: "DATE_TRUNC('{{ granularity }}', {{ dimension }})"
+  driver/convert_tz:
+    source: DruidQuery.ts
+    text: "CAST(TIME_FORMAT({{ field }}, 'yyyy-MM-dd HH:mm:ss', '{{ timezone }}') AS TIMESTAMP)"
+  statements/join:
+    source: BaseQuery.ts
+    text: "{{ join_type }} JOIN {{ source }} ON {{ condition }}"
+  tesseract/join_types_left:
+    source: BaseQuery.ts
+    text: "LEFT"
+  expressions/column_reference:
+    source: BaseQuery.ts
+    text: "{% if table_name %}{{ table_name }}.{% endif %}{{ name }}"
+  statements/cte:
+    source: BaseQuery.ts
+    text: "{{ alias }} AS ({{ query | indent(2, true) }})"
+  expressions/is_null:
+    source: BaseQuery.ts
+    text: "({{ expr }} IS {% if negate %}NOT {% endif %}NULL)"
+  tesseract/join_types_inner:
+    source: BaseQuery.ts
+    text: "INNER"

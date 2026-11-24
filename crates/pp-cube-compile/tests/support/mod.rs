@@ -56,10 +56,7 @@ pub fn compile(
 ) -> Result<Compiled, CompileError> {
     let result = pp_cube_compile::compile(model, query, ctx)?;
     let expected = record(&result);
-    let dialect = match ctx.dialect {
-        DialectId::Presto => "presto",
-        DialectId::Doris => "doris",
-    };
+    let dialect = ctx.dialect.name();
     // One line a compilation: the worker reads lines.
     let mut input = serde_json::to_string(&serde_json::json!({
         "model": model.as_ref(), "query": query, "dialect": dialect,
@@ -130,11 +127,7 @@ fn worker() {
     // One compilation a line, until the test process closes the pipe.
     for line in std::io::stdin().lock().lines() {
         let mut input: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
-        let dialect = match input["dialect"].as_str().unwrap() {
-            "presto" => DialectId::Presto,
-            "doris" => DialectId::Doris,
-            other => panic!("unknown dialect {other}"),
-        };
+        let dialect = DialectId::from_name(input["dialect"].as_str().unwrap()).unwrap();
         let model: Model = serde_json::from_value(input["model"].take()).unwrap();
         let query: Query = serde_json::from_value(input["query"].take()).unwrap();
         let ctx = CompileContext {

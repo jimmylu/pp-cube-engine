@@ -19,7 +19,7 @@ The public engine design needs testable B0 contracts before implementation. This
 - `security-filters`: mandatory and caller-provided filters, failing closed.
 - `dialect-presto`: Presto B0 output.
 - `dialect-doris`: Doris B0 output.
-- `dialect-druid`: Druid single-cube B0 output; joins unsupported.
+- `dialect-druid`: acceptance of Druid output by execution.
 - `service-api`: compile, validation and public metadata.
 - `determinism`: repeatable compilation and fingerprints.
 - `upstream-pin`: the upstream commit behind every compiled result.

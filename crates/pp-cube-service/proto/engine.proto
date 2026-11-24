@@ -29,7 +29,7 @@ message Identity {
 message CompileRequest {
   string model_version = 1;
   string query_json = 2;             // Cube query format
-  string dialect = 3;                // presto | doris; must serve every data source the query reads
+  string dialect = 3;                // presto | doris | druid; must serve every data source the query reads
   string timezone = 4;
   repeated string security_filters_json = 5;  // one Cube filter each, appended as top-level AND entries
   string request_id = 6;

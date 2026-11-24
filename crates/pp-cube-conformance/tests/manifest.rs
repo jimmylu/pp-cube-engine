@@ -145,7 +145,7 @@ fn presto_shares_the_doris_cases_and_matches_its_goldens() {
 // scenario: B0-EXEC-002
 #[test]
 fn unusable_requests_emit_no_manifest() {
-    for (dialect, named) in [("druid", "druid"), ("oracle", "oracle")] {
+    for (dialect, named) in [("trino", "trino"), ("oracle", "oracle")] {
         let output = emit(dialect);
         assert!(!output.status.success(), "{dialect}");
         assert!(output.stdout.is_empty(), "{dialect}");
@@ -237,4 +237,74 @@ fn the_sources_manifest_adds_what_cube_core_needs_and_changes_nothing_else() {
             "{arguments:?}"
         );
     }
+}
+
+// scenario: B0-EXEC-006
+// scenario: B0-DRUID-001
+// scenario: B0-DRUID-002
+#[test]
+fn druid_manifest_holds_the_cases_its_dialect_compiles_and_lists_the_rest() {
+    let manifest = |dialect: &str| -> Value {
+        serde_json::from_str(&pp_cube_conformance::manifest(dialect).unwrap()).unwrap()
+    };
+    assert_eq!(emit("druid").stdout, emit("druid").stdout);
+    let (druid, presto) = (manifest("druid"), manifest("presto"));
+    let (druid_cases, presto_cases) = (
+        druid["cases"].as_array().unwrap(),
+        presto["cases"].as_array().unwrap(),
+    );
+    // Every case is either in the manifest or refused with a reason.
+    let support = pp_cube_conformance::druid_support().unwrap();
+    assert_eq!(support.len(), presto_cases.len());
+    let compiled: Vec<_> = support
+        .iter()
+        .filter(|(_, outcome)| outcome == "compiled")
+        .map(|(name, _)| *name)
+        .collect();
+    let names: Vec<_> = druid_cases
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, compiled);
+    assert_eq!(names.len(), 52);
+    assert!(support
+        .iter()
+        .all(|(_, outcome)| outcome == "compiled" || outcome.starts_with("unsupported: ")));
+    // The same questions and answers as the other engines, for the part it answers.
+    for case in druid_cases {
+        let name = case["name"].as_str().unwrap();
+        let other = presto_cases.iter().find(|c| c["name"] == name).unwrap();
+        for field in ["columns", "rows"] {
+            assert_eq!(case[field], other[field], "{name}: {field}");
+        }
+        assert_eq!(case["scenario"], "B0-DRUID-004", "{name}");
+        let sql = case["sql"].as_str().unwrap();
+        // One SELECT on Druid's own schema, never the shared one.
+        assert!(sql.starts_with("SELECT") && !sql.contains("dw."), "{name}");
+        assert!(sql.contains("druid."), "{name}");
+        assert_eq!(
+            sql.matches('?').count(),
+            case["params"].as_array().unwrap().len(),
+            "{name}"
+        );
+        // A fixture replaces whole datasources with inline rows.
+        for statement in case["fixture"].as_array().unwrap() {
+            let statement = statement.as_str().unwrap();
+            assert!(
+                statement.starts_with("REPLACE INTO \"") && statement.contains("EXTERN("),
+                "{name}"
+            );
+        }
+    }
+    // Exact distinct counts are asked of the engine for every statement.
+    assert_eq!(
+        druid["session"],
+        serde_json::json!({"useApproximateCountDistinct": "false"})
+    );
+    let matrix: String = support
+        .iter()
+        .map(|(name, outcome)| format!("{name:<34} {outcome}\n"))
+        .collect();
+    insta::assert_snapshot!("druid_support", matrix);
+    insta::assert_snapshot!("druid_cases", golden_text("druid"));
 }
