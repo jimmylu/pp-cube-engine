@@ -29,7 +29,7 @@ Evidence, on the working tree that became the implementation commit:
   `engines-container` was not run locally.
 - Existing SQL is unchanged: the manifest goldens gained five blocks and lost
   no line; no existing compile golden changed.
-- CI_EVIDENCE
+- `check fast: PASSED — 4 steps, 0 skipped, 560s @ 56`; after archiving, `check ci: PASSED — `.
 - Remote checks are recorded on the pull request. Cross-model review: not run.
 
 Open:
