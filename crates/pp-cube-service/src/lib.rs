@@ -339,5 +339,6 @@ mod workers;
 pub use workers::{CompilePool, CompileTask, PoolError};
 
 pub mod grpc;
+pub mod s3;
 pub mod store;
 pub mod telemetry;

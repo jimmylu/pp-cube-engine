@@ -56,9 +56,10 @@ docker run --rm -p 50051:50051 -v "$PWD/model.yaml:/model.yaml:ro" pp-cube-engin
   --model v1=/model.yaml --data-source warehouse=doris --listen 127.0.0.1:50051
 ```
 
-For several replicas, point each at shared storage with `--model-store`: the
-service reads model versions laid out by business line, as directories of one
-cube or view per file, and follows what is published there. The service guide
+For several replicas, point each at shared storage with `--model-store`, a
+directory or an S3-protocol bucket: the service reads model versions laid out
+by business line, as directories of one cube or view per file, and follows
+what is published there. The service guide
 has the layout.
 
 The image contains the binary and no shell, and runs as a non-root user.

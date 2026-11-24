@@ -30,6 +30,10 @@ prost = "0.14"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio-stream = { version = "0.1", features = ["net"] }
+# The S3-protocol model store. rusty-s3 signs requests and does no IO; ureq is
+# a small blocking HTTP client, on rustls with ring like the rest of the service.
+rusty-s3 = "0.12"
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 
 [build-dependencies]
 tonic-prost-build = "0.14.9"

@@ -44,7 +44,7 @@ pp-cube-service --model v1=model.yaml --data-source warehouse=doris \
 | `--compile-timeout-ms` | 10000 | How long a caller waits; then `DEADLINE_EXCEEDED`. The compilation itself cannot be interrupted and finishes on its worker |
 | `--max-request-bytes` | 4194304 | Largest request, model uploads included |
 | `--max-models` | 64 | Available versions; publishing beyond it fails until one is retired |
-| `--model-store` | off | A directory of published model versions to serve and follow; see below |
+| `--model-store` | off | Published model versions to serve and follow: a directory or `s3://bucket/prefix`; repeatable; see below |
 | `--model-refresh-seconds` | 30 | How often the store is read again; `0` reads it at startup only |
 | `--drain-seconds` | 30 | Time for running requests to finish after SIGTERM or SIGINT |
 | `--metrics-listen` | off | Address answering `GET /metrics` in the Prometheus text format |
@@ -73,9 +73,11 @@ YAML versus JSON; ValidateModel returns it for a valid model.
 
 ### From shared storage
 
-With `--model-store <directory>` every replica serves the versions a publisher
-writes to shared storage, such as a NAS mount, and follows them while running.
-The layout keeps business lines and asset types apart:
+With `--model-store` every replica serves the versions a publisher writes to
+shared storage and follows them while running. A store is a directory, such as
+a NAS mount, or an S3-protocol bucket written `s3://bucket/prefix`; the option
+may be given several times, and a process reads all its stores. The layout is
+the same in both and keeps business lines and asset types apart:
 
 ```text
 <business line>[/<sub line>[/<sub line>]]/models/<version>/manifest.json
@@ -101,18 +103,40 @@ as a new version. Removing a version's manifest retires it at the next pass.
 
 A store that cannot be listed stops the process at startup; later, a failed pass
 changes nothing and the loaded versions stay. A version that cannot be offered
-does not stop the others. It is logged as `{"event":"model_store",
-"model_version":…,"outcome":"rejected","reason":…}` with one of `layout`,
-`manifest`, `read`, `files`, `model`, `digest`, `data-source`, `full`, and counted
-in `ppcube_model_store_rejected_versions{reason}`; `ppcube_model_store_scans_total
-{outcome}` and `ppcube_model_store_last_scan_failed` describe the passes. Run
+does not stop the others. It is logged once, and again when its reason changes,
+as `{"event":"model_store","model_version":…,"outcome":"rejected","reason":…}`
+with one of `layout`, `manifest`, `read`, `files`, `model`, `digest`,
+`data-source`, `full`, and counted in
+`ppcube_model_store_rejected_versions{store,reason}`;
+`ppcube_model_store_scans_total{store,outcome}` and
+`ppcube_model_store_last_scan_failed{store}` describe the passes. `store` is the
+position of the store among the `--model-store` options, from 0. Run
 ValidateModel on the content to see the issues.
 
 Replicas read the store independently, so a new version is available on all of
 them one refresh interval after its manifest is written, not at once.
 
-Entries whose name starts with a dot are not read. An S3-protocol bucket as a
-store is planned with the same layout; `--model-store` takes a directory today.
+Entries whose name starts with a dot are not read, in a directory or a bucket.
+
+#### S3-protocol buckets
+
+The service holds no secret and takes none as an option. It reads the variables
+the AWS tools use:
+
+| Variable | Meaning |
+| --- | --- |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | Access keys. Without them the instance role is used, through the instance metadata service (IMDSv2) |
+| `AWS_REGION` or `AWS_DEFAULT_REGION` | The signing region; `us-east-1` when unset |
+| `AWS_ENDPOINT_URL_S3` or `AWS_ENDPOINT_URL` | The endpoint of S3-protocol storage other than AWS, addressed path-style. Unset means AWS, addressed by bucket host name |
+| `AWS_EC2_METADATA_SERVICE_ENDPOINT` | The metadata service, when it is not at its usual address |
+
+The service lists the bucket under the prefix and reads objects; it needs
+`s3:ListBucket` on the bucket and `s3:GetObject` under the prefix, and nothing
+that writes. Web identity credentials (`AWS_WEB_IDENTITY_TOKEN_FILE`) are not
+supported and are refused by name rather than taken for an instance role. A
+failure is reported as what was asked and the HTTP status, never the server's
+text. Use `https` endpoints beyond a trusted network: requests are signed, not
+encrypted, over `http`.
 
 ### By request
 

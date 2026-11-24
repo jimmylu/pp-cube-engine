@@ -4,7 +4,8 @@ use pp_cube_service::{
         health::health_server::HealthServer, wire::cube_engine_server::CubeEngineServer, Access,
         GrpcService, HealthService, Limits,
     },
-    store::{log_lines, DirectoryStore, Scan, StoreSync},
+    s3::{S3Config, S3Store},
+    store::{self, log_lines, DirectoryStore, Scan, StoreSync},
     telemetry::Telemetry,
     CubeService,
 };
@@ -23,8 +24,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 type Failure = Box<dyn std::error::Error>;
 
-const VALUE_OPTIONS: [&str; 15] = [
-    "--model-store",
+const VALUE_OPTIONS: [&str; 14] = [
     "--model-refresh-seconds",
     "--listen",
     "--workers",
@@ -52,13 +52,13 @@ async fn serve_metrics(
     listener: tokio::net::TcpListener,
     telemetry: Telemetry,
     core: Arc<CubeService>,
-    store: Option<Arc<StoreSync>>,
+    stores: Vec<Arc<StoreSync>>,
 ) {
     loop {
         let Ok((mut stream, _)) = listener.accept().await else {
             continue;
         };
-        let (telemetry, core, store) = (telemetry.clone(), Arc::clone(&core), store.clone());
+        let (telemetry, core, stores) = (telemetry.clone(), Arc::clone(&core), stores.clone());
         tokio::spawn(async move {
             // A scrape is one small request; bound both its size and its time.
             let exchange = async {
@@ -72,8 +72,9 @@ async fn serve_metrics(
                 }
                 let (status, body) = if request.starts_with(b"GET /metrics ") {
                     let mut body = telemetry.metrics.render(core.versions().len());
-                    if let Some(store) = &store {
-                        body.push_str(&store.render());
+                    if !stores.is_empty() {
+                        let stores: Vec<&StoreSync> = stores.iter().map(Arc::as_ref).collect();
+                        body.push_str(&store::render(&stores));
                     }
                     ("200 OK", body)
                 } else {
@@ -96,6 +97,7 @@ fn run() -> Result<(), Failure> {
     let mut options = BTreeMap::new();
     let mut data_sources = BTreeMap::new();
     let mut models = BTreeMap::new();
+    let mut locations: Vec<String> = Vec::new();
     let mut management = false;
     while let Some(key) = args.next() {
         if key == "--allow-publish" {
@@ -112,6 +114,15 @@ fn run() -> Result<(), Failure> {
             {
                 return Err("blank or duplicate model version".into());
             }
+            continue;
+        }
+        if key == "--model-store" {
+            // Repeatable: a directory, or `s3://bucket/prefix`.
+            let value = args.next().ok_or("missing option value")?;
+            if value.trim().is_empty() || value.starts_with("--") || locations.contains(&value) {
+                return Err("blank or duplicate model store".into());
+            }
+            locations.push(value);
             continue;
         }
         if key == "--data-source" {
@@ -180,20 +191,28 @@ fn run() -> Result<(), Failure> {
     if management && access.requires_token() && !access.has_admin_token() {
         return Err("--allow-publish with tokens needs --admin-token-file".into());
     }
-    // Shared storage the semantic layer publishes to: a directory now; an
-    // S3-protocol bucket is to be the second kind.
-    let store = match options.get("--model-store") {
-        Some(root) if root.contains("://") => {
-            return Err("--model-store takes a directory; other stores are not built yet".into())
+    // Shared storage the semantic layer publishes to: directories, such as a NAS
+    // mount, and S3-protocol buckets, in any number. Credentials for a bucket
+    // come from the environment or the instance role, never from an option.
+    let mut stores = Vec::with_capacity(locations.len());
+    for (index, location) in locations.iter().enumerate() {
+        let sync = if location.starts_with("s3://") {
+            let config = S3Config::from_env(location, |name| std::env::var(name).ok())?;
+            StoreSync::new(S3Store::new(config)?)
+        } else if location.contains("://") {
+            return Err("--model-store takes a directory or s3://bucket/prefix".into());
+        } else {
+            StoreSync::new(DirectoryStore::new(location))
+        };
+        stores.push(Arc::new(sync.named(index.to_string())));
+    }
+    let refresh = match options.get("--model-refresh-seconds") {
+        Some(_) if stores.is_empty() => {
+            return Err("--model-refresh-seconds needs --model-store".into())
         }
-        Some(root) => Some(Arc::new(StoreSync::new(DirectoryStore::new(root)))),
-        None => None,
+        seconds => Duration::from_secs(seconds.map_or(Ok(30), |text| text.parse())?),
     };
-    let refresh = match (options.get("--model-refresh-seconds"), &store) {
-        (Some(_), None) => return Err("--model-refresh-seconds needs --model-store".into()),
-        (seconds, _) => Duration::from_secs(seconds.map_or(Ok(30), |text| text.parse())?),
-    };
-    if models.is_empty() && !management && store.is_none() {
+    if models.is_empty() && !management && stores.is_empty() {
         return Err(
             "give at least one --model version=path, a --model-store, or --allow-publish".into(),
         );
@@ -224,7 +243,7 @@ fn run() -> Result<(), Failure> {
     // The first pass is part of starting: a store that cannot be listed stops the
     // process, as a missing model file does. A version that cannot be offered does
     // not: one bad publication must not keep the replicas from serving the others.
-    if let Some(store) = &store {
+    for store in &stores {
         report(&store.scan(&core)?);
     }
     let telemetry = if log {
@@ -281,27 +300,29 @@ fn run() -> Result<(), Failure> {
                 listener,
                 telemetry,
                 Arc::clone(&core),
-                store.clone(),
+                stores.clone(),
             ));
         }
         // Later passes pick up what the semantic layer publishes and retires. A pass
         // that cannot list the store changes nothing; the versions loaded stay.
-        if let (Some(store), false) = (store, refresh.is_zero()) {
+        if !stores.is_empty() && !refresh.is_zero() {
             let core = Arc::clone(&core);
             tokio::spawn(async move {
                 let mut ticks = tokio::time::interval(refresh);
                 ticks.tick().await;
                 loop {
                     ticks.tick().await;
-                    let (store, core) = (Arc::clone(&store), Arc::clone(&core));
-                    let pass = tokio::task::spawn_blocking(move || store.scan(&core)).await;
-                    match pass {
-                        Ok(Ok(scan)) => report(&scan),
-                        _ if log => eprintln!(
-                            "{}",
-                            serde_json::json!({"event": "model_store", "outcome": "scan-failed"})
-                        ),
-                        _ => {}
+                    for store in &stores {
+                        let (store, core) = (Arc::clone(store), Arc::clone(&core));
+                        let pass = tokio::task::spawn_blocking(move || store.scan(&core)).await;
+                        match pass {
+                            Ok(Ok(scan)) => report(&scan),
+                            _ if log => eprintln!(
+                                "{}",
+                                serde_json::json!({"event": "model_store", "outcome": "scan-failed"})
+                            ),
+                            _ => {}
+                        }
                     }
                 }
             });
