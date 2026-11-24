@@ -268,7 +268,18 @@ impl CubeService {
     /// Public cubes and members in model order; omitted visibility means public.
     pub fn get_meta(&self, version: &str) -> Result<Vec<CubeMeta>, BundleError> {
         let bundle = self.bundle(version)?;
-        let cubes = &bundle.model().cubes;
+        // A view is listed after the cubes, with the members it takes: a
+        // measure with the type of the measure behind it.
+        let model = bundle.model().expanded();
+        let behind = |cube: &str, measure: &pp_cube_model::Measure| {
+            let taken = model.underlying(&format!("{cube}.{}", measure.name));
+            let found = taken.split_once('.').and_then(|(cube, name)| {
+                let measures = &model.cube(cube)?.measures;
+                measures.iter().find(|m| m.name == name)
+            });
+            found.map_or(measure.measure_type, |m| m.measure_type)
+        };
+        let cubes = &model.cubes;
         let public = |name: &str| {
             cubes
                 .iter()
@@ -288,7 +299,7 @@ impl CubeService {
                     .filter(|m| m.public != Some(false))
                     .map(|m| MeasureMeta {
                         name: m.name.clone(),
-                        member_type: m.measure_type,
+                        member_type: behind(&c.name, m),
                         title: m.title.clone(),
                         description: m.description.clone(),
                         format: m.format.clone(),

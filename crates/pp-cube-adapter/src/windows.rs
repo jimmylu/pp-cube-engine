@@ -138,7 +138,7 @@ pub(crate) fn check(model: &Model, query: &Query, dialect: &Dialect) -> Result<(
             };
             let path = format!("{}.{dimension}", measure.cube.name);
             let mut queried = query.time_dimensions.iter();
-            if !queried.any(|time_dimension| time_dimension.dimension == path) {
+            if !queried.any(|queried| model.underlying(&queried.dimension) == path) {
                 return Err(PlanError::Unsupported(format!(
                     "Measure `{}` shifts along `{path}`, which is not a time dimension of the \
                      query; it would not be shifted",

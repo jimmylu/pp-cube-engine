@@ -606,3 +606,63 @@ SELECT DATE_ADD(DATE_TRUNC(DATE_SUB(CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC'), I
 FROM  dw.sales_dtl  AS `sales`
 WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC
 -- parameters: ["2026-10-01T00:00:00.000Z", "2026-10-31T23:59:59.999Z"]
+
+-- view_by_joined_dimension
+SELECT `stores`.store_name `sales_overview__stores_store_name`, sum(`sales`.amount) `sales_overview__amount`  
+FROM  dw.sales_dtl  AS `sales`
+LEFT JOIN  dw.dim_store  AS `stores` ON `sales`.store_cd = `stores`.store_cd GROUP BY 1 ORDER BY  1  ASC
+-- parameters: []
+
+-- view_two_hops_filtered
+SELECT `regions`.region_name `sales_overview__region_name`, sum(`sales`.amount) `sales_overview__amount`, count(`sales`.sale_id) `sales_overview__row_count`  
+FROM  dw.sales_dtl  AS `sales`
+LEFT JOIN  dw.dim_store  AS `stores` ON `sales`.store_cd = `stores`.store_cd
+LEFT JOIN  dw.dim_region  AS `regions` ON `stores`.region_cd = `regions`.region_cd
+WHERE (`sales`.channel_cd IN (?, ?)) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: ["C1", "C2"]
+
+-- view_sum_over_repeated_rows
+ WITH 
+cte_0 AS (  SELECT `sales`.channel_cd `sales_overview__channel_cd`, sum(`sales`.amount) `sales__amount`  
+  FROM  dw.sales_dtl  AS `sales` GROUP BY 1),
+cte_1 AS (  SELECT `keys`.`sales_overview__channel_cd` `sales_overview__channel_cd`, sum(`stores_key_stores`.floor_area) `stores__floor_area`  
+  FROM (SELECT DISTINCT `stores_key_sales`.channel_cd `sales_overview__channel_cd`, `stores_key_stores`.store_cd `stores__store_cd`  
+  FROM  dw.sales_dtl  AS `stores_key_sales`
+  LEFT JOIN  dw.dim_store  AS `stores_key_stores` ON `stores_key_sales`.store_cd = `stores_key_stores`.store_cd) AS `keys`
+  LEFT JOIN  dw.dim_store  AS `stores_key_stores` ON ((`keys`.`stores__store_cd` = `stores_key_stores`.store_cd)) GROUP BY 1)
+SELECT `fk_aggregate_keys`.`sales_overview__channel_cd` `sales_overview__channel_cd`, `q_0`.`sales__amount` `sales_overview__amount`, `q_1`.`stores__floor_area` `sales_overview__stores_floor_area`  
+FROM (SELECT DISTINCT `sales_overview__channel_cd` `sales_overview__channel_cd`  
+FROM (SELECT DISTINCT `sales_overview__channel_cd` `sales_overview__channel_cd`  
+FROM  cte_0  AS `cte_0`
+ UNION ALL 
+SELECT DISTINCT `sales_overview__channel_cd` `sales_overview__channel_cd`  
+FROM  cte_1  AS `cte_1`) AS `fk_aggregate_keys_source`) AS `fk_aggregate_keys`
+LEFT JOIN  cte_0  AS `q_0` ON ((`fk_aggregate_keys`.`sales_overview__channel_cd` = `q_0`.`sales_overview__channel_cd` OR ((`fk_aggregate_keys`.`sales_overview__channel_cd` IS NULL) AND (`q_0`.`sales_overview__channel_cd` IS NULL))))
+LEFT JOIN  cte_1  AS `q_1` ON ((`fk_aggregate_keys`.`sales_overview__channel_cd` = `q_1`.`sales_overview__channel_cd` OR ((`fk_aggregate_keys`.`sales_overview__channel_cd` IS NULL) AND (`q_1`.`sales_overview__channel_cd` IS NULL)))) ORDER BY  1  ASC
+-- parameters: []
+
+-- view_formula_and_one_to_one
+ WITH 
+cte_0 AS (  SELECT `sales`.channel_cd `sales_overview__channel_cd`, sum(`sales`.amount) / NULLIF(COUNT(DISTINCT `sales`.order_no), 0) `sales__amount_per_order`  
+  FROM  dw.sales_dtl  AS `sales` GROUP BY 1),
+cte_1 AS (  SELECT `sales`.channel_cd `sales_overview__channel_cd`, sum(`receipts`.tax) `receipts__tax`  
+  FROM  dw.sales_dtl  AS `sales`
+  LEFT JOIN  dw.receipt  AS `receipts` ON `sales`.receipt_no = `receipts`.receipt_no GROUP BY 1)
+SELECT `fk_aggregate_keys`.`sales_overview__channel_cd` `sales_overview__channel_cd`, `q_0`.`sales__amount_per_order` `sales_overview__amount_per_order`, `q_1`.`receipts__tax` `sales_overview__tax`  
+FROM (SELECT DISTINCT `sales_overview__channel_cd` `sales_overview__channel_cd`  
+FROM (SELECT DISTINCT `sales_overview__channel_cd` `sales_overview__channel_cd`  
+FROM  cte_0  AS `cte_0`
+ UNION ALL 
+SELECT DISTINCT `sales_overview__channel_cd` `sales_overview__channel_cd`  
+FROM  cte_1  AS `cte_1`) AS `fk_aggregate_keys_source`) AS `fk_aggregate_keys`
+LEFT JOIN  cte_0  AS `q_0` ON ((`fk_aggregate_keys`.`sales_overview__channel_cd` = `q_0`.`sales_overview__channel_cd` OR ((`fk_aggregate_keys`.`sales_overview__channel_cd` IS NULL) AND (`q_0`.`sales_overview__channel_cd` IS NULL))))
+LEFT JOIN  cte_1  AS `q_1` ON ((`fk_aggregate_keys`.`sales_overview__channel_cd` = `q_1`.`sales_overview__channel_cd` OR ((`fk_aggregate_keys`.`sales_overview__channel_cd` IS NULL) AND (`q_1`.`sales_overview__channel_cd` IS NULL)))) ORDER BY  1  ASC
+-- parameters: []
+
+-- security_view
+SELECT `stores`.store_name `sales_overview__stores_store_name`, sum(`sales`.amount) `sales_overview__amount`  
+FROM  dw.sales_dtl  AS `sales`
+LEFT JOIN  dw.dim_store  AS `stores` ON `sales`.store_cd = `stores`.store_cd
+LEFT JOIN  dw.dim_region  AS `regions` ON `stores`.region_cd = `regions`.region_cd
+WHERE (`regions`.region_name = ?) GROUP BY 1 ORDER BY  1  ASC
+-- parameters: ["north"]

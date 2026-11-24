@@ -117,3 +117,16 @@ cubes:
       - { name: channel_cd, sql: "{CUBE}.channel_cd", type: string }
     measures:
       - { name: amount, type: sum, sql: "{CUBE}.amount" }
+views:
+  # Sales with their store, its region and their receipt, under one name.
+  - name: sales_overview
+    cubes:
+      - join_path: sales
+        includes: [amount, row_count, amount_per_order, channel_cd, sold_at]
+      - join_path: sales.stores
+        prefix: true
+        includes: [store_name, floor_area]
+      - join_path: sales.stores.regions
+        includes: [region_name]
+      - join_path: sales.receipts
+        includes: [tax]

@@ -8,7 +8,7 @@ use cubenativeutils::CubeError;
 use cubesqlplanner::cube_bridge::member_sql::{
     CompiledMemberTemplate, MemberSql, SqlTemplate, SqlTemplateArgs,
 };
-use pp_cube_model::{locate_references, Reference};
+use pp_cube_model::locate_references;
 
 /// The expression text with `{arg:N}` in place of each reference, and the
 /// path that each N stands for. The planner resolves a path against the cube
@@ -29,11 +29,8 @@ impl Expression {
         let mut arg_names = Vec::new();
         let mut copied = 0;
         for found in located {
-            let path = match found.reference {
-                Reference::Column(_) => vec!["CUBE".to_owned()],
-                Reference::OwnMember(member) => vec![member.to_owned()],
-                Reference::Member { cube, member } => vec![cube.to_owned(), member.to_owned()],
-            };
+            let names = found.reference.names();
+            let path: Vec<String> = names.into_iter().map(str::to_owned).collect();
             if !arg_names.contains(&path[0]) {
                 arg_names.push(path[0].clone());
             }

@@ -1,0 +1,18 @@
+---
+source: crates/pp-cube-compile/tests/views.rs
+expression: "[BY_STORE,\nBY_REGION_PAGE].map(|query| compiled(DialectId::Presto, query)).join(\"\\n\\n\")"
+---
+SELECT "sales".channel_cd "sales_view__channel_cd", "stores".store_name "sales_view__stores_store_name", sum("sales".amount) "sales_view__amount"  
+FROM  dw.sales_dtl  AS "sales"
+LEFT JOIN  dw.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd GROUP BY 1, 2 ORDER BY  1  ASC
+-- parameters: []
+
+SELECT "regions".region_name "sales_view__region_name", date_trunc('month', CAST(date_add('minute', timezone_minute(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), date_add('hour', timezone_hour(COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), COALESCE("sales".sold_at, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP)) "sales_view__sold_at_month", sum("sales".amount) "sales_view__amount", count("sales".sale_id) "sales_view__sale_count"  
+FROM  dw.sales_dtl  AS "sales"
+LEFT JOIN  dw.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+LEFT JOIN  dw.dim_region  AS "regions" ON "stores".region_cd = "regions".region_cd
+WHERE ("sales".sold_at >= from_iso8601_timestamp(?) AND "sales".sold_at <= from_iso8601_timestamp(?)) AND ("stores".store_name = ?) GROUP BY 1, 2
+HAVING (sum("sales".amount) > CAST(? AS DOUBLE)) ORDER BY  3  DESC
+OFFSET 5
+LIMIT 5
+-- parameters: [Text("2026-01-01T00:00:00.000Z"), Text("2026-12-31T23:59:59.999Z"), Text("central"), Text("10")]

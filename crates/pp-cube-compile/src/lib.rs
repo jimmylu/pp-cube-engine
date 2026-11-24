@@ -90,6 +90,12 @@ impl PreparedModel {
             return Err(CompileError::Model(issues));
         }
         let digest = fingerprint::content_digest(&model)?;
+        // The planner works on views as cubes; the digest is of the model as written.
+        let model = if model.views.is_empty() {
+            model
+        } else {
+            Arc::new(model.expanded())
+        };
         Ok(Self { model, digest })
     }
 

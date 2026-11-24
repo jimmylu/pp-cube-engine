@@ -415,7 +415,7 @@ fn reaches_aggregate<'a>(
     seen: &mut BTreeSet<(usize, String)>,
 ) -> bool {
     let (cube, name) = match r {
-        Reference::Column(_) => return false,
+        Reference::Column(_) | Reference::Joined { .. } => return false,
         Reference::OwnMember(name) => (own, name),
         Reference::Member { cube, member } => {
             let Some(cube) = cubes.iter().find(|c| text(c, "name") == Some(cube)) else {

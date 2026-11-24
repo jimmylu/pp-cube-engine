@@ -79,7 +79,9 @@ fn validate(value: Value) -> Vec<ValidationIssue> {
 // Required fields, optional fields, nested collection element kinds.
 fn fields(kind: &str) -> (&str, &str, &[(&str, &str)]) {
     match kind {
-        "model" => ("cubes", "", &[("cubes", "cube")]),
+        "model" => ("cubes", "views", &[("cubes", "cube"), ("views", "view")]),
+        "view" => ("name cubes", "title description public meta", &[("cubes", "view_cube")]),
+        "view_cube" => ("join_path includes", "excludes prefix", &[]),
         "cube" => ("name data_source", "sql_table sql sql_alias title description public meta joins dimensions measures segments", &[("joins","join"),("dimensions","dimension"),("measures","measure"),("segments","segment")]),
         "dimension" => ("name sql type", "primary_key title description public meta granularities", &[("granularities","granularity")]),
         "granularity" => ("name interval", "origin offset", &[]),
@@ -129,6 +131,20 @@ fn shape(v: &Value, at: &str, kind: &str, out: &mut Vec<ValidationIssue>) {
             } else {
                 issue(out, &here, "type", "Expected a list");
             }
+        } else if kind == "view_cube" && (key == "includes" || key == "excludes") {
+            let names = val.as_sequence().is_some_and(|names| {
+                names
+                    .iter()
+                    .all(|name| name.as_str().is_some_and(|n| !n.is_empty()))
+            });
+            if !(names || key == "includes" && val.as_str() == Some("*")) {
+                issue(
+                    out,
+                    &here,
+                    "type",
+                    "Expected a list of member names, or `*` to include all",
+                );
+            }
         } else if key == "rolling_window" && !val.is_null() {
             shape(val, &here, "rolling_window", out);
         } else if key == "meta" {
@@ -142,7 +158,11 @@ fn shape(v: &Value, at: &str, kind: &str, out: &mut Vec<ValidationIssue>) {
             continue;
         } else {
             let valid = match key {
-                "public" | "primary_key" | "multi_stage" => val.as_bool().is_some(),
+                "public" | "primary_key" | "multi_stage" | "prefix" => val.as_bool().is_some(),
+                "join_path" => val.as_str().is_some_and(|path| {
+                    path.split('.')
+                        .all(|cube| crate::Granularity::is_custom_name(&cube.to_ascii_lowercase()))
+                }),
                 "type" if kind == "rolling_window" => val.as_str() == Some("to_date"),
                 "type" if kind == "time_shift" => {
                     val.as_str().is_some_and(|s| ["prior", "next"].contains(&s))
@@ -337,7 +357,129 @@ fn granularities(dimension: &Value, at: &str, out: &mut Vec<ValidationIssue>) {
     }
 }
 
+/// The rules of views: each takes existing members of cubes reached by declared
+/// joins from one root, under names that are unique in the view.
+fn views(value: &Value, out: &mut Vec<ValidationIssue>) {
+    let cubes = items(value, "cubes");
+    let cube = |name: &str| cubes.iter().find(|cube| text(cube, "name") == Some(name));
+    let mut names = BTreeSet::new();
+    for (i, view) in items(value, "views").iter().enumerate() {
+        let base = format!("/views/{i}");
+        if let Some(name) = text(view, "name") {
+            if cube(name).is_some() || !names.insert(name) {
+                issue(
+                    out,
+                    &path(&base, "name"),
+                    "duplicate-name",
+                    "View name is taken",
+                );
+            }
+        }
+        let taken = items(view, "cubes");
+        if taken.is_empty() && view.get("cubes").is_some_and(Value::is_sequence) {
+            issue(
+                out,
+                &path(&base, "cubes"),
+                "view",
+                "A view takes members of a cube",
+            );
+        }
+        let mut root = None;
+        let mut members = BTreeSet::new();
+        for (j, entry) in taken.iter().enumerate() {
+            let at = format!("{base}/cubes/{j}");
+            let Some(join_path) = text(entry, "join_path") else {
+                continue;
+            };
+            let mut steps = join_path.split('.');
+            let first = steps.next().unwrap_or_default();
+            if *root.get_or_insert(first) != first {
+                issue(
+                    out,
+                    &path(&at, "join_path"),
+                    "view",
+                    "The join paths of a view start at one cube",
+                );
+            }
+            // Each step is a join the cube before it declares.
+            let mut current = cube(first);
+            for step in steps {
+                current = current
+                    .filter(|from| {
+                        items(from, "joins")
+                            .iter()
+                            .any(|j| text(j, "name") == Some(step))
+                    })
+                    .and_then(|_| cube(step));
+            }
+            let Some(source) = current else {
+                issue(
+                    out,
+                    &path(&at, "join_path"),
+                    "view",
+                    "The join path is not a chain of declared joins",
+                );
+                continue;
+            };
+            let declared = |group: &str, name: &str| {
+                items(source, group)
+                    .iter()
+                    .any(|m| text(m, "name") == Some(name))
+            };
+            let known = |name: &str| declared("dimensions", name) || declared("measures", name);
+            for key in ["includes", "excludes"] {
+                for (k, name) in items(entry, key).iter().enumerate() {
+                    if name.as_str().is_some_and(|name| !known(name)) {
+                        issue(
+                            out,
+                            &format!("{at}/{key}/{k}"),
+                            "view",
+                            "A view takes dimensions and measures of the cube its join path ends at",
+                        );
+                    }
+                }
+            }
+            let excluded = |name: &str| {
+                items(entry, "excludes")
+                    .iter()
+                    .any(|e| e.as_str() == Some(name))
+            };
+            let all = text(entry, "includes") == Some("*");
+            let prefixed = entry.get("prefix").and_then(Value::as_bool) == Some(true);
+            for group in ["dimensions", "measures"] {
+                for member in items(source, group) {
+                    let Some(name) = text(member, "name") else {
+                        continue;
+                    };
+                    let included = all
+                        || items(entry, "includes")
+                            .iter()
+                            .any(|n| n.as_str() == Some(name));
+                    if !included || excluded(name) {
+                        continue;
+                    }
+                    let last = join_path.rsplit('.').next().unwrap_or(join_path);
+                    let exposed = if prefixed {
+                        format!("{last}_{name}")
+                    } else {
+                        name.to_owned()
+                    };
+                    if !members.insert(exposed) {
+                        issue(
+                            out,
+                            &at,
+                            "duplicate-name",
+                            "Two members of the view have one name; use `prefix` or `excludes`",
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn semantics(value: &Value, out: &mut Vec<ValidationIssue>) {
+    views(value, out);
     let cubes = items(value, "cubes");
     let mut names = BTreeMap::new();
     let mut ambiguous = BTreeSet::new();
@@ -511,6 +653,15 @@ fn check_expression(
                     continue;
                 };
                 (&cubes[*index], member)
+            }
+            Reference::Joined { .. } => {
+                issue(
+                    out,
+                    at,
+                    "reference",
+                    "A reference is `{CUBE}.column`, `{member}` or `{cube.member}`",
+                );
+                continue;
             }
         };
         if ["dimensions", "measures"]

@@ -11,6 +11,149 @@ use serde_json::Value;
 #[serde(deny_unknown_fields)]
 pub struct Model {
     pub cubes: Vec<Cube>,
+    /// Selections of members of joined cubes under one name. Not written when
+    /// empty, so a model without views keeps its digest.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub views: Vec<View>,
+}
+
+/// A view: members of the cubes along its join paths, queried as its own.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct View {
+    pub name: String,
+    pub cubes: Vec<ViewCube>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public: Option<bool>,
+    #[serde(
+        default,
+        deserialize_with = "crate::meta::deserialize",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub meta: Option<Value>,
+}
+
+/// The members a view takes from the cube at the end of `join_path`, a chain of
+/// joins written `root.joined.joined`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ViewCube {
+    pub join_path: String,
+    pub includes: Includes,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub excludes: Vec<String>,
+    /// Whether the members are named `<cube>_<member>` in the view.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<bool>,
+}
+
+/// `"*"` for every dimension and measure of the cube, or their names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Includes {
+    All(AllMembers),
+    Members(Vec<String>),
+}
+
+/// The text `*`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AllMembers {
+    #[serde(rename = "*")]
+    All,
+}
+
+impl ViewCube {
+    /// The cubes of the join path, root first.
+    pub fn path(&self) -> Vec<&str> {
+        self.join_path.split('.').collect()
+    }
+
+    /// The name in the view of the cube's member `member`.
+    pub fn member_name(&self, member: &str) -> String {
+        match (self.prefix, self.path().last()) {
+            (Some(true), Some(cube)) => format!("{cube}_{member}"),
+            _ => member.to_owned(),
+        }
+    }
+
+    fn takes(&self, member: &str) -> bool {
+        let included = match &self.includes {
+            Includes::All(_) => true,
+            Includes::Members(names) => names.iter().any(|name| name == member),
+        };
+        included && !self.excludes.iter().any(|name| name == member)
+    }
+}
+
+impl Model {
+    /// Whether `name` is a view of this model.
+    pub fn is_view(&self, name: &str) -> bool {
+        self.views.iter().any(|view| view.name == name)
+    }
+
+    /// The model with each view also present as a cube whose members refer to
+    /// the members it takes, by join path: the form the planner works on. A
+    /// view cube has no table; its measures are formulas over the measures it
+    /// takes. A view that names an unknown cube takes nothing from it, which
+    /// validation reports.
+    pub fn expanded(&self) -> Self {
+        let mut expanded = self.clone();
+        for view in &self.views {
+            if self.cube(&view.name).is_some() {
+                continue;
+            }
+            let mut cube = Cube {
+                name: view.name.clone(),
+                sql_table: None,
+                sql: None,
+                data_source: String::new(),
+                sql_alias: None,
+                title: view.title.clone(),
+                description: view.description.clone(),
+                public: view.public,
+                meta: view.meta.clone(),
+                joins: Vec::new(),
+                dimensions: Vec::new(),
+                measures: Vec::new(),
+                segments: Vec::new(),
+            };
+            for taken in &view.cubes {
+                let path = taken.path();
+                let Some(source) = path.last().and_then(|name| self.cube(name)) else {
+                    continue;
+                };
+                if cube.data_source.is_empty() {
+                    cube.data_source.clone_from(&source.data_source);
+                }
+                let reference = |member: &str| format!("{{{}.{member}}}", taken.join_path);
+                for dimension in source.dimensions.iter().filter(|d| taken.takes(&d.name)) {
+                    cube.dimensions.push(Dimension {
+                        name: taken.member_name(&dimension.name),
+                        sql: reference(&dimension.name),
+                        primary_key: false,
+                        ..dimension.clone()
+                    });
+                }
+                for measure in source.measures.iter().filter(|m| taken.takes(&m.name)) {
+                    cube.measures.push(Measure {
+                        name: taken.member_name(&measure.name),
+                        measure_type: MeasureType::Number,
+                        sql: Some(reference(&measure.name)),
+                        filters: Vec::new(),
+                        rolling_window: None,
+                        time_shift: Vec::new(),
+                        ..measure.clone()
+                    });
+                }
+            }
+            expanded.cubes.push(cube);
+        }
+        expanded
+    }
 }
 
 /// One cube. `sql_table` and `sql` are kept as written; that exactly one of
