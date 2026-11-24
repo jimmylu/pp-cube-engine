@@ -41,5 +41,5 @@ None.
 ## Impact
 
 Paths: `crates/pp-cube-conformance` (a second model, fixtures for both
-dialects, cases, goldens, the matrix), `docs/guide.md`, one spec and this
-change folder. Callers: none.
+dialects, cases, goldens, the matrix), `README.md`, `docs/guide.md`, one spec
+and this change folder. Callers: none.

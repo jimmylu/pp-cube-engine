@@ -6,6 +6,7 @@
 
 pub mod cases;
 mod doris;
+pub mod insurance;
 mod presto;
 
 use std::sync::Arc;
@@ -64,12 +65,34 @@ fn emit(dialect: &str, sources: bool) -> Result<String, String> {
         ),
         other => return Err(format!("unknown dialect `{other}`")),
     };
-    let document = document(id, dialect, MODEL, &cases, sources)?;
+    let document = document(id, dialect, model_text(), &cases, sources)?;
     Ok(format!("{document:#}\n"))
 }
 
-/// The model every shared case is compiled against.
+/// The retail model of the feature cases.
 const MODEL: &str = include_str!("../fixtures/sales.yaml");
+/// The property-insurance model of the domain scenario.
+const INSURANCE_MODEL: &str = include_str!("../fixtures/insurance.yaml");
+
+/// The model every shared case is compiled against: the cubes and the views of
+/// both scenarios in one document, as one deployment would hold them.
+pub fn model_text() -> &'static str {
+    static TEXT: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+        let parts = |text: &'static str| {
+            let (cubes, views) = text.split_once("\nviews:\n").unwrap_or((text, ""));
+            (cubes.trim_start_matches("cubes:\n"), views)
+        };
+        let (retail, insurance) = (parts(MODEL), parts(INSURANCE_MODEL));
+        format!(
+            "cubes:\n{}\n{}\nviews:\n{}{}",
+            retail.0.trim_end(),
+            insurance.0.trim_end(),
+            retail.1,
+            insurance.1
+        )
+    });
+    &TEXT
+}
 
 /// The shared cases with one dialect's fixtures and scenario ids.
 fn dialect_cases(

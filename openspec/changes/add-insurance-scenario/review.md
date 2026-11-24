@@ -11,7 +11,8 @@ owner gave the same day.
 | --- | --- |
 | Engines in production | Presto 0.296, Doris 2.1.8, Druid 26.0 |
 | Deployment | 3 replicas, to scale horizontally; the semantic layer publishes models |
-| Images | Published to a registry the owner named (recorded outside this repository) |
+| Model source | Replicas read published model files from shared storage: a NAS directory, and in enterprise environments object storage over the S3 protocol. Both are supported at once |
+| Image registry | Not decided. The destination first named was meant for model files and was withdrawn |
 | Callers | Mainly Java; Python and JavaScript also need support |
 | Real models and queries | None yet; a realistic property-insurance scenario is to be simulated |
 | New requirement | Model validation packaged as WebAssembly for the product frontend |
@@ -31,8 +32,8 @@ owner gave the same day.
 | # | Area | State on main | Gap | Blocks go-live |
 | --- | --- | --- | --- | --- |
 | 1 | Engine versions | Accepted on Presto 0.293 and Doris 4.1.3 | Production runs Presto 0.296 and Doris 2.1.8. Doris 2.1 is two major versions behind what was tested: the floor functions with an origin, `APPROX_COUNT_DISTINCT`, `DATETIMEV2` casts, common table expressions and `DATE_TRUNC` argument order have not been run there. Nothing is known to fail; nothing is known to pass | Yes |
-| 2 | Druid | Paused on 2026-11-23; no dialect, no templates, no cases | Druid 26.0 is in production. Known from the design: multi-fact and time-shift SQL contains `UNION ALL` inside a subquery, which Druid refuses, so those queries would be unsupported there. Druid's join support is limited. Not started | Owner decides whether go-live includes it |
-| 3 | Model source for replicas | Published versions live in one process's memory; a restart keeps only `--model` files | With 3 replicas a version published to one is unknown to the others, and a restarted replica has lost what was published. Readiness does not say whether versions are loaded | Yes |
+| 2 | Druid | Paused on 2026-11-23; no dialect, no templates, no cases | Druid 26.0 is in production and in scope (owner, 2026-11-24). Known from the design: multi-fact and time-shift SQL contains `UNION ALL` inside a subquery, which Druid refuses, so those queries would be unsupported there. Druid's join support is limited. Not started | Yes |
+| 3 | Model source for replicas | Published versions live in one process's memory; a restart keeps only `--model` files | With 3 replicas a version published to one is unknown to the others, and a restarted replica has lost what was published. The service cannot read a directory of versions or an S3 bucket, does not notice a new version appearing there, and readiness does not say whether versions are loaded | Yes |
 | 4 | Release | No git tag, no release, image never pushed, no SBOM or signature, no deployment manifest, no upgrade or rollback notes | Cannot be installed from a registry | Yes |
 | 5 | Clients | `engine.proto` and one Rust example | No Java, Python or JavaScript client, no published stubs, no guide per language. JavaScript in a browser cannot speak gRPC without a proxy | Yes for Java |
 | 6 | Fit to the domain | Features chosen from Cube's list, tested on a retail model | No model or query of the target domain has been tried. Which refusals matter is a guess | Yes: it orders everything below |
@@ -42,6 +43,7 @@ owner gave the same day.
 | 10 | Service capacity | Compile function benchmarked | The gRPC service has no load or soak test and no memory figure per model version; a running compilation cannot be cancelled | Advised |
 | 11 | Access | One read token, one admin token, rotated by restart | Callers are indistinguishable; no audit identity | Depends on the owner's network |
 | 12 | Still refused | Relative date ranges, `compareDateRange`, sub-day granularities, weeks and quarters in Presto windows, segments in views, a view flag in GetMeta, filtered counts over repeated rows (#83), multi-stage ranks and shares, `one_to_many`, `case` dimensions | Unknown which the domain needs: see 6 | By the survey |
+| 14 | Presto statement size | Found by the scenario (this change) | Presto carries a prepared statement in an HTTP header, also through JDBC; the default limit is 8 KB and a growth query by a dimension is 8.4 KB encoded. Such requests fail before running unless the server's header limit is raised or values are written into the statement. The execution tier has the same limit | Yes: a deployment setting and a client rule |
 | 13 | Debt | Test helpers repeated across files; issues #31, #32, #36 | The batched test rework of rule 9 has not been done | No |
 
 ## The WebAssembly validator: is the direction sound?
@@ -94,10 +96,10 @@ consistent and nothing to ship, but it needs a round trip per keystroke and a
 gRPC gateway for the browser. The two combine well: WebAssembly while typing,
 the service on save.
 
-## Route proposed
+## Route
 
-Each row is one change of about 2 to 3 working days unless noted. Order within
-a phase is a recommendation; the owner confirms or reorders.
+Confirmed in order by the owner on 2026-11-24, with the decisions below. Each
+row is one change of about 2 to 3 working days unless noted.
 
 **Step 0, first: fit to the domain.**
 
@@ -110,40 +112,47 @@ a phase is a recommendation; the owner confirms or reorders.
 | # | Change | Kind |
 | --- | --- | --- |
 | G1 | Production engine versions: run the cases on Presto 0.296 and Doris 2.1.8; fix the Doris dialect where 2.1 differs | Harness pins, then product |
-| G2 | Model source for replicas: load versions at startup from a directory or object store the semantic layer writes, readiness that reports loaded versions | Product |
-| G3 | Release: tag, image to the owner's registry, SBOM and signature, deployment manifest for 3 replicas, upgrade and rollback notes | Harness |
-| G4 | Java client: generated stubs as an artifact, a thin typed wrapper, a guide; then Python and Node.js; browsers through a gateway | Product |
-| G5 | Executed SQL: plans and timings of multi-fact and rolling SQL on production-sized data, on both engines; decide on the join condition | Investigation, then product if needed |
+| G2 | Model source: the service loads versions from a directory (NAS) and from an S3-protocol bucket, either or both, picks up versions the semantic layer adds or retires, verifies each digest, and reports loaded versions in readiness. The kernel still does no IO; the service does | Product |
+| G3 | Druid 26.0, B0: dialect, templates, its own execution tier and cases, Cube Core comparison; 4 to 5 days | Product and harness |
+| G4 | Druid 26.0, B1: what of B1 Druid can answer, and by name what it cannot (multi-fact and time shifts need `UNION ALL` in a subquery) | Product |
+| G5 | Release: tag, image, SBOM and signature, deployment manifest for 3 replicas, upgrade and rollback notes. Needs a registry (open question) | Harness |
+| G6 | Java client: generated stubs as an artifact, a thin typed wrapper, a guide; then Python and Node.js; browsers through a gateway | Product |
+| G7 | Executed SQL: plans and timings of multi-fact and rolling SQL on production-sized data, on each engine, against Cube Core's SQL for the same query. Where a different text is measurably faster, the kernel may deviate (decision 5) | Investigation, then product |
 
 **Phase 2: assurance, in parallel with phase 1.**
 
 | # | Change | Kind |
 | --- | --- | --- |
-| G6 | Randomized comparison with Cube Core over the scenario model, and fuzzing of the loaders | Harness and product |
-| G7 | One list of deviations from Cube and of refusals, for callers; decide #83 | Docs |
-| G8 | Service load and soak test, memory per version, capacity guide | Harness |
-| G9 | Batched test rework (rule 9) | Product tests |
+| G8 | Randomized comparison with Cube Core over the scenario model, and fuzzing of the loaders | Harness and product |
+| G9 | One list of deviations from Cube and of refusals, for callers; decide #83 | Docs |
+| G10 | Service load and soak test, memory per version, capacity guide | Harness |
+| G11 | Batched test rework (rule 9) | Product tests |
 
 **Phase 3: the validator and what the survey asks for.**
 
 | # | Change | Kind |
 | --- | --- | --- |
-| G10 | Source positions for validation issues and syntax errors | Product |
-| G11 | `pp-cube-wasm` and its npm package | Product, with a harness change for the build |
-| G12+ | Features the scenario shows are needed, in its order | Product |
+| G12 | Source positions for validation issues and syntax errors | Product |
+| G13 | `pp-cube-wasm` and its npm package | Product, with a harness change for the build |
+| G14+ | Features the scenario shows are needed, in its order | Product |
 
-**Druid** is not placed. It reverses the pause of 2026-11-23, and it is the
-largest single item: a dialect, its templates, its own cases, and a declared
-set of B1 queries it cannot answer. If go-live needs it, it follows G1 and is
-sized at the upper end (4 to 5 days) for B0 alone.
+## Decisions
 
-## Decisions asked of the owner
+Answered by the owner on 2026-11-24:
 
-1. Is Druid 26.0 part of going live, or after it?
-2. The image destination was given as a Git repository address. Is the
-   registry the container registry of that repository's host?
-3. How should replicas get models: a shared store they read, or the semantic
-   layer publishing to each? G2 assumes the first.
-4. Is the WebAssembly validator wanted before going live, or after (phase 3)?
-5. If G5 shows the NULL-safe join is slow, may Presto output differ from Cube
-   Core's text there?
+1. **Druid 26.0 is part of going live.** This ends the pause of 2026-11-23 for
+   Druid; other dialects stay out.
+2. **The image destination first named is withdrawn.** It was meant for
+   published model files, which now come from shared storage instead.
+3. **Replicas read models from shared storage:** a NAS directory, and object
+   storage over the S3 protocol in enterprise environments; both supported.
+4. **The WebAssembly validator is phase 3.**
+5. **Deviation from Cube Core's SQL text is allowed where measured
+   performance warrants it, provided the result is better than Cube Core's.**
+   So a deviation needs a measurement on the production engine against Cube's
+   SQL for the same query, equal results, and an entry in the deviation list;
+   the Cube Core comparison then accepts that case by result, not by text.
+
+Still open:
+
+- Which container registry the service image is published to (G5).

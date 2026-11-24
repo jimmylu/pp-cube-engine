@@ -1,0 +1,37 @@
+---
+source: crates/pp-cube-conformance/tests/scenario.rs
+expression: matrix
+---
+uw_premium_by_line_channel         presto: compiled     doris: compiled
+uw_renewal_share_by_branch         presto: compiled     doris: compiled
+uw_rate_in_force_by_product        presto: compiled     doris: compiled
+uw_premium_ytd_by_month            presto: compiled     doris: compiled
+uw_premium_qtd_by_month            presto: compiled     doris: compiled
+uw_premium_ytd_by_quarter          presto: unsupported  doris: compiled
+uw_premium_vs_prior_year           presto: compiled     doris: compiled
+uw_by_underwriting_year            presto: compiled     doris: compiled
+uw_insureds_exact_and_approx       presto: compiled     doris: compiled
+uw_top_branches                    presto: compiled     doris: compiled
+uw_policy_listing                  presto: compiled     doris: compiled
+uw_last_12_months_relative         presto: not read     doris: not read
+uw_compare_years                   presto: unsupported  doris: unsupported
+ep_earned_and_exposure_by_line     presto: compiled     doris: compiled
+ep_rolling_12m_by_month            presto: compiled     doris: compiled
+ep_written_vs_earned_by_line       presto: compiled     doris: compiled
+cl_counts_by_cause                 presto: compiled     doris: compiled
+cl_outstanding_by_line             presto: query error  doris: query error
+cl_paid_split_by_line              presto: compiled     doris: compiled
+cl_paid_and_outstanding_by_line    presto: query error  doris: query error
+cl_development_triangle            presto: compiled     doris: compiled
+cl_paid_ytd_by_month               presto: compiled     doris: compiled
+cl_large_loss_listing              presto: compiled     doris: compiled
+cl_reported_by_hour                presto: unsupported  doris: unsupported
+cl_lines_with_many_claims          presto: unsupported  doris: unsupported
+x_premium_paid_by_line             presto: compiled     doris: compiled
+x_premium_paid_ceded_by_region     presto: compiled     doris: compiled
+x_loss_ratio_measure               presto: query error  doris: query error
+x_earned_and_paid_by_month         presto: query error  doris: query error
+x_totals                           presto: compiled     doris: compiled
+v_underwriting_by_region           presto: compiled     doris: compiled
+v_underwriting_ytd                 presto: compiled     doris: compiled
+v_claims_by_line_cause             presto: compiled     doris: compiled
