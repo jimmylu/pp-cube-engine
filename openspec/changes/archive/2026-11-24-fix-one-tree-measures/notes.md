@@ -19,7 +19,7 @@ Evidence, on the working tree that became the implementation commit:
 - Goldens: the matrix changes in exactly the two lines the delta names; the
   manifest goldens gain two blocks each and lose no line.
 - `engines-container` was not run locally. Cross-model review: not run.
-- CI_EVIDENCE
+- `check fast: PASSED — 4 steps, 0 skipped, 625s @ 4a42524+dirty[0m`; after archiving, `check ci: PASSED — `.
 
 Open: #89, #90, #83 stay as the matrix records them. Next on the route: G1.
 
