@@ -749,6 +749,40 @@ SELECT "claims".cause_cd "claims__cause_cd", count("claims".claim_id) "claims__c
 FROM  dw.ins_claim  AS "claims" GROUP BY 1 ORDER BY  1  ASC
 -- parameters: []
 
+-- cl_outstanding_by_line
+SELECT "products".line_of_business "products__line_of_business", count("claims".claim_id) "claims__claim_count", sum("claim_reserves".outstanding) "claim_reserves__outstanding", sum("claim_reserves".outstanding) / NULLIF(count("claims".claim_id), 0) "claims__avg_outstanding"  
+FROM  dw.ins_claim  AS "claims"
+LEFT JOIN  dw.ins_policy  AS "policies" ON "claims".policy_id = "policies".policy_id
+LEFT JOIN  dw.ins_product  AS "products" ON "policies".product_cd = "products".product_cd
+LEFT JOIN  dw.ins_claim_reserve  AS "claim_reserves" ON "claims".claim_id = "claim_reserves".claim_id GROUP BY 1 ORDER BY  1  ASC
+-- parameters: []
+
+-- cl_paid_and_outstanding_by_line
+ WITH 
+cte_0 AS (  SELECT "products".line_of_business "products__line_of_business", sum("claim_payments".paid_amount) "claim_payments__paid_amount"  
+  FROM  dw.ins_claim_payment  AS "claim_payments"
+  LEFT JOIN  dw.ins_claim  AS "claims" ON "claim_payments".claim_id = "claims".claim_id
+  LEFT JOIN  dw.ins_policy  AS "policies" ON "claims".policy_id = "policies".policy_id
+  LEFT JOIN  dw.ins_product  AS "products" ON "policies".product_cd = "products".product_cd GROUP BY 1),
+cte_1 AS (  SELECT "keys"."products__line_of_business" "products__line_of_business", sum("claim_reserves_key_claim_reserves".outstanding) "claim_reserves__outstanding"  
+  FROM (SELECT DISTINCT "claim_reserves_key_products".line_of_business "products__line_of_business", "claim_reserves_key_claim_reserves".claim_id "claim_reserves__claim_id"  
+  FROM  dw.ins_claim_payment  AS "claim_reserves_key_claim_payments"
+  LEFT JOIN  dw.ins_claim  AS "claim_reserves_key_claims" ON "claim_reserves_key_claim_payments".claim_id = "claim_reserves_key_claims".claim_id
+  LEFT JOIN  dw.ins_policy  AS "claim_reserves_key_policies" ON "claim_reserves_key_claims".policy_id = "claim_reserves_key_policies".policy_id
+  LEFT JOIN  dw.ins_product  AS "claim_reserves_key_products" ON "claim_reserves_key_policies".product_cd = "claim_reserves_key_products".product_cd
+  LEFT JOIN  dw.ins_claim_reserve  AS "claim_reserves_key_claim_reserves" ON "claim_reserves_key_claims".claim_id = "claim_reserves_key_claim_reserves".claim_id) AS "keys"
+  LEFT JOIN  dw.ins_claim_reserve  AS "claim_reserves_key_claim_reserves" ON (("keys"."claim_reserves__claim_id" = "claim_reserves_key_claim_reserves".claim_id)) GROUP BY 1)
+SELECT "fk_aggregate_keys"."products__line_of_business" "products__line_of_business", "q_0"."claim_payments__paid_amount" "claim_payments__paid_amount", "q_1"."claim_reserves__outstanding" "claim_reserves__outstanding"  
+FROM (SELECT DISTINCT "products__line_of_business" "products__line_of_business"  
+FROM (SELECT DISTINCT "products__line_of_business" "products__line_of_business"  
+FROM  cte_0  AS "cte_0"
+ UNION ALL 
+SELECT DISTINCT "products__line_of_business" "products__line_of_business"  
+FROM  cte_1  AS "cte_1") AS "fk_aggregate_keys_source") AS "fk_aggregate_keys"
+LEFT JOIN  cte_0  AS "q_0" ON (("fk_aggregate_keys"."products__line_of_business" = "q_0"."products__line_of_business" OR (("fk_aggregate_keys"."products__line_of_business" IS NULL) AND ("q_0"."products__line_of_business" IS NULL))))
+LEFT JOIN  cte_1  AS "q_1" ON (("fk_aggregate_keys"."products__line_of_business" = "q_1"."products__line_of_business" OR (("fk_aggregate_keys"."products__line_of_business" IS NULL) AND ("q_1"."products__line_of_business" IS NULL)))) ORDER BY  1  ASC
+-- parameters: []
+
 -- cl_development_triangle
 SELECT date_trunc('year', CAST(date_add('minute', timezone_minute(COALESCE("claims".loss_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), date_add('hour', timezone_hour(COALESCE("claims".loss_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), COALESCE("claims".loss_at, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP)) "claims__loss_at_year", date_trunc('year', CAST(date_add('minute', timezone_minute(COALESCE("claim_payments".paid_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), date_add('hour', timezone_hour(COALESCE("claim_payments".paid_at, CAST(NULL AS TIMESTAMP)) AT TIME ZONE 'UTC'), COALESCE("claim_payments".paid_at, CAST(NULL AS TIMESTAMP)))) AS TIMESTAMP)) "claim_payments__paid_at_year", sum("claim_payments".paid_amount) "claim_payments__paid_amount"  
 FROM  dw.ins_claim_payment  AS "claim_payments"

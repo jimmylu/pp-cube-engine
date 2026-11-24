@@ -9,7 +9,7 @@ The kernel compiles; it does not execute. Running the SQL, access decisions and 
 In development; not yet released. The B0 baseline and, of B1, multi-fact
 queries, rolling windows, period to date, time shifts, ungrouped rows,
 approximate distinct counts, declared granularities and views compile for Presto
-and Apache Doris, and eighty-three shared cases, a property-insurance scenario
+and Apache Doris, and eighty-five shared cases, a property-insurance scenario
 among them, are executed on both engines for every relevant pull request. A gRPC service exposes Compile, ValidateModel and GetMeta
 ([crates/pp-cube-service](crates/pp-cube-service/README.md)). Apache Druid and
 production packaging are not built.

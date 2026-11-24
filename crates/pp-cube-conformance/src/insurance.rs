@@ -242,6 +242,29 @@ pub fn cases() -> Vec<Declared> {
             ],
             r#"[["COLLISION",3,1,1.0,2],["INJURY",1,1,15.0,15],["THEFT",1,1,3.0,3],["WATER",1,1,7.0,7]]"#,
         ),
+        // Every claim with its reserve: one row each, so one SELECT. Two motor
+        // claims are closed and hold nothing.
+        case(
+            "cl_outstanding_by_line",
+            &[
+                "products__line_of_business",
+                "claims__claim_count",
+                "claim_reserves__outstanding",
+                "claims__avg_outstanding",
+            ],
+            r#"[["LIABILITY",1,8000,8000.0],["MOTOR",4,15900,3975.0],["PROPERTY",1,600,600.0]]"#,
+        ),
+        // Counted from payments, a reserve belongs to a claim that was paid on: the
+        // open motor claim without a payment, and its 900, are not here.
+        case(
+            "cl_paid_and_outstanding_by_line",
+            &[
+                "products__line_of_business",
+                "claim_payments__paid_amount",
+                "claim_reserves__outstanding",
+            ],
+            r#"[["LIABILITY",3400,8000],["MOTOR",5500,15000],["PROPERTY",300,600]]"#,
+        ),
         // Paid by loss year and payment year: last year's injury claim is paid this year.
         case(
             "cl_development_triangle",

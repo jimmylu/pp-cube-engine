@@ -106,7 +106,7 @@ No failure returns SQL, and no message contains table names or SQL text.
 
 For every execution case, Cube Core 1.8.28 (the release of the pinned upstream
 commit) was asked for the SQL of the same model and query on Presto. Its SQL
-and parameters equal the kernel's in all eighty-three cases, with one difference:
+and parameters equal the kernel's in all eighty-five cases, with one difference:
 
 - **Default row limit.** Cube's API adds `LIMIT 10000` to a query that sets no
   limit. The kernel adds none: a query without a limit compiles without one.
@@ -188,11 +188,10 @@ granularity needs a date range.
 
 Besides the feature cases, a property-insurance scenario is kept with the
 kernel: a model of policies, earned premium, claims, payments, reserves and
-cessions, and thirty-three business questions. Twenty-four compile, to the SQL
-Cube Core writes; thirteen of those are executed on both engines. The nine
+cessions, and thirty-three business questions. Twenty-six compile, to the SQL
+Cube Core writes; fifteen of those are executed on both engines. The seven
 that do not are a reviewed list, each with its reason:
 
-- outstanding reserves by a policy dimension (a defect, issue #88);
 - a ratio of two facts as one measure, and two facts over time, which Cube
   refuses too (#89): select both measures and divide in the caller;
 - year to date by quarter on Presto (#90);
