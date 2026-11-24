@@ -4,6 +4,7 @@ use pp_cube_service::{
         health::health_server::HealthServer, wire::cube_engine_server::CubeEngineServer, Access,
         GrpcService, HealthService, Limits,
     },
+    store::{log_lines, DirectoryStore, Scan, StoreSync},
     telemetry::Telemetry,
     CubeService,
 };
@@ -22,7 +23,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 type Failure = Box<dyn std::error::Error>;
 
-const VALUE_OPTIONS: [&str; 13] = [
+const VALUE_OPTIONS: [&str; 15] = [
+    "--model-store",
+    "--model-refresh-seconds",
     "--listen",
     "--workers",
     "--queue",
@@ -49,12 +52,13 @@ async fn serve_metrics(
     listener: tokio::net::TcpListener,
     telemetry: Telemetry,
     core: Arc<CubeService>,
+    store: Option<Arc<StoreSync>>,
 ) {
     loop {
         let Ok((mut stream, _)) = listener.accept().await else {
             continue;
         };
-        let (telemetry, core) = (telemetry.clone(), Arc::clone(&core));
+        let (telemetry, core, store) = (telemetry.clone(), Arc::clone(&core), store.clone());
         tokio::spawn(async move {
             // A scrape is one small request; bound both its size and its time.
             let exchange = async {
@@ -67,7 +71,11 @@ async fn serve_metrics(
                     }
                 }
                 let (status, body) = if request.starts_with(b"GET /metrics ") {
-                    ("200 OK", telemetry.metrics.render(core.versions().len()))
+                    let mut body = telemetry.metrics.render(core.versions().len());
+                    if let Some(store) = &store {
+                        body.push_str(&store.render());
+                    }
+                    ("200 OK", body)
                 } else {
                     ("404 Not Found", String::new())
                 };
@@ -172,8 +180,23 @@ fn run() -> Result<(), Failure> {
     if management && access.requires_token() && !access.has_admin_token() {
         return Err("--allow-publish with tokens needs --admin-token-file".into());
     }
-    if models.is_empty() && !management {
-        return Err("give at least one --model version=path, or --allow-publish".into());
+    // Shared storage the semantic layer publishes to: a directory now; an
+    // S3-protocol bucket is to be the second kind.
+    let store = match options.get("--model-store") {
+        Some(root) if root.contains("://") => {
+            return Err("--model-store takes a directory; other stores are not built yet".into())
+        }
+        Some(root) => Some(Arc::new(StoreSync::new(DirectoryStore::new(root)))),
+        None => None,
+    };
+    let refresh = match (options.get("--model-refresh-seconds"), &store) {
+        (Some(_), None) => return Err("--model-refresh-seconds needs --model-store".into()),
+        (seconds, _) => Duration::from_secs(seconds.map_or(Ok(30), |text| text.parse())?),
+    };
+    if models.is_empty() && !management && store.is_none() {
+        return Err(
+            "give at least one --model version=path, a --model-store, or --allow-publish".into(),
+        );
     }
     let metrics_address: Option<SocketAddr> = options
         .get("--metrics-listen")
@@ -191,6 +214,19 @@ fn run() -> Result<(), Failure> {
         core.publish(version, model, None)?;
     }
     let core = Arc::new(core);
+    let report = move |scan: &Scan| {
+        if log {
+            for line in log_lines(scan) {
+                eprintln!("{line}");
+            }
+        }
+    };
+    // The first pass is part of starting: a store that cannot be listed stops the
+    // process, as a missing model file does. A version that cannot be offered does
+    // not: one bad publication must not keep the replicas from serving the others.
+    if let Some(store) = &store {
+        report(&store.scan(&core)?);
+    }
     let telemetry = if log {
         Telemetry::default().with_log(|line| eprintln!("{line}"))
     } else {
@@ -241,7 +277,34 @@ fn run() -> Result<(), Failure> {
         println!("listening {}", listener.local_addr()?);
         if let Some(listener) = metrics_listener {
             println!("metrics {}", listener.local_addr()?);
-            tokio::spawn(serve_metrics(listener, telemetry, core));
+            tokio::spawn(serve_metrics(
+                listener,
+                telemetry,
+                Arc::clone(&core),
+                store.clone(),
+            ));
+        }
+        // Later passes pick up what the semantic layer publishes and retires. A pass
+        // that cannot list the store changes nothing; the versions loaded stay.
+        if let (Some(store), false) = (store, refresh.is_zero()) {
+            let core = Arc::clone(&core);
+            tokio::spawn(async move {
+                let mut ticks = tokio::time::interval(refresh);
+                ticks.tick().await;
+                loop {
+                    ticks.tick().await;
+                    let (store, core) = (Arc::clone(&store), Arc::clone(&core));
+                    let pass = tokio::task::spawn_blocking(move || store.scan(&core)).await;
+                    match pass {
+                        Ok(Ok(scan)) => report(&scan),
+                        _ if log => eprintln!(
+                            "{}",
+                            serde_json::json!({"event": "model_store", "outcome": "scan-failed"})
+                        ),
+                        _ => {}
+                    }
+                }
+            });
         }
         std::io::stdout().flush()?;
 

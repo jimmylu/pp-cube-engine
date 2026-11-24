@@ -529,3 +529,127 @@ async fn an_encrypted_host_serves_probes_metrics_and_drains_on_terminate() {
         std::fs::remove_file(file).unwrap();
     }
 }
+
+// scenario: B1-API-002
+#[tokio::test(flavor = "current_thread")]
+async fn a_replica_serves_what_the_store_holds_and_follows_it_while_running() {
+    let root = scratch("store");
+    let write = |key: &str, text: &str| {
+        let path = key
+            .split('/')
+            .fold(root.clone(), |path, part| path.join(part));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    let cube = "cubes:\n- name: sales\n  data_source: warehouse\n  sql_table: dw.sales\n  measures:\n  - {name: amount, type: sum, sql: '{CUBE}.amount'}\n";
+    write("property/motor/models/v1/cubes/sales.yml", cube);
+    write("property/motor/models/v1/manifest.json", r#"{"schema": 1}"#);
+    // A publication that is not a model must not keep the replica from starting.
+    write("property/motor/models/broken/cubes/sales.yml", "cubes: [");
+    write(
+        "property/motor/models/broken/manifest.json",
+        r#"{"schema": 1}"#,
+    );
+
+    // A store that is not there, or of a kind not built, stops the process.
+    for store in ["/nonexistent/pp-model-store", "s3://bucket/prefix"] {
+        let output = command()
+            .args(["--model-store", store, "--listen", "127.0.0.1:0"])
+            .args(["--data-source", "warehouse=presto"])
+            .output()
+            .unwrap();
+        assert!(
+            !output.status.success() && output.stdout.is_empty(),
+            "{store}"
+        );
+    }
+    let output = command()
+        .args(["--model-refresh-seconds", "5", "--allow-publish"])
+        .args([
+            "--listen",
+            "127.0.0.1:0",
+            "--data-source",
+            "warehouse=presto",
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success() && output.stdout.is_empty());
+
+    let mut child = Process(
+        command()
+            .args(["--model-store", root.to_str().unwrap()])
+            .args(["--model-refresh-seconds", "1"])
+            .args([
+                "--listen",
+                "127.0.0.1:0",
+                "--data-source",
+                "warehouse=presto",
+            ])
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let stdout = child.0.stdout.take().unwrap();
+    let (send, receive) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        BufReader::new(stdout).read_line(&mut line).unwrap();
+        let _ = send.send(line);
+    });
+    let line = receive.recv_timeout(Duration::from_secs(15)).unwrap();
+    let address = line.trim().strip_prefix("listening ").unwrap().to_owned();
+    let mut client = CubeEngineClient::connect(format!("http://{address}"))
+        .await
+        .unwrap();
+    // Whether a version compiles now, asked of the running process.
+    async fn compiles(
+        client: &mut CubeEngineClient<tonic::transport::Channel>,
+        version: &str,
+    ) -> bool {
+        let request = CompileRequest {
+            model_version: version.into(),
+            query_json: r#"{"measures":["sales.amount"]}"#.into(),
+            dialect: "presto".into(),
+            timezone: "UTC".into(),
+            ..Default::default()
+        };
+        match client.compile(request).await {
+            Ok(response) => matches!(
+                response.into_inner().result,
+                Some(compile_response::Result::Compiled(_))
+            ),
+            Err(_) => false,
+        }
+    }
+    // Loaded before it announced itself: the version of the store compiles at once.
+    assert!(compiles(&mut client, "property/motor/v1").await);
+    assert!(!compiles(&mut client, "property/motor/broken").await);
+    assert!(!compiles(&mut client, "property/motor/v2").await);
+
+    // Published while it runs: files first, the manifest last.
+    write("property/motor/models/v2/cubes/sales.yml", cube);
+    write("property/motor/models/v2/manifest.json", r#"{"schema": 1}"#);
+    let mut seen = false;
+    for _ in 0..100 {
+        if compiles(&mut client, "property/motor/v2").await {
+            seen = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(seen, "the version published to the store was not picked up");
+
+    // Retired by removing its manifest.
+    std::fs::remove_file(root.join("property/motor/models/v1/manifest.json")).unwrap();
+    let mut gone = false;
+    for _ in 0..100 {
+        if !compiles(&mut client, "property/motor/v1").await {
+            gone = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(gone, "the version retired in the store is still offered");
+    assert!(compiles(&mut client, "property/motor/v2").await);
+    let _ = std::fs::remove_dir_all(root);
+}

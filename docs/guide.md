@@ -56,6 +56,11 @@ docker run --rm -p 50051:50051 -v "$PWD/model.yaml:/model.yaml:ro" pp-cube-engin
   --model v1=/model.yaml --data-source warehouse=doris --listen 127.0.0.1:50051
 ```
 
+For several replicas, point each at shared storage with `--model-store`: the
+service reads model versions laid out by business line, as directories of one
+cube or view per file, and follows what is published there. The service guide
+has the layout.
+
 The image contains the binary and no shell, and runs as a non-root user.
 `crates/pp-cube-service/examples/compile.rs` is a minimal client that compiles
 one query over TLS with a token and prints the SQL, parameters and session

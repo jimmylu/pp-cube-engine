@@ -29,6 +29,11 @@ versions even when the SQL does not.
 - Views: `views` in a model, taking dimensions and measures of cubes along
   join paths; queries on them; listed by GetMeta.
 
+**Service**
+- `--model-store`: model versions read from a shared directory laid out by
+  business line and asset type, each version a directory of one cube or view
+  per file with a manifest, followed while running. For several replicas.
+
 **Changed**
 - SQL may begin with `WITH`. The result is still one statement.
 - A granularity name no time dimension declares is a query error at
@@ -45,7 +50,8 @@ versions even when the SQL does not.
   contradict the selected count.
 
 **Evidence**
-- Seventy shared cases on Presto 0.293, Doris 4.1.3 and against Cube Core 1.8.28.
+- Eighty-five shared cases, a property-insurance scenario among them, on Presto
+  0.296 and Doris 2.1.8, the versions in production, and against Cube Core 1.8.28.
 
 ## 0.1.0
 
