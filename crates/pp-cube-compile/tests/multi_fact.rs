@@ -195,6 +195,51 @@ fn fact_that_cannot_reach_what_the_query_reads_is_a_query_error() {
     .contains("different data sources"));
 }
 
+// scenario: B1-MULTI-008
+#[test]
+fn one_tree_over_the_whole_query_serves_a_fact_that_reaches_nothing_alone() {
+    // `receipts` declares no join: `sales` joins it one_to_one. Grouped by a store
+    // dimension, which `sales` also reaches, the query is one tree from `sales`,
+    // and Cube writes it as one SELECT.
+    let by_store = presto(
+        r#"{"measures": ["sales.amount", "receipts.tax"], "dimensions": ["stores.store_name"],
+            "order": [["stores.store_name", "asc"]]}"#,
+    );
+    assert_eq!(
+        by_store.sql,
+        "SELECT \"stores\".store_name \"stores__store_name\", sum(\"sales\".amount) \"sales__amount\", \
+         sum(\"receipts\".tax) \"receipts__tax\"  \nFROM  dw.sales_dtl  AS \"sales\"\n\
+         LEFT JOIN  dw.dim_store  AS \"stores\" ON \"sales\".store_cd = \"stores\".store_cd\n\
+         LEFT JOIN  dw.receipt  AS \"receipts\" ON \"sales\".receipt_no = \"receipts\".receipt_no \
+         GROUP BY 1 ORDER BY  1  ASC"
+    );
+    let used: Vec<_> = by_store
+        .used_cubes
+        .iter()
+        .map(|c| c.name.as_str())
+        .collect();
+    assert_eq!(used, ["receipts", "sales", "stores"]);
+    // Two joins away, and with a filter on the dimension.
+    assert!(compile_in(
+        &context(DialectId::Doris),
+        r#"{"measures": ["sales.amount", "receipts.receipt_count"], "dimensions": ["regions.region_name"],
+            "filters": [{"member": "stores.store_name", "operator": "set"}]}"#
+    )
+    .is_ok());
+    // Without a cube of the query that joins it, the fact is still unreachable,
+    // in Cube as here: no measure or dimension brings `sales` in.
+    for measures in [r#""receipts.tax""#, r#""receipts.tax", "refunds.amount""#] {
+        let query = format!(r#"{{"measures": [{measures}], "dimensions": ["stores.store_name"]}}"#);
+        match compile_in(&context(DialectId::Presto), &query) {
+            Err(CompileError::Query(message)) => assert_eq!(
+                message,
+                "No join path connects cubes `receipts`, `stores`: none of them reaches all the others"
+            ),
+            other => panic!("expected a query failure, got {other:?}"),
+        }
+    }
+}
+
 // scenario: B1-MULTI-006
 #[test]
 fn filter_on_a_count_over_repeated_rows_is_unsupported_by_name() {

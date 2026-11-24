@@ -19,9 +19,9 @@ ep_earned_and_exposure_by_line     presto: compiled     doris: compiled
 ep_rolling_12m_by_month            presto: compiled     doris: compiled
 ep_written_vs_earned_by_line       presto: compiled     doris: compiled
 cl_counts_by_cause                 presto: compiled     doris: compiled
-cl_outstanding_by_line             presto: query error  doris: query error
+cl_outstanding_by_line             presto: compiled     doris: compiled
 cl_paid_split_by_line              presto: compiled     doris: compiled
-cl_paid_and_outstanding_by_line    presto: query error  doris: query error
+cl_paid_and_outstanding_by_line    presto: compiled     doris: compiled
 cl_development_triangle            presto: compiled     doris: compiled
 cl_paid_ytd_by_month               presto: compiled     doris: compiled
 cl_large_loss_listing              presto: compiled     doris: compiled

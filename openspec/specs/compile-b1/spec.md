@@ -30,10 +30,13 @@ Measures of cubes joined one_to_one SHALL be aggregated in one flat SELECT, and 
 - **THEN** each compiles to one flat SELECT that aggregates both cubes
 
 ### Requirement: Fact boundaries
-Every fact SHALL reach every cube the query's dimensions, time dimensions, filters and segments read, by one join path, and every cube of the query SHALL be on one data source whether or not a join connects them. Otherwise the kernel SHALL return a query error without SQL, naming the cubes. Model errors, unknown members and invalid security filters SHALL keep their precedence.
+Every fact SHALL reach every cube the query's dimensions, time dimensions, filters and segments read, by one join path, unless one join tree holds every cube the query reads; and every cube of the query SHALL be on one data source whether or not a join connects them. Otherwise the kernel SHALL return a query error without SQL, naming the cubes. Model errors, unknown members and invalid security filters SHALL keep their precedence.
 #### Scenario: B1-MULTI-005 Fact that cannot reach the query
 - **WHEN** two facts are requested with a dimension, a time dimension or a filter of one of them only, with a dimension one of them reaches by two paths, or with one fact on another data source
 - **THEN** each returns a query error without SQL, naming the cubes without a path or the ambiguity, and an invalid model, member or security filter is reported first
+#### Scenario: B1-MULTI-008 One tree over the whole query
+- **WHEN** a measure of a cube that declares no join is requested beside a measure of the cube that joins it one_to_one, grouped by a dimension only that cube reaches, and again without any member of the joining cube
+- **THEN** the first compiles as Cube writes it, one SELECT from the joining cube, and the second returns a query error naming the cubes without a path
 
 ### Requirement: Filters on counts over repeated rows
 A filter on a count measure, or on a formula computed from one, SHALL return unsupported without SQL, naming the filter member and the count, when the query reaches the count's cube through a many_to_one join. The pinned planner compares the count of repeated rows there while selecting the count of distinct keys. A count of the cube the joins start from, a count through one_to_one joins, and a count_distinct SHALL compile.

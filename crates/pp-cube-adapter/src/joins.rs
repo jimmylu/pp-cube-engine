@@ -253,26 +253,35 @@ impl Joins {
         {
             return Err(PlanError::local(self.unconnected(&shared.cubes)));
         }
-        for (_, fact) in &facts {
-            let Some(tree) = self.tree(&fact.cubes).map_err(PlanError::local)? else {
-                return Err(PlanError::local(self.unconnected(&fact.cubes)));
-            };
-            self.check_filtered_counts(&tree, fact, &filtered)?;
-        }
         let mut together: Vec<usize> = Vec::new();
         for cube in facts.iter().flat_map(|(_, fact)| &fact.cubes) {
             if !together.contains(cube) {
                 together.push(*cube);
             }
         }
+        // One tree that holds every cube the query reads, when there is one. The
+        // planner then joins from it, as Cube does, and a fact need not reach the
+        // dimensions on its own: a cube joined one_to_one declares no join, and
+        // is still reached through the cube that joins it.
+        let whole = if facts.len() > 1 {
+            self.tree(&together).ok().flatten()
+        } else {
+            None
+        };
+        for (_, fact) in &facts {
+            match self.tree(&fact.cubes).map_err(PlanError::local)? {
+                Some(tree) => self.check_filtered_counts(&tree, fact, &filtered)?,
+                None if whole.is_some() => {}
+                None => return Err(PlanError::local(self.unconnected(&fact.cubes))),
+            }
+        }
         // Facts are combined in one statement even when no join connects them.
         self.one_source(&together).map_err(PlanError::local)?;
-        // When one tree holds every fact the planner may aggregate them together,
-        // so a count is also held to that tree. A tree that cannot be built is the
-        // planner's to meet: it asks for this one only when it wants it.
-        if let (true, Ok(Some(tree))) = (facts.len() > 1, self.tree(&together)) {
+        // The planner may aggregate the facts of one tree together, so a count is
+        // also held to that tree.
+        if let Some(tree) = &whole {
             for (_, fact) in &facts {
-                self.check_filtered_counts(&tree, fact, &filtered)?;
+                self.check_filtered_counts(tree, fact, &filtered)?;
             }
         }
         Ok(())

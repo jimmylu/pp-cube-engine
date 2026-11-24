@@ -58,7 +58,7 @@ fn the_support_matrix_of_the_insurance_scenario_is_the_reviewed_one() {
         cases.iter().find(|case| case["name"] == name).cloned()
     };
     let executed = insurance::cases();
-    assert_eq!(executed.len(), 13);
+    assert_eq!(executed.len(), 15);
     for case in &executed {
         let surveyed = if case.name.starts_with("security") {
             "x_premium_paid_by_line"
