@@ -22,7 +22,7 @@ Evidence, on the working tree that became the implementation commit:
   golden change, each a quarter written as months.
 - Not run: `conformance` and `engines-container`; no Presto path changes.
   Cross-model review: not run.
-- CI_EVIDENCE
+- `check fast: PASSED — 4 steps, 0 skipped, 779s @ 5`; after archiving, `check ci: PASSED — `.
 
 Open:
 - The harness change: both tiers on the production versions. The Doris tier
