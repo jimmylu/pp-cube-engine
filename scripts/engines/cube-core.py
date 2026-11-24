@@ -189,8 +189,8 @@ def main():
         print('check conformance: FAILED — ' + failure(error), file=sys.stderr)
         return 1
     print('check conformance: PASSED — Cube Core %s, %d cases: SQL and parameters equal the kernel\'s '
-          'but for Cube\'s default row limit, and results equal on Presto 0.293 (%s)'
-          % (CUBE_VERSION, len(cases), SCENARIO))
+          'but for Cube\'s default row limit, and results equal on Presto %s (%s)'
+          % (CUBE_VERSION, len(cases), PRESTO.VERSION.split('-')[0], SCENARIO))
     return 0
 
 

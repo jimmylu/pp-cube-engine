@@ -11,10 +11,10 @@ import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
-# Presto 0.293 linux/amd64 manifest, not a mutable tag.
-# Runtime build identity observed for this exact manifest in real-engine CI.
-VERSION = '0.293-2f48ff6'
-IMAGE = 'prestodb/presto@sha256:6e7f7b4470522f5599a3b42e85036a526256d51b532fe8e6098d88ff8cf0aff0'
+# Presto 0.296, the version in production: its linux/amd64 manifest, not a mutable tag.
+# Runtime build identity observed for this exact manifest on a real engine.
+VERSION = '0.296-8661b73'
+IMAGE = 'prestodb/presto@sha256:9f55110be575dd44da6d4c993a39f80610c5a0dae0f79eb93c7af2cf58c9f4d1'
 SPEC = importlib.util.spec_from_file_location('presto_smoke', ROOT / 'scripts/engines/presto.py')
 SMOKE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(SMOKE)
@@ -123,8 +123,8 @@ def main():
             subprocess.SubprocessError, SMOKE.http.client.HTTPException) as error:
         print('check engines-container: FAILED — ' + SMOKE.failure_category(error), file=sys.stderr)
         return 1
-    print('check engines-container: PASSED — Presto 0.293, %d live-compiled manifest cases (%s)'
-          % (len(cases), SMOKE.MANIFEST.scenarios(cases)))
+    print('check engines-container: PASSED — Presto %s, %d live-compiled manifest cases (%s)'
+          % (VERSION.split('-')[0], len(cases), SMOKE.MANIFEST.scenarios(cases)))
     return 0
 
 

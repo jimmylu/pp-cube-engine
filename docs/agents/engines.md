@@ -3,7 +3,8 @@
 ## Scope
 
 The Presto tier executes the live-compiled execution manifest of
-`pp-cube-conformance` on Presto 0.293. It reads no stored snapshot and holds no
+`pp-cube-conformance` on Presto 0.296, the version in production (owner,
+2026-11-24; 0.293 until then). It reads no stored snapshot and holds no
 fixture or expectation of its own. The kernel remains compile-only: only this
 tier executes SQL. Cases, fixtures, expected rows, the declared session
 properties and their reviewed golden are product files in
@@ -28,7 +29,7 @@ scripts/check.sh engines-container
 Before any container is created the tier runs
 `cargo run -q --locked -p pp-cube-conformance --bin execution-cases -- presto`,
 so a compiler failure never starts an engine. It then pulls a digest-pinned
-Presto 0.293 amd64 image, provisions one uniquely named container with a
+Presto 0.296 amd64 image, provisions one uniquely named container with a
 loopback-only ephemeral port and 2 GiB limit, installs the memory catalog,
 checks the exact runtime build, probes Memory worker execution, executes the
 manifest and removes the container. Progress lines show each stage without
@@ -75,7 +76,7 @@ query errors, changing columns and excessive rows fail. Public failures use
 fixed allowlisted diagnostics rather than endpoints, SQL or server messages.
 
 Docker commands have explicit timeouts. Version readiness uses runtime.nodes,
-because this build rejects version(). The pinned image reports 0.293-2f48ff6.
+because this build rejects version(). The pinned image reports 0.296-8661b73.
 Memory worker readiness uses a bounded CTAS probe; only known no-nodes errors
 are retried, each attempt on a distinct table. Cleanup is attempted after any
 create attempt, even a timeout, and its failure fails the run. SIGKILL or
@@ -84,10 +85,10 @@ pre-existing containers are never removed.
 
 ## Sources and history
 
-- Protocol: https://github.com/prestodb/presto/blob/0.293/presto-docs/src/main/sphinx/develop/client-protocol.rst
-- Header encoding: https://github.com/prestodb/presto/blob/0.293/presto-client/src/main/java/com/facebook/presto/client/StatementClientV1.java
-- Memory worker lookup: https://github.com/prestodb/presto/blob/0.293/presto-memory/src/main/java/com/facebook/presto/plugin/memory/MemoryMetadata.java
-- Image layout/heap: https://github.com/prestodb/presto/tree/0.293/docker
+- Protocol: https://github.com/prestodb/presto/blob/0.296/presto-docs/src/main/sphinx/develop/client-protocol.rst
+- Header encoding: https://github.com/prestodb/presto/blob/0.296/presto-client/src/main/java/com/facebook/presto/client/StatementClientV1.java
+- Memory worker lookup: https://github.com/prestodb/presto/blob/0.296/presto-memory/src/main/java/com/facebook/presto/plugin/memory/MemoryMetadata.java
+- Image layout/heap: https://github.com/prestodb/presto/tree/0.296/docker
 
 The tier first executed three stored goldens with its own fixture and a
 one-or-two text parameter reader (#42, #43; notes in
@@ -97,3 +98,11 @@ Those cases and `scripts/engines/presto-fixture.sql` are removed: the manifest's
 forty cases include a grouped sum, text binding and the Tokyo day range with its
 millisecond boundaries (#71). This closes #61. Open: transfer B0-PRESTO-003 out
 of `seed-baseline-specs` in a product change once this tier has passed on GitHub.
+
+## Statement size
+
+A parameterized statement travels in the `X-Presto-Prepared-Statement` header,
+and the server's default header limit is 8 KB. A case whose SQL is longer than
+that once URL-encoded fails with an HTTP error before it runs; the tier reports
+`HTTPError at stage=execution`. Such a query is kept in the product's survey
+instead of the executed cases (see `crates/pp-cube-conformance/src/insurance.rs`).
