@@ -1,16 +1,52 @@
-//! Four-process replay of each successful golden compilation.
-use std::io::{Read, Write};
-use std::process::{Command, Stdio};
-use std::sync::Arc;
+//! Replay of each successful golden compilation in four other processes.
+//!
+//! The four are started once for a test binary and kept: every compilation of
+//! the binary is sent to each of them and must come back byte for byte as the
+//! test process computed it. Starting them for every compilation made the
+//! compile tests most of a check's time. Kept alive, they also show state that
+//! leaks from one compilation into the next.
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::{Arc, Mutex};
 
 use pp_cube_compile::{CompileContext, CompileError, Compiled, DialectId};
 use pp_cube_model::{Model, Query};
 
 const PREFIX: &str = "PP_COMPILED:";
+/// How many other processes each compilation is repeated in.
+const WORKERS: usize = 4;
 
 fn record(result: &Compiled) -> String {
     format!("{PREFIX}{result:?}")
 }
+
+/// One other process: this test binary running only `support::worker`.
+struct Worker {
+    // Held so that the process is not reaped while its pipes are in use.
+    _child: Child,
+    input: ChildStdin,
+    output: BufReader<ChildStdout>,
+}
+
+fn start_worker() -> Child {
+    Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "support::worker",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env("PP_GOLDEN_WORKER", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("start a golden worker")
+}
+
+/// The workers of this test binary, started at the first compilation. They end
+/// when the binary does: their input closes and their loop with it.
+static POOL: Mutex<Vec<Worker>> = Mutex::new(Vec::new());
 
 // scenario: B0-DET-001
 pub fn compile(
@@ -24,49 +60,53 @@ pub fn compile(
         DialectId::Presto => "presto",
         DialectId::Doris => "doris",
     };
-    for run in 0..4 {
-        let input = serde_json::to_vec(&serde_json::json!({
-            "model": model.as_ref(), "query": query, "dialect": dialect,
-            "timezone": ctx.timezone, "security": ctx.security_filters,
-            "request_id": ctx.request_id
-        }))
-        .unwrap();
-        let output = run_worker(&input);
-        assert!(
-            output.status.success(),
-            "worker {run}: {:?}\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let stdout = String::from_utf8(output.stdout).unwrap();
-        let records: Vec<_> = stdout
-            .lines()
-            .filter(|line| line.starts_with(PREFIX))
-            .collect();
+    // One line a compilation: the worker reads lines.
+    let mut input = serde_json::to_string(&serde_json::json!({
+        "model": model.as_ref(), "query": query, "dialect": dialect,
+        "timezone": ctx.timezone, "security": ctx.security_filters,
+        "request_id": ctx.request_id
+    }))
+    .unwrap();
+    input.push('\n');
+    // Tests of a binary run on several threads; the workers take one compilation
+    // at a time. A test that failed while holding them leaves them usable.
+    let mut pool = POOL.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    while pool.len() < WORKERS {
+        let mut child = start_worker();
+        let (input, output) = (child.stdin.take().unwrap(), child.stdout.take().unwrap());
+        pool.push(Worker {
+            _child: child,
+            input,
+            output: BufReader::new(output),
+        });
+    }
+    for (run, worker) in pool.iter_mut().enumerate() {
+        worker.input.write_all(input.as_bytes()).unwrap();
+        worker.input.flush().unwrap();
+        // libtest writes its own progress lines to the same pipe.
+        let answered = loop {
+            let mut line = String::new();
+            let read = worker.output.read_line(&mut line).unwrap();
+            assert!(
+                read > 0,
+                "worker {run} ended without a result for {query:?}"
+            );
+            if line.starts_with(PREFIX) {
+                break line;
+            }
+        };
         assert_eq!(
-            records.len(),
-            1,
-            "worker {run} did not emit one result: {stdout}"
+            answered.trim_end(),
+            expected,
+            "process {run}, query {query:?}"
         );
-        assert_eq!(records[0], expected, "process {run}, query {query:?}");
     }
     Ok(result)
 }
 
+/// A worker given `input` and nothing more: what it wrote and how it ended.
 fn run_worker(input: &[u8]) -> std::process::Output {
-    let mut child = Command::new(std::env::current_exe().unwrap())
-        .args([
-            "--exact",
-            "support::worker",
-            "--nocapture",
-            "--test-threads=1",
-        ])
-        .env("PP_GOLDEN_WORKER", "1")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("start a fresh golden worker");
+    let mut child = start_worker();
     child.stdin.take().unwrap().write_all(input).unwrap();
     child.wait_with_output().unwrap()
 }
@@ -87,27 +127,63 @@ fn worker() {
     if std::env::var_os("PP_GOLDEN_WORKER").is_none() {
         return;
     }
-    let mut input = String::new();
-    std::io::stdin().read_to_string(&mut input).unwrap();
-    let mut input: serde_json::Value = serde_json::from_str(&input).unwrap();
-    let dialect = match input["dialect"].as_str().unwrap() {
-        "presto" => DialectId::Presto,
-        "doris" => DialectId::Doris,
-        other => panic!("unknown dialect {other}"),
-    };
-    let model: Model = serde_json::from_value(input["model"].take()).unwrap();
-    let query: Query = serde_json::from_value(input["query"].take()).unwrap();
+    // One compilation a line, until the test process closes the pipe.
+    for line in std::io::stdin().lock().lines() {
+        let mut input: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
+        let dialect = match input["dialect"].as_str().unwrap() {
+            "presto" => DialectId::Presto,
+            "doris" => DialectId::Doris,
+            other => panic!("unknown dialect {other}"),
+        };
+        let model: Model = serde_json::from_value(input["model"].take()).unwrap();
+        let query: Query = serde_json::from_value(input["query"].take()).unwrap();
+        let ctx = CompileContext {
+            dialect,
+            timezone: input["timezone"].as_str().unwrap().into(),
+            security_filters: serde_json::from_value(input["security"].take()).unwrap(),
+            request_id: input["request_id"].as_str().unwrap().into(),
+        };
+        // Start a new line after libtest's single-thread progress prefix.
+        println!(
+            "\n{}",
+            record(&pp_cube_compile::compile(&Arc::new(model), &query, &ctx).unwrap())
+        );
+        std::io::stdout().flush().unwrap();
+    }
+}
+
+// scenario: B0-DET-001
+#[test]
+fn every_compilation_is_answered_alike_by_four_other_processes_that_stay() {
+    let model = Arc::new(pp_cube_model::load_yaml(include_str!("../fixtures/sales.yaml")).unwrap());
     let ctx = CompileContext {
-        dialect,
-        timezone: input["timezone"].as_str().unwrap().into(),
-        security_filters: serde_json::from_value(input["security"].take()).unwrap(),
-        request_id: input["request_id"].as_str().unwrap().into(),
+        dialect: DialectId::Presto,
+        timezone: "UTC".into(),
+        security_filters: vec![],
+        request_id: String::new(),
     };
-    // Start a new line after libtest's single-thread progress prefix.
-    println!(
-        "\n{}",
-        record(&pp_cube_compile::compile(&Arc::new(model), &query, &ctx).unwrap())
-    );
+    let ids = || -> Vec<u32> {
+        let pool = POOL.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        pool.iter().map(|worker| worker._child.id()).collect()
+    };
+    let first = pp_cube_model::load_query(r#"{"measures":["sales.amount"]}"#).unwrap();
+    compile(&model, &first, &ctx).unwrap();
+    let started = ids();
+    assert_eq!(started.len(), WORKERS);
+    assert!(started.iter().all(|id| *id != std::process::id()));
+    // Other compilations, and the first again, go to the same four processes.
+    let second = pp_cube_model::load_query(
+        r#"{"measures":["sales.amount"],"dimensions":["sales.channel_cd"],"limit":3}"#,
+    )
+    .unwrap();
+    for query in [&second, &first, &second] {
+        compile(&model, query, &ctx).unwrap();
+    }
+    assert_eq!(ids(), started);
+    // A compilation that fails is not sent: it has no result to compare.
+    let unknown = pp_cube_model::load_query(r#"{"measures":["sales.missing"]}"#).unwrap();
+    assert!(compile(&model, &unknown, &ctx).is_err());
+    assert_eq!(ids(), started);
 }
 
 // scenario: B0-DET-001
