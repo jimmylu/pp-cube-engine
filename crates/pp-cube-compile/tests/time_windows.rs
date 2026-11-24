@@ -356,6 +356,7 @@ fn presto_refuses_what_its_intervals_and_generated_series_cannot_express() {
 }
 
 // scenario: B1-DORIS-002
+// scenario: B1-DORIS-005
 // scenario: B0-DET-001
 #[test]
 fn doris_writes_the_periods_out_and_shifts_with_its_own_functions() {
@@ -374,6 +375,12 @@ fn doris_writes_the_periods_out_and_shifts_with_its_own_functions() {
         .each_ref()
         .map(|query| compiled(DialectId::Doris, query))
         .join("\n\n"));
+    // Doris 2.1 has no quarter in interval arithmetic: a quarter is three months.
+    let quarter = compiled(DialectId::Doris, &queries[2]);
+    assert!(
+        quarter.contains("INTERVAL 3 MONTH") && !quarter.contains("QUARTER)"),
+        "{quarter}"
+    );
     // The periods are written out, so there is nothing to write without a range.
     assert_eq!(
         unsupported(DialectId::Doris, &over(r#""sales.amount_7d""#, r#""granularity": "day""#)),

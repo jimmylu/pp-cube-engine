@@ -224,6 +224,7 @@ fn granularity_a_dimension_does_not_declare_or_cannot_roll_by_is_refused() {
 }
 
 // scenario: B1-DORIS-003
+// scenario: B1-DORIS-005
 // scenario: B0-DET-001
 #[test]
 fn doris_writes_rows_estimates_and_declared_periods_with_its_own_functions() {
@@ -239,6 +240,24 @@ fn doris_writes_rows_estimates_and_declared_periods_with_its_own_functions() {
         .each_ref()
         .map(|query| compiled(DialectId::Doris, query))
         .join("\n\n"));
+    // Doris 2.1 has no QUARTER_FLOOR: periods of quarters are counted in months.
+    let model = MODEL.replace(
+        r#"{ name: half_year, interval: 6 month, origin: "2026-01-01" }"#,
+        r#"{ name: half_year, interval: 2 quarter, origin: "2026-01-01" }"#,
+    );
+    let model = Arc::new(load_yaml(&model).expect("the model loads"));
+    let context = CompileContext {
+        request_id: String::new(),
+        dialect: DialectId::Doris,
+        timezone: "UTC".to_owned(),
+        security_filters: Vec::new(),
+    };
+    let two_quarters = compile(&model, &load_query(&by("half_year")).unwrap(), &context).unwrap();
+    assert!(
+        two_quarters.sql.contains("MONTH_FLOOR(") && two_quarters.sql.contains(", 6, CAST("),
+        "{}",
+        two_quarters.sql
+    );
     for query in &queries {
         let doris = compile_in(DialectId::Doris, query).expect("the query compiles");
         let presto = presto(query);

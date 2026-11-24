@@ -136,8 +136,8 @@ templates:
     source: Doris DATETIMEV2
     text: "CAST(LEFT(REPLACE({{ value }}, 'T', ' '), 23) AS DATETIMEV2(3))"
   driver/interval_string:
-    source: Doris DATE_ADD
-    text: "{{ value }} {{ unit | upper }}"
+    source: Doris DATE_ADD; Doris 2.1 has no QUARTER unit, so quarters are written as months
+    text: "{% if unit == 'quarter' %}{{ value * 3 }} MONTH{% else %}{{ value }} {{ unit | upper }}{% endif %}"
   driver/add_interval:
     source: Doris DATE_ADD
     text: "DATE_ADD({{ date }}, INTERVAL {{ interval }})"
@@ -154,5 +154,5 @@ templates:
     source: Doris APPROX_COUNT_DISTINCT
     text: "APPROX_COUNT_DISTINCT({{ sql }})"
   driver/date_bin:
-    source: Doris *_FLOOR
-    text: "{{ unit | upper }}_FLOOR({{ source }}, {{ count }}, CAST('{{ origin | replace('T', ' ') }}' AS DATETIMEV2(3)))"
+    source: Doris *_FLOOR; Doris 2.1 has no QUARTER_FLOOR, so quarters are counted in months
+    text: "{% if unit == 'quarter' %}MONTH_FLOOR({{ source }}, {{ count * 3 }}{% else %}{{ unit | upper }}_FLOOR({{ source }}, {{ count }}{% endif %}, CAST('{{ origin | replace('T', ' ') }}' AS DATETIMEV2(3)))"
