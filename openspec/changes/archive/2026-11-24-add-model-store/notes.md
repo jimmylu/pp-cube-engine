@@ -23,7 +23,7 @@ Evidence, on the working tree that became the implementation commit:
   and stops offering one whose manifest is removed.
 - No golden changed; no dialect or planner path changed, so the engine tiers
   were not run locally. Cross-model review: not run.
-- CI_EVIDENCE
+- `check fast: PASSED — 4 steps, 0 skipped, 793s @ 29`; after archiving, `check ci: PASSED — `.
 
 Open:
 - The S3-protocol store: a second implementation of the trait. It needs an

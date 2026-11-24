@@ -14,7 +14,7 @@
 ## 3. Evidence
 
 - [x] 3.1 Update the service guide, `docs/guide.md` and `CHANGELOG.md`, with the engine versions now in the tiers.
-- [ ] 3.2 Run `scripts/check.sh ci`; record the last line in notes.md.
+- [x] 3.2 Run `scripts/check.sh ci`; record the last line in notes.md.
 
 ## Workflow follow-up
 
