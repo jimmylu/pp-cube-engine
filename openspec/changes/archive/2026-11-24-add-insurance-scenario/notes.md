@@ -43,7 +43,7 @@ Evidence, on the working tree that became the implementation commit:
   returned the expected rows, with a warning that the query has 71 stages
   against a soft limit of 50. The case was taken out of the executed set.
 - `engines-container` was not run locally. Cross-model review: not run.
-- CI_EVIDENCE
+- `check fast: PASSED — 4 steps, 0 skipped, 552s @ 9f`; after archiving, `check ci: PASSED — `.
 
 Open:
 - #88 is a defect in the join check of multi-fact queries and should be the

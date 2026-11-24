@@ -14,9 +14,9 @@
 ## 2. Evidence
 
 - [x] 2.1 Fixtures for both dialects and execution cases for the queries that compile; test B1-EXEC-001; verify existing cases' SQL is unchanged.
-- [ ] 2.2 Run `conformance` and `doris-container` locally; record the lines in notes.md.
+- [x] 2.2 Run `conformance` and `doris-container` locally; record the lines in notes.md.
 - [x] 2.3 File an issue or name a change for each refusal the domain needs; update `docs/guide.md`.
-- [ ] 2.4 Run `scripts/check.sh ci`; record the last line in notes.md.
+- [x] 2.4 Run `scripts/check.sh ci`; record the last line in notes.md.
 
 ## Workflow follow-up
 
