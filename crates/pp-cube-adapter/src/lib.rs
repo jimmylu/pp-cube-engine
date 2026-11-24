@@ -150,8 +150,8 @@ pub fn plan(
         .map_err(|_| PlanError::User(format!("Timezone `{timezone}` is not known")))?;
     let evaluator = Rc::new(Evaluator::new(model.clone()));
     evaluator.check(query).map_err(PlanError::local)?;
-    granularities::check(model, query)?;
     windows::check(model, query, dialect)?;
+    granularities::check(model, query)?;
     let joins = Rc::new(Joins::new(model.clone(), query)?);
     let tools = Rc::new(Tools::new(evaluator.clone(), dialect, zone, joins.clone()));
     let security_context = Rc::new(Opaque);
@@ -208,6 +208,15 @@ pub fn plan(
         .collect();
     // Detail rows are the rows of one SELECT. Where a measure needs an aggregation
     // of its own, the planner groups part of the statement after all.
+    // The engine cannot run more than one SELECT of this shape: say so, with what
+    // usually causes it, rather than hand over SQL it rejects.
+    if dialect.refuses("multi-stage") && sql.trim_start().starts_with("WITH") {
+        return Err(PlanError::Unsupported(format!(
+            "The query needs more than one SELECT, which {} does not support: measures of \
+             several cubes, or a measure over rows a join repeats",
+            dialect.name()
+        )));
+    }
     if query.ungrouped == Some(true) && sql.trim_start().starts_with("WITH") {
         return Err(PlanError::Unsupported(
             "An ungrouped query cannot take measures that need an aggregation of their own: \

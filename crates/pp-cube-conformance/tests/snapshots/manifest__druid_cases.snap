@@ -1,0 +1,381 @@
+---
+source: crates/pp-cube-conformance/tests/manifest.rs
+expression: "golden_text(\"druid\")"
+---
+-- day
+SELECT DATE_TRUNC('day', CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time >= TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: ["2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
+
+-- week
+SELECT DATE_TRUNC('week', CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP)) "sales__sold_at_week", sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time >= TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: ["2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
+
+-- month
+SELECT DATE_TRUNC('month', CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP)) "sales__sold_at_month", sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time >= TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: ["2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
+
+-- quarter
+SELECT DATE_TRUNC('quarter', CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP)) "sales__sold_at_quarter", sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time >= TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: ["2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
+
+-- year
+SELECT DATE_TRUNC('year', CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP)) "sales__sold_at_year", sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time >= TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: ["2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
+
+-- inDateRange
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time >= TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?))
+-- parameters: ["2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
+
+-- notInDateRange
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time < TIME_PARSE(?) OR "sales".__time > TIME_PARSE(?))
+-- parameters: ["2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
+
+-- beforeDate
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time < TIME_PARSE(?))
+-- parameters: ["2026-09-30T15:00:00.000Z"]
+
+-- beforeOrOnDate
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time <= TIME_PARSE(?))
+-- parameters: ["2026-10-01T14:59:59.999Z"]
+
+-- afterDate
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time > TIME_PARSE(?))
+-- parameters: ["2026-10-01T14:59:59.999Z"]
+
+-- afterOrOnDate
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time >= TIME_PARSE(?))
+-- parameters: ["2026-09-30T15:00:00.000Z"]
+
+-- security
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE (("sales".__time < TIME_PARSE(?)) OR ("sales".__time >= TIME_PARSE(?))) AND ("sales".__time >= TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?))
+-- parameters: ["2026-09-30T15:00:00.000Z", "2026-09-30T15:00:00.000Z", "2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
+
+-- dst
+SELECT DATE_TRUNC('day', CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'America/New_York') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time >= TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: ["2026-11-01T04:00:00.000Z", "2026-11-02T04:59:59.999Z"]
+
+-- aggregates
+SELECT "sales".channel_cd "sales__channel_cd", count("sales".sale_id) "sales__row_count", COUNT(DISTINCT "sales".order_no) "sales__order_count", sum("sales".amount) "sales__amount", avg("sales".amount) "sales__avg_amount", min("sales".amount) "sales__min_amount", max("sales".amount) "sales__max_amount" 
+FROM  druid.sales_dtl  AS "sales"
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: []
+
+-- filtered_measure_ratio_segment
+SELECT "sales".channel_cd "sales__channel_cd", sum(CASE WHEN ("sales".category_cd = 'TOY') THEN "sales".amount END) "sales__toy_amount", sum("sales".amount) / NULLIF(COUNT(DISTINCT "sales".order_no), 0) "sales__amount_per_order" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".category_cd = 'TOY')
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: []
+
+-- equals_many
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".channel_cd IN (?, ?))
+-- parameters: ["C1", "C3"]
+
+-- notEquals
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".region_cd <> ? OR "sales".region_cd IS NULL)
+-- parameters: ["north"]
+
+-- boolean_equals
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE (("sales".is_valid = 1) = ?)
+-- parameters: ["true"]
+
+-- set
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".region_cd IS NOT NULL)
+-- parameters: []
+
+-- notSet
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".region_cd IS NULL)
+-- parameters: []
+
+-- gt
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".qty > ?)
+-- parameters: ["3"]
+
+-- gte
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".qty >= ?)
+-- parameters: ["3"]
+
+-- lt
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".qty < ?)
+-- parameters: ["3"]
+
+-- lte
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".qty <= ?)
+-- parameters: ["3"]
+
+-- contains
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ((LOWER("sales".region_cd) LIKE CONCAT('%', LOWER(?), '%') ESCAPE '\'))
+-- parameters: ["A\\%\\_\\\\B"]
+
+-- notContains
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ((LOWER("sales".region_cd) NOT LIKE CONCAT('%', LOWER(?), '%') ESCAPE '\') OR "sales".region_cd IS NULL)
+-- parameters: ["A\\%\\_\\\\B"]
+
+-- startsWith
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ((LOWER("sales".region_cd) LIKE CONCAT('', LOWER(?), '%') ESCAPE '\'))
+-- parameters: ["A\\%\\_\\\\B"]
+
+-- notStartsWith
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ((LOWER("sales".region_cd) NOT LIKE CONCAT('', LOWER(?), '%') ESCAPE '\') OR "sales".region_cd IS NULL)
+-- parameters: ["A\\%\\_\\\\B"]
+
+-- endsWith
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ((LOWER("sales".region_cd) LIKE CONCAT('%', LOWER(?), '') ESCAPE '\'))
+-- parameters: ["A\\%\\_\\\\B"]
+
+-- notEndsWith
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ((LOWER("sales".region_cd) NOT LIKE CONCAT('%', LOWER(?), '') ESCAPE '\') OR "sales".region_cd IS NULL)
+-- parameters: ["A\\%\\_\\\\B"]
+
+-- measure_filters
+SELECT "sales".channel_cd "sales__channel_cd", sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+GROUP BY 1
+HAVING (sum("sales".amount) > ?) AND (sum("sales".amount) <> ? OR sum("sales".amount) IS NULL)
+ORDER BY  1  ASC
+-- parameters: ["20", "110"]
+
+-- nested_groups
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".category_cd = ?) AND ((("sales".channel_cd = ?) AND ("sales".qty > ?)) OR ("sales".channel_cd = ?))
+-- parameters: ["BOOK", "C3", "5", "C2"]
+
+-- order_limit_offset
+SELECT "sales".channel_cd "sales__channel_cd", "sales".category_cd "sales__category_cd", sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+GROUP BY 1, 2
+ORDER BY  1  DESC,  2  ASC
+LIMIT 2
+OFFSET 1
+-- parameters: []
+
+-- page_past_last_group
+SELECT "sales".channel_cd "sales__channel_cd", "sales".category_cd "sales__category_cd", sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+GROUP BY 1, 2
+ORDER BY  1  DESC,  2  ASC
+LIMIT 2
+OFFSET 4
+-- parameters: []
+
+-- plain_range
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time >= TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?))
+-- parameters: ["2026-10-02T00:00:00.000Z", "2026-10-04T23:59:59.999Z"]
+
+-- query_timezone
+SELECT DATE_TRUNC('day', CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time >= TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: ["2026-10-01T00:00:00.000Z", "2026-10-01T23:59:59.999Z"]
+
+-- filtered_source
+SELECT "valid_sales".channel_cd "valid_sales__channel_cd", sum("valid_sales".amount) "valid_sales__amount" 
+FROM  (SELECT channel_cd, amount FROM druid.sales_dtl WHERE is_valid = 1)  AS "valid_sales"
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: []
+
+-- joined_dimension
+SELECT "stores".store_name "stores__store_name", sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+LEFT JOIN  druid.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+WHERE ("stores".store_name IN (?, ?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: ["central", "uptown"]
+
+-- joined_one_to_one_measures
+SELECT "sales".channel_cd "sales__channel_cd", sum("receipts".tax) "receipts__tax", count("receipts".receipt_no) "receipts__receipt_count", sum("receipts".tax) / NULLIF(count("receipts".receipt_no), 0) "receipts__tax_per_receipt" 
+FROM  druid.sales_dtl  AS "sales"
+LEFT JOIN  druid.receipt  AS "receipts" ON "sales".receipt_no = "receipts".receipt_no
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: []
+
+-- joined_many_to_one_counts
+SELECT "sales".category_cd "sales__category_cd", COUNT(DISTINCT "stores".store_cd) "stores__store_count", COUNT(DISTINCT "stores".store_name) "stores__name_count" 
+FROM  druid.sales_dtl  AS "sales"
+LEFT JOIN  druid.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: []
+
+-- join_reading_a_third_cube
+SELECT "promos".promo_name "promos__promo_name", sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+LEFT JOIN  druid.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+LEFT JOIN  druid.dim_region  AS "regions" ON "stores".region_cd = "regions".region_cd
+LEFT JOIN  druid.promo  AS "promos" ON "sales".promo_cd = "promos".promo_cd AND "promos".region_cd = "regions".region_cd
+WHERE ("promos".promo_name IS NOT NULL)
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: []
+
+-- two_cubes_in_one_select
+SELECT "sales".channel_cd "sales__channel_cd", sum("sales".amount) "sales__amount", sum("receipts".tax) "receipts__tax" 
+FROM  druid.sales_dtl  AS "sales"
+LEFT JOIN  druid.receipt  AS "receipts" ON "sales".receipt_no = "receipts".receipt_no
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: []
+
+-- security_two_hop_join
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+LEFT JOIN  druid.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+LEFT JOIN  druid.dim_region  AS "regions" ON "stores".region_cd = "regions".region_cd
+WHERE (("sales".is_valid = 1) = ?) AND ("regions".region_name = ?)
+-- parameters: ["true", "north"]
+
+-- security_pattern
+SELECT sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE (((LOWER("sales".region_cd) LIKE CONCAT('%', LOWER(?), '%') ESCAPE '\')) OR ("sales".channel_cd = ?)) AND ((LOWER("sales".region_cd) LIKE CONCAT('', LOWER(?), '%') ESCAPE '\'))
+-- parameters: ["north", "C3", "a\\%"]
+
+-- view_by_joined_dimension
+SELECT "stores".store_name "sales_overview__stores_store_name", sum("sales".amount) "sales_overview__amount" 
+FROM  druid.sales_dtl  AS "sales"
+LEFT JOIN  druid.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: []
+
+-- view_two_hops_filtered
+SELECT "regions".region_name "sales_overview__region_name", sum("sales".amount) "sales_overview__amount", count("sales".sale_id) "sales_overview__row_count" 
+FROM  druid.sales_dtl  AS "sales"
+LEFT JOIN  druid.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+LEFT JOIN  druid.dim_region  AS "regions" ON "stores".region_cd = "regions".region_cd
+WHERE ("sales".channel_cd IN (?, ?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: ["C1", "C2"]
+
+-- security_view
+SELECT "stores".store_name "sales_overview__stores_store_name", sum("sales".amount) "sales_overview__amount" 
+FROM  druid.sales_dtl  AS "sales"
+LEFT JOIN  druid.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+LEFT JOIN  druid.dim_region  AS "regions" ON "stores".region_cd = "regions".region_cd
+WHERE ("regions".region_name = ?)
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: ["north"]
+
+-- uw_renewal_share_by_branch
+SELECT "branches".branch_name "branches__branch_name", CAST(count(CASE WHEN ("policies".renewal_of IS NOT NULL) THEN "policies".policy_id END) AS DOUBLE) / NULLIF(count("policies".policy_id), 0) "policies__renewal_share", count(CASE WHEN ("policies".renewal_of IS NOT NULL) THEN "policies".policy_id END) "policies__renewed_count", count("policies".policy_id) "policies__policy_count" 
+FROM  druid.ins_policy  AS "policies"
+LEFT JOIN  druid.ins_branch  AS "branches" ON "policies".branch_cd = "branches".branch_cd
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: []
+
+-- cl_counts_by_cause
+SELECT "claims".cause_cd "claims__cause_cd", count("claims".claim_id) "claims__claim_count", count(CASE WHEN ("claims".status = 'OPEN') THEN "claims".claim_id END) "claims__open_count", avg("claims".report_lag_days) "claims__avg_report_lag_days", max("claims".report_lag_days) "claims__max_report_lag_days" 
+FROM  druid.ins_claim  AS "claims"
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: []
+
+-- cl_outstanding_by_line
+SELECT "products".line_of_business "products__line_of_business", count("claims".claim_id) "claims__claim_count", sum("claim_reserves".outstanding) "claim_reserves__outstanding", sum("claim_reserves".outstanding) / NULLIF(count("claims".claim_id), 0) "claims__avg_outstanding" 
+FROM  druid.ins_claim  AS "claims"
+LEFT JOIN  druid.ins_policy  AS "policies" ON "claims".policy_id = "policies".policy_id
+LEFT JOIN  druid.ins_product  AS "products" ON "policies".product_cd = "products".product_cd
+LEFT JOIN  druid.ins_claim_reserve  AS "claim_reserves" ON "claims".claim_id = "claim_reserves".claim_id
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: []
+
+-- cl_development_triangle
+SELECT DATE_TRUNC('year', CAST(TIME_FORMAT("claims".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "claims__loss_at_year", DATE_TRUNC('year', CAST(TIME_FORMAT("claim_payments".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "claim_payments__paid_at_year", sum("claim_payments".paid_amount) "claim_payments__paid_amount" 
+FROM  druid.ins_claim_payment  AS "claim_payments"
+LEFT JOIN  druid.ins_claim  AS "claims" ON "claim_payments".claim_id = "claims".claim_id
+GROUP BY 1, 2
+ORDER BY  1  ASC,  2  ASC
+-- parameters: []
+
+-- v_claims_by_line_cause
+SELECT "products".line_of_business "claims_overview__line_of_business", "claims".cause_cd "claims_overview__cause_cd", sum("claim_payments".paid_amount) "claims_overview__paid_amount", COUNT(DISTINCT "claims".claim_id) "claims_overview__claim_count", sum("claim_payments".paid_amount) / NULLIF(COUNT(DISTINCT "claims".claim_id), 0) "claims_overview__paid_per_claim" 
+FROM  druid.ins_claim_payment  AS "claim_payments"
+LEFT JOIN  druid.ins_claim  AS "claims" ON "claim_payments".claim_id = "claims".claim_id
+LEFT JOIN  druid.ins_policy  AS "policies" ON "claims".policy_id = "policies".policy_id
+LEFT JOIN  druid.ins_product  AS "products" ON "policies".product_cd = "products".product_cd
+WHERE ("claim_payments".__time >= TIME_PARSE(?) AND "claim_payments".__time <= TIME_PARSE(?))
+GROUP BY 1, 2
+ORDER BY  1  ASC,  2  ASC
+-- parameters: ["2026-01-01T00:00:00.000Z", "2026-12-31T23:59:59.999Z"]

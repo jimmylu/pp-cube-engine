@@ -1,0 +1,14 @@
+---
+source: crates/pp-cube-compile/tests/druid.rs
+expression: "format!(\"{}\\n-- parameters: {:?}\", compiled.sql, compiled.parameters)"
+---
+SELECT "stores".store_name "stores__store_name", DATE_TRUNC('month', CAST(TIME_FORMAT("sales".sold_at, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP)) "sales__sold_at_month", sum("sales".amount) "sales__amount" 
+FROM  dw.sales_dtl  AS "sales"
+LEFT JOIN  dw.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+WHERE ("sales".sold_at >= TIME_PARSE(?) AND "sales".sold_at <= TIME_PARSE(?)) AND ((LOWER("stores".store_name) LIKE CONCAT('%', LOWER(?), '%') ESCAPE '\')) AND ("stores".closed_at IS NULL)
+GROUP BY 1, 2
+HAVING (sum("sales".amount) > ?)
+ORDER BY  3  DESC
+LIMIT 5
+OFFSET 5
+-- parameters: [Text("2026-09-30T15:00:00.000Z"), Text("2026-10-31T14:59:59.999Z"), Text("North"), Text("10")]

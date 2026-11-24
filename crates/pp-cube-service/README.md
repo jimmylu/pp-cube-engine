@@ -10,7 +10,7 @@ cargo run -p pp-cube-service -- \
 
 `--model version=path` is repeatable; each file is UTF-8 YAML or JSON and every
 one must be valid, or nothing starts. `--data-source name=dialect` is repeatable
-and names the dialect (`presto` or `doris`) that serves each data source; every
+and names the dialect (`presto`, `doris` or `druid`) that serves each data source; every
 data source of the models needs one. Port zero chooses a free port. After
 validation and binding, stdout prints `listening <address>` and, with a metrics
 address, `metrics <address>`. Startup failure writes a diagnostic to stderr and

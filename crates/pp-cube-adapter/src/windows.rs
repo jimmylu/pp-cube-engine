@@ -8,7 +8,7 @@
 
 use chrono::{Datelike, NaiveDate, Weekday};
 use pp_cube_dialect::Dialect;
-use pp_cube_model::{Cube, Filter, Granularity, Measure, Model, Query, Target};
+use pp_cube_model::{Cube, Filter, Granularity, Measure, MeasureType, Model, Query, Target};
 
 use crate::PlanError;
 
@@ -46,6 +46,15 @@ fn filter_members<'q>(filters: &'q [Filter], members: &mut Vec<&'q str>) {
 
 /// The rolling and shifted measures `query` names or computes others from.
 fn windowed<'m>(model: &'m Model, query: &Query) -> Vec<Windowed<'m>> {
+    let mut found = measures_read(model, query);
+    found.retain(|read| {
+        read.measure.rolling_window.is_some() || !read.measure.time_shift.is_empty()
+    });
+    found
+}
+
+/// Every measure `query` names, in its measures or filters, or computes those from.
+fn measures_read<'m>(model: &'m Model, query: &Query) -> Vec<Windowed<'m>> {
     let mut named: Vec<&str> = query.measures.iter().map(String::as_str).collect();
     filter_members(&query.filters, &mut named);
     let mut pending: Vec<(&Cube, &Measure)> = Vec::new();
@@ -67,9 +76,7 @@ fn windowed<'m>(model: &'m Model, query: &Query) -> Vec<Windowed<'m>> {
             continue;
         }
         seen.push((&cube.name, &measure.name));
-        if measure.rolling_window.is_some() || !measure.time_shift.is_empty() {
-            found.push(Windowed { cube, measure });
-        }
+        found.push(Windowed { cube, measure });
         let conditions = measure.filters.iter().map(|filter| &filter.sql);
         for expression in measure.sql.iter().chain(conditions) {
             // An expression that does not resolve is reported by the checks before this one.
@@ -119,6 +126,7 @@ fn starts_period(text: &str, granularity: &Granularity) -> bool {
 /// Fails for a query whose rolling or shifted measures have no time dimension to
 /// work along, or need SQL `dialect` cannot express.
 pub(crate) fn check(model: &Model, query: &Query, dialect: &Dialect) -> Result<(), PlanError> {
+    refused(model, query, dialect)?;
     let measures = windowed(model, query);
     let Some(first) = measures.first() else {
         return Ok(());
@@ -210,6 +218,48 @@ pub(crate) fn check(model: &Model, query: &Query, dialect: &Dialect) -> Result<(
                 dialect.name(),
                 time_dimension.dimension
             )));
+        }
+    }
+    Ok(())
+}
+
+/// Fails for a query that uses a feature `dialect` declares its engine cannot
+/// answer, naming the feature and what uses it.
+fn refused(model: &Model, query: &Query, dialect: &Dialect) -> Result<(), PlanError> {
+    let unsupported = |what: String| {
+        Err(PlanError::Unsupported(format!(
+            "{what}, which {} does not support",
+            dialect.name()
+        )))
+    };
+    if query.ungrouped == Some(true) && dialect.refuses("ungrouped") {
+        return unsupported("The query is ungrouped".into());
+    }
+    for time_dimension in &query.time_dimensions {
+        if let Some(Granularity::Custom(name)) = &time_dimension.granularity {
+            if dialect.refuses("declared-granularity") {
+                return unsupported(format!(
+                    "`{}` is grouped by `{name}`, a granularity it declares",
+                    time_dimension.dimension
+                ));
+            }
+        }
+    }
+    for read in measures_read(model, query) {
+        let measure = read.measure;
+        let feature = if measure.rolling_window.is_some() {
+            Some(("rolling-window", "has a rolling window"))
+        } else if !measure.time_shift.is_empty() {
+            Some(("time-shift", "is shifted in time"))
+        } else if measure.measure_type == MeasureType::CountDistinctApprox {
+            Some(("approximate-distinct", "is an approximate distinct count"))
+        } else {
+            None
+        };
+        if let Some((feature, described)) = feature {
+            if dialect.refuses(feature) {
+                return unsupported(format!("Measure `{}` {described}", read.name()));
+            }
         }
     }
     Ok(())

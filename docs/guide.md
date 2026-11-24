@@ -190,6 +190,31 @@ On Doris the periods of a rolling window are written out one by one, aligned
 to the granularity: every unit and any range compile, but rolling by a
 granularity needs a date range.
 
+## Apache Druid
+
+The Druid dialect compiles the B0 baseline: aggregates, filtered measures and
+formulas, joined dimensions, every filter operator, segments, time ranges and
+granularities in a timezone, order, limit and offset. Its SQL is byte for byte
+what Cube Core's Druid dialect writes, and was run on Druid 26.0.0.
+
+- **Refused by name on Druid:** measures of several cubes and sums over rows a
+  join repeats (Druid rejects that SQL), ungrouped queries (a Druid scan
+  cannot be ordered by a column other than time), rolling windows, time
+  shifts, approximate distinct counts and declared granularities (not built
+  for Druid yet).
+- **Apply the query context.** Every Druid result declares
+  `useApproximateCountDistinct=false`; without it Druid estimates
+  `COUNT(DISTINCT)`.
+- **Datasources and time.** Druid has one schema, `druid`, and one timestamp
+  column a datasource, `__time`: a model for Druid names its tables
+  `druid.<datasource>` and its time dimension `{CUBE}.__time`.
+- **NULL handling.** Druid 26 by default stores a NULL number as 0 and a NULL
+  string as empty. The SQL is the same either way, but a filter such as
+  `IS NOT NULL` on a number then holds for every row. Results equal the other
+  engines' with `druid.generic.useDefaultValueForNull=false`.
+- **Merge buffers.** Two exact distinct counts in one query need three merge
+  buffers; Druid's smallest example configuration has two.
+
 ## A domain scenario
 
 Besides the feature cases, a property-insurance scenario is kept with the
@@ -218,4 +243,5 @@ statement with its values written in.
 
 ## Not supported yet
 
-Apache Druid and relative date ranges. See [performance](performance.md) for latency figures.
+Relative date ranges, and on Apache Druid everything listed under it above.
+See [performance](performance.md) for latency figures.

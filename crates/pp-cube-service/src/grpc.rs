@@ -296,20 +296,8 @@ impl GrpcService {
         }
         // An unavailable version is NotFound before anything else is said about the request.
         let identity = identity(&self.core, &request.model_version)?;
-        let dialect = match (
-            DialectId::from_name(&request.dialect),
-            request.dialect.as_str(),
-        ) {
-            (Some(dialect), _) => dialect,
-            (None, "druid") => {
-                return Ok(failure(
-                    FailureKind::Unsupported,
-                    "dialect is not implemented".into(),
-                    identity,
-                ))
-            }
-            _ => return Err(Status::invalid_argument("unknown dialect")),
-        };
+        let dialect = DialectId::from_name(&request.dialect)
+            .ok_or_else(|| Status::invalid_argument("unknown dialect"))?;
         let version = request.model_version.clone();
         let context = CompileContext {
             request_id: request.request_id,

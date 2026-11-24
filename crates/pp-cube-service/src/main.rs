@@ -132,7 +132,7 @@ fn run() -> Result<(), Failure> {
                 .split_once('=')
                 .ok_or("--data-source takes name=dialect")?;
             let dialect = pp_cube_compile::DialectId::from_name(dialect)
-                .ok_or("--data-source dialect must be presto or doris")?;
+                .ok_or("--data-source dialect must be presto, doris or druid")?;
             if name.trim().is_empty() || data_sources.insert(name.to_owned(), dialect).is_some() {
                 return Err("blank or duplicate data source".into());
             }

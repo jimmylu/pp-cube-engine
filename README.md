@@ -11,8 +11,9 @@ queries, rolling windows, period to date, time shifts, ungrouped rows,
 approximate distinct counts, declared granularities and views compile for Presto
 and Apache Doris, and eighty-five shared cases, a property-insurance scenario
 among them, are executed on both engines for every relevant pull request. A gRPC service exposes Compile, ValidateModel and GetMeta
-([crates/pp-cube-service](crates/pp-cube-service/README.md)). Apache Druid and
-production packaging are not built.
+([crates/pp-cube-service](crates/pp-cube-service/README.md)). Apache Druid
+compiles for the B0 baseline and is not yet executed in the checks; production
+packaging is not built.
 Implemented behaviour is recorded in [openspec/specs](openspec/specs).
 
 Start with [the guide](docs/guide.md); latency figures are in [performance](docs/performance.md).

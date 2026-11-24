@@ -1,0 +1,89 @@
+---
+source: crates/pp-cube-conformance/tests/manifest.rs
+expression: matrix
+---
+day                                compiled
+week                               compiled
+month                              compiled
+quarter                            compiled
+year                               compiled
+inDateRange                        compiled
+notInDateRange                     compiled
+beforeDate                         compiled
+beforeOrOnDate                     compiled
+afterDate                          compiled
+afterOrOnDate                      compiled
+security                           compiled
+rolling_tokyo                      unsupported: Measure `sales.amount_2d` has a rolling window, which druid does not support
+dst                                compiled
+aggregates                         compiled
+filtered_measure_ratio_segment     compiled
+equals_many                        compiled
+notEquals                          compiled
+boolean_equals                     compiled
+set                                compiled
+notSet                             compiled
+gt                                 compiled
+gte                                compiled
+lt                                 compiled
+lte                                compiled
+contains                           compiled
+notContains                        compiled
+startsWith                         compiled
+notStartsWith                      compiled
+endsWith                           compiled
+notEndsWith                        compiled
+measure_filters                    compiled
+nested_groups                      compiled
+order_limit_offset                 compiled
+page_past_last_group               compiled
+plain_range                        compiled
+query_timezone                     compiled
+filtered_source                    compiled
+joined_dimension                   compiled
+joined_one_to_one_measures         compiled
+joined_many_to_one_counts          compiled
+join_reading_a_third_cube          compiled
+multi_fact_by_dimension            unsupported: The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats
+multi_fact_null_key                unsupported: The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats
+multi_fact_totals                  unsupported: The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats
+multi_fact_page                    unsupported: The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats
+sum_over_repeated_rows             unsupported: The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats
+two_cubes_in_one_select            compiled
+security_multi_fact                unsupported: The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats
+security_two_hop_join              compiled
+security_pattern                   compiled
+rolling_trailing                   unsupported: Measure `sales.amount_3d` has a rolling window, which druid does not support
+rolling_distinct_count             unsupported: Measure `sales.orders_2d` has a rolling window, which druid does not support
+month_to_date                      unsupported: Measure `sales.amount_mtd` has a rolling window, which druid does not support
+rolling_at_range_end               unsupported: Measure `sales.amount_3d` has a rolling window, which druid does not support
+running_total_by_month             unsupported: Measure `sales.amount_so_far` has a rolling window, which druid does not support
+prior_day                          unsupported: Measure `sales.amount_prior_day` is shifted in time, which druid does not support
+change_from_prior_day              unsupported: Measure `sales.amount_prior_day` is shifted in time, which druid does not support
+security_rolling                   unsupported: Measure `sales.amount_3d` has a rolling window, which druid does not support
+ungrouped_rows                     unsupported: The query is ungrouped, which druid does not support
+ungrouped_joined_page              unsupported: The query is ungrouped, which druid does not support
+approximate_distinct_count         unsupported: Measure `sales.order_count_approx` is an approximate distinct count, which druid does not support
+granularity_of_two_days            unsupported: `sales.sold_at` is grouped by `two_days`, a granularity it declares, which druid does not support
+granularity_of_two_quarters        unsupported: `sales.sold_at` is grouped by `half_year`, a granularity it declares, which druid does not support
+granularity_with_offset            unsupported: `sales.sold_at` is grouped by `retail_week`, a granularity it declares, which druid does not support
+view_by_joined_dimension           compiled
+view_two_hops_filtered             compiled
+view_sum_over_repeated_rows        unsupported: The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats
+view_formula_and_one_to_one        unsupported: The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats
+security_view                      compiled
+uw_renewal_share_by_branch         compiled
+uw_premium_ytd_by_month            unsupported: Measure `policies.written_premium_ytd` has a rolling window, which druid does not support
+uw_by_underwriting_year            unsupported: `policies.issued_at` is grouped by `underwriting_year`, a granularity it declares, which druid does not support
+uw_policy_listing                  unsupported: The query is ungrouped, which druid does not support
+ep_rolling_12m_by_month            unsupported: Measure `earned_premiums.earned_premium_12m` has a rolling window, which druid does not support
+ep_written_vs_earned_by_line       unsupported: The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats
+cl_counts_by_cause                 compiled
+cl_outstanding_by_line             compiled
+cl_paid_and_outstanding_by_line    unsupported: The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats
+cl_development_triangle            compiled
+x_premium_paid_by_line             unsupported: The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats
+x_premium_paid_ceded_by_region     unsupported: The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats
+x_totals                           unsupported: The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats
+v_claims_by_line_cause             compiled
+security_region_across_facts       unsupported: The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats

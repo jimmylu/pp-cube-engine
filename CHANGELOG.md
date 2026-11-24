@@ -28,6 +28,9 @@ versions even when the SQL does not.
   with an origin or an offset, and queries that group by one.
 - Views: `views` in a model, taking dimensions and measures of cubes along
   join paths; queries on them; listed by GetMeta.
+- Apache Druid, B0: the Druid dialect of Cube, for `--data-source name=druid`.
+  What Druid cannot answer is refused by name. Every Druid result declares
+  the query context `useApproximateCountDistinct=false`.
 
 **Service**
 - `--model-store`: model versions read from shared storage, a directory or an

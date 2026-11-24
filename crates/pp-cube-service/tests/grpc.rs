@@ -199,10 +199,11 @@ async fn real_tcp_operations_preserve_compilation_validation_and_public_metadata
     assert!(
         matches!(mismatch.result, Some(compile_response::Result::Failure(CompileFailure { kind, message })) if kind == FailureKind::Query as i32 && message.contains("lake"))
     );
+    // Druid is a dialect like the others: it serves none of this model's data sources.
     let mut druid = request.clone();
     druid.dialect = "druid".into();
     assert!(
-        matches!(client.compile(druid).await.unwrap().into_inner().result, Some(compile_response::Result::Failure(CompileFailure { kind, .. })) if kind == FailureKind::Unsupported as i32)
+        matches!(client.compile(druid).await.unwrap().into_inner().result, Some(compile_response::Result::Failure(CompileFailure { kind, .. })) if kind == FailureKind::Query as i32)
     );
     let mut unknown = request.clone();
     unknown.model_version = "missing".into();

@@ -6,6 +6,7 @@
 
 pub mod cases;
 mod doris;
+mod druid;
 pub mod insurance;
 mod presto;
 
@@ -63,10 +64,58 @@ fn emit(dialect: &str, sources: bool) -> Result<String, String> {
             DialectId::Presto,
             dialect_cases(presto::fixture, presto::scenario),
         ),
+        "druid" => {
+            // Druid answers part of the cases: those its dialect compiles. What it
+            // refuses is left out here and listed by `druid_support`.
+            let model = druid::model(model_text());
+            let mut cases = dialect_cases(druid::fixture, druid::scenario);
+            let support = druid_support()?;
+            cases.retain(|case| {
+                support
+                    .iter()
+                    .any(|(name, outcome)| *name == case.name && outcome == "compiled")
+            });
+            let document = document(DialectId::Druid, dialect, &model, &cases, sources)?;
+            return Ok(format!("{document:#}\n"));
+        }
         other => return Err(format!("unknown dialect `{other}`")),
     };
     let document = document(id, dialect, model_text(), &cases, sources)?;
     Ok(format!("{document:#}\n"))
+}
+
+/// How each shared case fares on Druid: `compiled`, or `unsupported` with the
+/// kernel's reason. Any other failure is an error: the manifest fails closed.
+pub fn druid_support() -> Result<Vec<(&'static str, String)>, String> {
+    let model = druid::model(model_text());
+    let model = Arc::new(pp_cube_model::load_yaml(&model).map_err(|error| error.to_string())?);
+    let mut support = Vec::new();
+    for case in cases::declared() {
+        let fail = |reason: String| format!("case `{}`: {reason}", case.name);
+        let query = pp_cube_model::load_query(&case.query).map_err(|e| fail(e.to_string()))?;
+        let security_filters = if case.security.is_empty() {
+            Vec::new()
+        } else {
+            pp_cube_model::load_query(case.security)
+                .map_err(|e| fail(e.to_string()))?
+                .filters
+        };
+        let context = CompileContext {
+            request_id: String::new(),
+            dialect: DialectId::Druid,
+            timezone: case.timezone.into(),
+            security_filters,
+        };
+        let outcome = match compile(&model, &query, &context) {
+            Ok(_) => "compiled".to_owned(),
+            Err(pp_cube_compile::CompileError::Unsupported(reason)) => {
+                format!("unsupported: {reason}")
+            }
+            Err(error) => return Err(fail(error.to_string())),
+        };
+        support.push((case.name, outcome));
+    }
+    Ok(support)
 }
 
 /// The retail model of the feature cases.

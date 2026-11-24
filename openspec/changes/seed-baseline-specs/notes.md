@@ -162,3 +162,12 @@ B0-PRESTO-002 moves to add-joined-measures, reworded to what the tier does, afte
 the comparison ran on GitHub as `cube-core` (#79). The emptied dialect-presto
 seed delta is deleted. Only the Druid delta remains here; new dialects are
 paused by the owner's decision of 2026-11-23.
+
+## 2026-11-25: Druid compilation transferred
+
+`add-druid-b0` implements Druid compilation: B0-DRUID-001 and B0-DRUID-002 are
+transferred there, reworded from what was established on Druid 26.0.0 (joins
+compile and run; a declared set of features is refused by name). The seed
+keeps the two acceptance scenarios, B0-DRUID-003 and B0-DRUID-004, until
+their tiers exist.
+

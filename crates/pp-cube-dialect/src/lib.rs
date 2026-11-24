@@ -15,6 +15,7 @@ use serde::Deserialize;
 pub enum DialectId {
     Presto,
     Doris,
+    Druid,
 }
 
 impl DialectId {
@@ -23,15 +24,27 @@ impl DialectId {
         match self {
             Self::Presto => "presto",
             Self::Doris => "doris",
+            Self::Druid => "druid",
         }
     }
 
     pub fn from_name(name: &str) -> Option<Self> {
-        [Self::Presto, Self::Doris]
+        [Self::Presto, Self::Doris, Self::Druid]
             .into_iter()
             .find(|id| id.name() == name)
     }
 }
+
+/// The query features a dialect may declare its engine cannot answer.
+pub const FEATURES: [&str; 6] = [
+    // More than one SELECT: measures of several cubes, sums over repeated rows.
+    "multi-stage",
+    "ungrouped",
+    "rolling-window",
+    "time-shift",
+    "approximate-distinct",
+    "declared-granularity",
+];
 
 /// An engine session setting the compiled SQL needs. The kernel cannot set it;
 /// whoever executes the SQL must.
@@ -79,8 +92,11 @@ pub struct Dialect {
     engine: Environment<'static>,
     reuses_parameters: bool,
     offset_session: &'static [(&'static str, &'static str)],
+    /// Settings every statement of the dialect needs.
+    session: &'static [(&'static str, &'static str)],
     timestamp_precision: u32,
     interval_units: Vec<String>,
+    refuses: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -93,6 +109,10 @@ struct DataFile {
     timestamp_precision: u32,
     /// The units an interval literal of the engine can carry.
     interval_units: Vec<String>,
+    /// Query features the engine cannot answer, from `FEATURES`. The kernel
+    /// refuses them by name instead of writing SQL the engine rejects.
+    #[serde(default)]
+    refuses: Vec<String>,
     templates: HashMap<String, TemplateEntry>,
 }
 
@@ -124,11 +144,24 @@ static DORIS: LazyLock<Result<Dialect, DialectError>> = LazyLock::new(|| {
     )
 });
 
+/// Druid's COUNT(DISTINCT) is an estimate unless the query context says
+/// otherwise; a `count_distinct` measure is exact.
+static DRUID: LazyLock<Result<Dialect, DialectError>> = LazyLock::new(|| {
+    Dialect::from_data(
+        "druid",
+        include_str!("../../../templates/druid.yaml"),
+        false,
+        &[],
+    )
+    .map(|dialect| dialect.with_session(&[("useApproximateCountDistinct", "false")]))
+});
+
 /// The dialect for `id`. Its data is parsed once per process.
 pub fn dialect(id: DialectId) -> Result<&'static Dialect, DialectError> {
     match id {
         DialectId::Presto => PRESTO.as_ref().map_err(Clone::clone),
         DialectId::Doris => DORIS.as_ref().map_err(Clone::clone),
+        DialectId::Druid => DRUID.as_ref().map_err(Clone::clone),
     }
 }
 
@@ -143,6 +176,16 @@ impl Dialect {
             dialect: name,
             message: error.to_string(),
         })?;
+        if let Some(unknown) = file
+            .refuses
+            .iter()
+            .find(|f| !FEATURES.contains(&f.as_str()))
+        {
+            return Err(DialectError::Data {
+                dialect: name,
+                message: format!("`{unknown}` is not a feature a dialect can refuse"),
+            });
+        }
         let mut engine = Environment::new();
         let mut sources = HashMap::with_capacity(file.templates.len());
         for (template, entry) in file.templates {
@@ -160,9 +203,16 @@ impl Dialect {
             engine,
             reuses_parameters,
             offset_session,
+            session: &[],
             timestamp_precision: file.timestamp_precision,
             interval_units: file.interval_units,
+            refuses: file.refuses,
         })
+    }
+
+    fn with_session(mut self, session: &'static [(&'static str, &'static str)]) -> Self {
+        self.session = session;
+        self
     }
 
     pub fn name(&self) -> &'static str {
@@ -202,8 +252,9 @@ impl Dialect {
     /// says whether the query sets an offset. Empty when it needs none.
     pub fn session_properties(&self, offset: bool) -> Vec<SessionProperty> {
         let needed = if offset { self.offset_session } else { &[] };
-        needed
+        self.session
             .iter()
+            .chain(needed)
             .map(|(name, value)| SessionProperty {
                 name: (*name).to_owned(),
                 value: (*value).to_owned(),
@@ -213,6 +264,12 @@ impl Dialect {
 
     pub fn timestamp_precision(&self) -> u32 {
         self.timestamp_precision
+    }
+
+    /// Whether the dialect declares that its engine cannot answer `feature`,
+    /// one of `FEATURES`.
+    pub fn refuses(&self, feature: &str) -> bool {
+        self.refuses.iter().any(|refused| refused == feature)
     }
 
     /// Whether the engine has an interval literal of `unit`, such as `week`.
