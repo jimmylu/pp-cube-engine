@@ -419,3 +419,66 @@ fn the_digest_is_of_the_content_and_an_expected_digest_must_match() {
         BundleError::InvalidIdentifier { field: "version" }
     );
 }
+
+// scenario: B1-API-001
+#[test]
+fn views_are_compiled_and_listed_with_the_members_they_take() {
+    let source = r#"
+cubes:
+- name: sales
+  sql_table: dw.sales
+  data_source: warehouse
+  joins:
+  - {name: stores, relationship: many_to_one, sql: "{CUBE}.store_cd = {stores.store_cd}"}
+  dimensions:
+  - {name: sale_id, type: number, sql: "{CUBE}.sale_id", primary_key: true}
+  measures:
+  - {name: amount, type: sum, sql: "{CUBE}.amount", title: Amount}
+  - {name: secret, type: sum, sql: "{CUBE}.cost", public: false}
+- name: stores
+  sql_table: dw.stores
+  data_source: warehouse
+  dimensions:
+  - {name: store_cd, type: string, sql: "{CUBE}.store_cd", primary_key: true}
+  - {name: store_name, type: string, sql: "{CUBE}.store_name"}
+views:
+- name: sales_view
+  title: Sales by store
+  cubes:
+  - {join_path: sales, includes: [amount, secret]}
+  - {join_path: sales.stores, includes: [store_name]}
+"#;
+    let service = service();
+    let model = load_yaml(source).unwrap();
+    service.publish("v1", model.clone(), None).unwrap();
+    let query = Query {
+        measures: vec!["sales_view.amount".into()],
+        dimensions: vec!["sales_view.store_name".into()],
+        ..Query::default()
+    };
+    let compiled = service.compile("v1", &query, &context()).unwrap();
+    assert_eq!(
+        compiled,
+        compile(&std::sync::Arc::new(model), &query, &context()).unwrap()
+    );
+    assert!(compiled.sql.contains(r#""sales_view__amount""#));
+    // Listed after the cubes, with the type of the measure behind each member
+    // and the visibility the member has in its cube.
+    let meta = service.get_meta("v1").unwrap();
+    let names: Vec<_> = meta.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["sales", "stores", "sales_view"]);
+    let view = &meta[2];
+    assert_eq!(view.title.as_deref(), Some("Sales by store"));
+    assert_eq!(view.data_source, "warehouse");
+    assert_eq!(view.measures.len(), 1);
+    assert_eq!(
+        (
+            view.measures[0].name.as_str(),
+            view.measures[0].member_type,
+            view.measures[0].title.as_deref()
+        ),
+        ("amount", pp_cube_model::MeasureType::Sum, Some("Amount"))
+    );
+    assert_eq!(view.dimensions[0].name, "store_name");
+    assert!(view.joins.is_empty() && view.segments.is_empty());
+}

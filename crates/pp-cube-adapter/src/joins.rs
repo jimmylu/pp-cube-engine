@@ -203,6 +203,16 @@ impl Joins {
         named.extend(filtered.iter().copied());
         let time_dimensions = query.time_dimensions.iter();
         named.extend(time_dimensions.map(|time_dimension| time_dimension.dimension.as_str()));
+        // A member of a view is the member of a cube it stands for.
+        let underlying = |members: Vec<&str>| -> Vec<String> {
+            let members = members.into_iter();
+            members
+                .map(|member| self.model.underlying(member))
+                .collect()
+        };
+        let (named, filtered) = (underlying(named), underlying(filtered));
+        let filtered: Vec<&str> = filtered.iter().map(String::as_str).collect();
+        let named = named.iter().map(String::as_str);
 
         // What the query reads apart from its measures, and what each fact reads.
         let mut shared = Read::default();

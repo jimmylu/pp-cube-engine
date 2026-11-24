@@ -12,7 +12,8 @@ implemented behaviour is recorded in [openspec/specs](../openspec/specs).
   may roll over time (`rolling_window`, also `type: to_date`), be another
   measure at another time (`multi_stage` with `time_shift`) or estimate a
   distinct count (`count_distinct_approx`). A time dimension may declare
-  `granularities` of its own.
+  `granularities` of its own. `views` give members of joined cubes one name
+  to be queried by.
 - **Query**: Cube's REST query format: measures, dimensions, segments, filters,
   time dimensions with absolute date ranges, order, limit, offset, timezone,
   and `ungrouped` for rows instead of totals.
@@ -105,7 +106,7 @@ No failure returns SQL, and no message contains table names or SQL text.
 
 For every execution case, Cube Core 1.8.28 (the release of the pinned upstream
 commit) was asked for the SQL of the same model and query on Presto. Its SQL
-and parameters equal the kernel's in all sixty-five cases, with one difference:
+and parameters equal the kernel's in all seventy cases, with one difference:
 
 - **Default row limit.** Cube's API adds `LIMIT 10000` to a query that sets no
   limit. The kernel adds none: a query without a limit compiles without one.
@@ -169,6 +170,15 @@ kernel refuses some things Cube compiles:
   with measures that need an aggregation of their own** (several cubes, rows a
   join repeats, rolling or shifted), where Cube's result is partly grouped.
 
+Views were compared in eighteen more queries, with the same result. A query on
+a view is Cube's SQL for that view, which is not always the SQL of the same
+query on the cubes: column names are the view's, and Cube aggregates a measure
+of a cube joined one_to_one apart when it is reached through a view. The
+kernel's views are narrower than Cube's: they take dimensions and measures,
+not segments, declare no members of their own, and do not choose between two
+join paths; a model in which two paths connect a query's cubes is still
+refused.
+
 Cube Core has no Doris dialect, so Doris output is accepted by execution only.
 On Doris the periods of a rolling window are written out one by one, aligned
 to the granularity: every unit and any range compile, but rolling by a
@@ -176,4 +186,4 @@ granularity needs a date range.
 
 ## Not supported yet
 
-Apache Druid, views and relative date ranges. See [performance](performance.md) for latency figures.
+Apache Druid and relative date ranges. See [performance](performance.md) for latency figures.

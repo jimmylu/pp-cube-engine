@@ -26,6 +26,8 @@ versions even when the SQL does not.
 - Approximate distinct counts: the measure type `count_distinct_approx`.
 - Declared granularities: `granularities` on a time dimension, by interval
   with an origin or an offset, and queries that group by one.
+- Views: `views` in a model, taking dimensions and measures of cubes along
+  join paths; queries on them; listed by GetMeta.
 
 **Changed**
 - SQL may begin with `WITH`. The result is still one statement.
@@ -34,7 +36,8 @@ versions even when the SQL does not.
 - Rust API: `Measure` has three more public fields and `Dimension` one;
   `MeasureType` and `Granularity` have a variant more each, and `Granularity`
   is no longer `Copy`; `Query::unsupported_b0_features` is now
-  `unsupported_features`.
+  `unsupported_features`; `Model` has the field `views` and `Reference` a
+  variant more.
 
 **Breaking**
 - A filter on a count of a cube reached through a many_to_one join returns
@@ -42,7 +45,7 @@ versions even when the SQL does not.
   contradict the selected count.
 
 **Evidence**
-- Sixty-five shared cases on Presto 0.293, Doris 4.1.3 and against Cube Core 1.8.28.
+- Seventy shared cases on Presto 0.293, Doris 4.1.3 and against Cube Core 1.8.28.
 
 ## 0.1.0
 

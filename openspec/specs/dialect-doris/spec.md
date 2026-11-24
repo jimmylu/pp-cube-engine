@@ -79,3 +79,9 @@ Doris SHALL compile ungrouped queries, approximate distinct counts with APPROX_C
 #### Scenario: B1-DORIS-003 Rows, estimates and periods on Doris
 - **WHEN** ungrouped rows with and without a join and a page, an approximate count with a formula and a filter, and granularities with an origin and with an offset are compiled for Doris
 - **THEN** the SQL equals its reviewed golden, and parameters, columns and lineage equal those of the Presto compilation
+
+### Requirement: Doris views
+Doris SHALL compile queries on views with the same ordered parameters, columns and lineage as Presto for the same query.
+#### Scenario: B1-DORIS-004 Views on Doris
+- **WHEN** a view is queried by a joined dimension, with filters and a page, and for a sum over repeated rows, compiled for Doris
+- **THEN** the SQL equals its reviewed golden, and parameters, columns and lineage equal those of the Presto compilation

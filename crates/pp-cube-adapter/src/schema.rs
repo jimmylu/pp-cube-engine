@@ -495,12 +495,22 @@ struct CubeDef {
 impl CubeDef {
     fn new(model: Arc<Model>, cube: usize) -> Self {
         let definition = &model.cubes[cube];
+        // As Cube's compiler hands a view over: flagged, with the join paths of
+        // more than one cube that its members are reached by.
+        let view = model.views.iter().find(|view| view.name == definition.name);
+        let join_map = view.map(|view| {
+            let paths = view.cubes.iter().map(|taken| taken.path());
+            let paths = paths.filter(|path| path.len() > 1);
+            paths
+                .map(|path| path.into_iter().map(str::to_owned).collect())
+                .collect::<Vec<Vec<String>>>()
+        });
         let statics = CubeDefinitionStatic {
             name: definition.name.clone(),
             sql_alias: definition.sql_alias.clone(),
-            is_view: None,
+            is_view: view.map(|_| true),
             is_calendar: None,
-            join_map: None,
+            join_map,
         };
         Self {
             model,
@@ -615,7 +625,7 @@ impl MeasureDef {
             group_by_references: None,
             time_shift_references: (!shifts.is_empty()).then_some(shifts),
             rolling_window,
-            included: None,
+            included: model.is_view(&model.cubes[cube].name).then_some(true),
         };
         Self {
             model,
@@ -828,7 +838,7 @@ impl DimensionDef {
             values: None,
             primary_key: Some(definition.primary_key),
             field_type: None,
-            included: None,
+            included: model.is_view(&model.cubes[cube].name).then_some(true),
         };
         Self {
             model,

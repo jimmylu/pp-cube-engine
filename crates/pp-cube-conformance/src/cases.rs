@@ -327,6 +327,67 @@ fn detail() -> Vec<Declared> {
     ]
 }
 
+/// Queries on a view over sales, stores, regions and receipts.
+fn views() -> Vec<Declared> {
+    vec![
+        retail(
+            "view_by_joined_dimension",
+            r#"{"measures":["sales_overview.amount"],"dimensions":["sales_overview.stores_store_name"],"order":[["sales_overview.stores_store_name","asc"]]}"#,
+            &[
+                "sales_overview__stores_store_name",
+                "sales_overview__amount",
+            ],
+            json!([["central", 30], ["harbor", 12], ["uptown", 110]]),
+        ),
+        // The region is two joins away; the filter is on a member of the fact.
+        retail(
+            "view_two_hops_filtered",
+            r#"{"measures":["sales_overview.amount","sales_overview.row_count"],"dimensions":["sales_overview.region_name"],"filters":[{"member":"sales_overview.channel_cd","operator":"equals","values":["C1","C2"]}],"order":[["sales_overview.region_name","asc"]]}"#,
+            &[
+                "sales_overview__region_name",
+                "sales_overview__amount",
+                "sales_overview__row_count",
+            ],
+            json!([["north", 30, 2], ["south", 12, 2]]),
+        ),
+        // Each channel sells at one store, whose area counts once for its two sales.
+        retail(
+            "view_sum_over_repeated_rows",
+            r#"{"measures":["sales_overview.amount","sales_overview.stores_floor_area"],"dimensions":["sales_overview.channel_cd"],"order":[["sales_overview.channel_cd","asc"]]}"#,
+            &[
+                "sales_overview__channel_cd",
+                "sales_overview__amount",
+                "sales_overview__stores_floor_area",
+            ],
+            json!([["C1", 30, 100], ["C2", 12, 200], ["C3", 110, 50]]),
+        ),
+        // A formula of the fact beside a measure of the cube joined one_to_one.
+        retail(
+            "view_formula_and_one_to_one",
+            r#"{"measures":["sales_overview.amount_per_order","sales_overview.tax"],"dimensions":["sales_overview.channel_cd"],"order":[["sales_overview.channel_cd","asc"]]}"#,
+            &[
+                "sales_overview__channel_cd",
+                "sales_overview__amount_per_order",
+                "sales_overview__tax",
+            ],
+            json!([["C1", 30, 3], ["C2", 6, 5], ["C3", 110, 12]]),
+        ),
+        // The security filter names a view member and restricts the cube behind it.
+        Declared {
+            security: r#"{"filters":[{"member":"sales_overview.region_name","operator":"equals","values":["north"]}]}"#,
+            ..retail(
+                "security_view",
+                r#"{"measures":["sales_overview.amount"],"dimensions":["sales_overview.stores_store_name"],"order":[["sales_overview.stores_store_name","asc"]]}"#,
+                &[
+                    "sales_overview__stores_store_name",
+                    "sales_overview__amount",
+                ],
+                json!([["central", 30], ["uptown", 110]]),
+            )
+        },
+    ]
+}
+
 fn temporal() -> Vec<Declared> {
     let range = r#"["2026-10-01","2026-10-31"]"#;
     let day = r#"["2026-10-01"]"#;
@@ -647,5 +708,6 @@ pub fn declared() -> Vec<Declared> {
     cases.extend(matrix());
     cases.extend(windows());
     cases.extend(detail());
+    cases.extend(views());
     cases
 }

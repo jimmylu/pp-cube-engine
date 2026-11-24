@@ -15,6 +15,22 @@ pub enum Reference<'a> {
     OwnMember(&'a str),
     /// `{cube.member}`: a member of another cube.
     Member { cube: &'a str, member: &'a str },
+    /// `{cube.joined.member}`: a member of the cube at the end of a chain of
+    /// joins. Views are made of these; a model does not write them.
+    Joined { path: &'a str, member: &'a str },
+}
+
+impl Reference<'_> {
+    /// The names of the reference as the planner takes them: `CUBE`, a member,
+    /// or the cubes of the path and then the member.
+    pub fn names(&self) -> Vec<&str> {
+        match self {
+            Self::Column(_) => vec!["CUBE"],
+            Self::OwnMember(member) => vec![member],
+            Self::Member { cube, member } => vec![cube, member],
+            Self::Joined { path, member } => path.split('.').chain([*member]).collect(),
+        }
+    }
 }
 
 /// A reference and the bytes of the expression that its braces occupy. For a
@@ -98,12 +114,20 @@ pub fn locate_references(expression: &str) -> Result<Vec<Located<'_>>, Reference
             scanned += 1 + column.len();
             Reference::Column(column)
         } else {
-            match body.split_once('.') {
+            match body.rsplit_once('.') {
                 None if is_identifier(body) => Reference::OwnMember(body),
                 Some((cube, member))
                     if cube != "CUBE" && is_identifier(cube) && is_identifier(member) =>
                 {
                     Reference::Member { cube, member }
+                }
+                Some((path, member))
+                    if is_identifier(member)
+                        && path
+                            .split('.')
+                            .all(|cube| cube != "CUBE" && is_identifier(cube)) =>
+                {
+                    Reference::Joined { path, member }
                 }
                 _ => return Err(malformed),
             }
@@ -150,14 +174,46 @@ impl Model {
             .map(|reference| match reference {
                 Reference::Column(column) => Ok(Target::Column { cube, column }),
                 Reference::OwnMember(member) => cube.member(member),
-                Reference::Member { cube, member } => self
-                    .cube(cube)
-                    .ok_or_else(|| ReferenceError::UnknownCube {
-                        cube: cube.to_owned(),
-                    })?
-                    .member(member),
+                Reference::Member { cube, member } => self.member_of(cube, member),
+                Reference::Joined { path, member } => {
+                    self.member_of(path.rsplit('.').next().unwrap_or(path), member)
+                }
             })
             .collect()
+    }
+
+    fn member_of<'a>(&'a self, cube: &str, member: &str) -> Result<Target<'a>, ReferenceError> {
+        self.cube(cube)
+            .ok_or_else(|| ReferenceError::UnknownCube {
+                cube: cube.to_owned(),
+            })?
+            .member(member)
+    }
+
+    /// The member of a cube that `member`, written `cube.member`, stands for:
+    /// what a view's member refers to, and any other member itself.
+    pub fn underlying(&self, member: &str) -> String {
+        let found = member.split_once('.').and_then(|(cube, name)| {
+            if !self.is_view(cube) {
+                return None;
+            }
+            let cube = self.cube(cube)?;
+            let dimension = cube.dimensions.iter().find(|d| d.name == name);
+            let measure = cube.measures.iter().find(|m| m.name == name);
+            let sql = dimension
+                .map(|d| &d.sql)
+                .or(measure.and_then(|m| m.sql.as_ref()))?;
+            match self.resolve(cube, sql).ok()?.as_slice() {
+                [Target::Dimension(owner, dimension)] => {
+                    Some(format!("{}.{}", owner.name, dimension.name))
+                }
+                [Target::Measure(owner, measure)] => {
+                    Some(format!("{}.{}", owner.name, measure.name))
+                }
+                _ => None,
+            }
+        });
+        found.unwrap_or_else(|| member.to_owned())
     }
 }
 

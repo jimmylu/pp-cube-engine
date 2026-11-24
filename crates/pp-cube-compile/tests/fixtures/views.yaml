@@ -1,0 +1,65 @@
+cubes:
+  - name: sales
+    sql_table: dw.sales_dtl
+    data_source: warehouse
+    joins:
+      - { name: stores, relationship: many_to_one, sql: "{CUBE}.store_cd = {stores.store_cd}" }
+      - { name: receipts, relationship: one_to_one, sql: "{CUBE}.receipt_no = {receipts.receipt_no}" }
+    dimensions:
+      - { name: sale_id, sql: "{CUBE}.sale_id", type: number, primary_key: true }
+      - { name: channel_cd, sql: "{CUBE}.channel_cd", type: string }
+      - name: sold_at
+        sql: "{CUBE}.sold_at"
+        type: time
+        granularities:
+          - { name: fiscal_year, interval: 1 year, offset: 3 month }
+    measures:
+      - { name: amount, type: sum, sql: "{CUBE}.amount" }
+      - { name: sale_count, type: count }
+      - { name: buyers, type: count_distinct, sql: "{CUBE}.buyer_id" }
+      - { name: per_sale, type: number, sql: "{amount} / NULLIF({sale_count}, 0)" }
+      - { name: toy_amount, type: sum, sql: "{CUBE}.amount", filters: [{ sql: "{CUBE}.category_cd = 'TOY'" }] }
+      - { name: amount_7d, type: sum, sql: "{CUBE}.amount", rolling_window: { trailing: 7 day } }
+      - name: amount_prior_year
+        type: number
+        sql: "{amount}"
+        multi_stage: true
+        time_shift:
+          - { time_dimension: sold_at, interval: 1 year, type: prior }
+  - name: stores
+    sql_table: dw.dim_store
+    data_source: warehouse
+    joins:
+      - { name: regions, relationship: many_to_one, sql: "{CUBE}.region_cd = {regions.region_cd}" }
+    dimensions:
+      - { name: store_cd, sql: "{CUBE}.store_cd", type: string, primary_key: true }
+      - { name: store_name, sql: "{CUBE}.store_name", type: string }
+    measures:
+      - { name: store_count, type: count }
+      - { name: floor_area, type: sum, sql: "{CUBE}.floor_area" }
+  - name: regions
+    sql_table: dw.dim_region
+    data_source: warehouse
+    dimensions:
+      - { name: region_cd, sql: "{CUBE}.region_cd", type: string, primary_key: true }
+      - { name: region_name, sql: "{CUBE}.region_name", type: string }
+  - name: receipts
+    sql_table: dw.receipt
+    data_source: warehouse
+    dimensions:
+      - { name: receipt_no, sql: "{CUBE}.receipt_no", type: string, primary_key: true }
+    measures:
+      - { name: tax, type: sum, sql: "{CUBE}.tax" }
+views:
+  - name: sales_view
+    cubes:
+      - join_path: sales
+        includes: [amount, sale_count, buyers, per_sale, toy_amount, amount_7d, amount_prior_year, channel_cd, sold_at, sale_id]
+      - join_path: sales.stores
+        prefix: true
+        includes: [store_name, floor_area, store_count]
+      - join_path: sales.stores.regions
+        includes: [region_name]
+      - join_path: sales.receipts
+        includes: "*"
+        excludes: [receipt_no]
