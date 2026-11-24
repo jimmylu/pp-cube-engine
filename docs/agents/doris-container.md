@@ -1,16 +1,21 @@
 # Doris local execution
 
 The owner requires real local Docker Doris execution before delivery. The tier
-runs a pinned Apache Doris 4.1.3 amd64 FE+BE container and executes the
+runs pinned Apache Doris 2.1.8 amd64 frontend and backend containers (the
+version in production; 4.1.3 until 2026-11-24) and executes the
 live-compiled execution manifest of `pp-cube-conformance`. It reads no stored
 snapshot and holds no fixture or expectation of its own.
 
 Run `scripts/check.sh doris-container`. Python 3 with venv/pip, the pinned Rust
 toolchain and a Docker daemon with amd64 support are required. The tier installs
 mysql-connector-python 9.4.0 into the worktree Git directory, outside tracked
-files. It needs network access for the connector and image. The disposable
-engine has a 6 GiB memory limit and an ephemeral loopback-only MySQL port. No
-pre-existing containers are removed.
+files. It needs network access for the connector and the images. Doris 2.1
+publishes no single-container image, so the tier creates a frontend (3 GiB) and
+a backend (4 GiB) on a network of its own, with a subnet chosen in
+172.28.0.0/14 because the images take the frontend's address as an IP; a subnet
+already in use is skipped. Only the frontend's MySQL port is published, on
+loopback, at an ephemeral port. The tier removes exactly the two containers
+and the network it created; no pre-existing container or network is touched.
 
 ## What runs
 

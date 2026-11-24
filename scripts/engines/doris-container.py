@@ -11,8 +11,11 @@ import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
-IMAGE = 'apache/doris@sha256:4d3aef8f4fe63f6e32b493b4fd7b2a682d19e2c800d1d812131e67aaba0d212a'
-VERSION = '4.1.3'
+# Doris 2.1.8, the version in production: the linux/amd64 manifests of the
+# published frontend and backend images. 2.1 has no single-container image.
+VERSION = '2.1.8'
+FE_IMAGE = 'apache/doris@sha256:c190478d0f5c13fe0b3ba13f7cf384b022b586b41589348960b748aef7a99dbe'
+BE_IMAGE = 'apache/doris@sha256:a1f31b331b7fe27f7c1be2b5b134a8c8fc98f1c25f5bb3aeeaf0579e33486d46'
 SPEC = importlib.util.spec_from_file_location('presto_container', ROOT / 'scripts/engines/presto-container.py')
 PRESTO = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PRESTO)
@@ -135,20 +138,64 @@ def suite(connection, cases):
             cursor.close()
 
 
+def provision(command, suffix, attempts=8):
+    """One frontend and one backend on a network of their own. The images take the
+    frontend's address as an IP, so the network has a subnet chosen here; a subnet
+    already in use on this host is skipped. Returns what was created, to remove."""
+    owned = []
+    try:
+        for attempt in range(attempts):
+            # 172.28.0.0/14 is private space Docker's defaults leave alone.
+            third = (int(suffix[:6], 16) + attempt * 37) % 250
+            base = '172.%d.%d.' % (28 + (int(suffix[6:8], 16) % 4), third)
+            network = 'cube-doris-' + suffix
+            try:
+                command('network', 'create', '--subnet', base + '0/24', network)
+                break
+            except subprocess.CalledProcessError:
+                if attempt == attempts - 1:
+                    raise
+        owned.append(('network', network))
+        servers = 'fe1:' + base + '2:9010'
+        frontend, backend = 'cube-doris-fe-' + suffix, 'cube-doris-be-' + suffix
+        command('create', '--name', frontend, '--platform', 'linux/amd64', '--network', network,
+                '--ip', base + '2', '--env', 'FE_SERVERS=' + servers, '--env', 'FE_ID=1',
+                '--publish', '127.0.0.1::9030', '--memory', '3g', FE_IMAGE)
+        owned.append(('container', frontend))
+        command('create', '--name', backend, '--platform', 'linux/amd64', '--network', network,
+                '--ip', base + '3', '--env', 'FE_SERVERS=' + servers,
+                '--env', 'BE_ADDR=' + base + '3:9050', '--env', 'SKIP_CHECK_ULIMIT=true',
+                '--memory', '4g', BE_IMAGE)
+        owned.append(('container', backend))
+        command('start', frontend)
+        command('start', backend)
+        return owned, frontend
+    except Exception:
+        release(command, owned)
+        raise
+
+
+def release(command, owned):
+    """Removes exactly what this invocation created, containers before their network."""
+    for kind, name in reversed(owned):
+        if kind == 'container':
+            command('rm', '--force', name, timeout=30)
+        else:
+            command('network', 'rm', name, timeout=30)
+
+
 def run(cases, command=docker, pause=time.sleep):
     import mysql.connector
     command('info', '--format', '{{.ServerVersion}}', timeout=15)
-    print('Doris container: pulling pinned amd64 4.1.3 image', flush=True)
-    command('pull', '--platform', 'linux/amd64', IMAGE, timeout=600)
-    name = 'cube-doris-' + uuid.uuid4().hex
+    print('Doris container: pulling pinned amd64 %s frontend and backend images' % VERSION, flush=True)
+    command('pull', '--platform', 'linux/amd64', FE_IMAGE, timeout=900)
+    command('pull', '--platform', 'linux/amd64', BE_IMAGE, timeout=1800)
+    owned, name = provision(command, uuid.uuid4().hex)
     try:
-        command('create', '--name', name, '--platform', 'linux/amd64',
-                '--publish', '127.0.0.1::9030', '--memory', '6g', IMAGE)
-        command('start', name)
         ports = json.loads(command('inspect', '--format', '{{json .NetworkSettings.Ports}}', name))
         port = int(ports['9030/tcp'][0]['HostPort'])
         print('Doris container: waiting for SQL readiness', flush=True)
-        deadline = time.monotonic() + 300
+        deadline = time.monotonic() + 600
         while True:
             try:
                 connection = mysql.connector.connect(host='127.0.0.1', port=port, user='root',
@@ -185,8 +232,8 @@ def run(cases, command=docker, pause=time.sleep):
         finally:
             connection.close()
     finally:
-        print('Doris container: removing owned container', flush=True)
-        command('rm', '--force', name, timeout=30)
+        print('Doris container: removing owned containers and network', flush=True)
+        release(command, owned)
 
 
 def main():
@@ -200,8 +247,8 @@ def main():
         print('check doris-container: FAILED — ' + type(error).__name__ + ' at ' + failure_point(error),
               file=sys.stderr)
         return 1
-    print('check doris-container: PASSED — Doris 4.1.3, %d live-compiled manifest cases (%s)'
-          % (len(cases), MANIFEST.scenarios(cases)))
+    print('check doris-container: PASSED — Doris %s, %d live-compiled manifest cases (%s)'
+          % (VERSION, len(cases), MANIFEST.scenarios(cases)))
     return 0
 
 

@@ -3,6 +3,7 @@ import datetime
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import unittest
 from unittest.mock import Mock
 
@@ -118,3 +119,60 @@ class DorisTests(unittest.TestCase):
         connection.cursor.return_value.execute.side_effect = [None, not_ready, not_ready]
         with self.assertRaisesRegex(TimeoutError, 'storage not ready'):
             doris.await_storage(connection, pauses.append, lambda: next(ticks))
+
+    def test_frontend_and_backend_are_pinned_and_share_one_private_network(self):
+        calls = []
+        owned, frontend = doris.provision(lambda *a, **k: calls.append(a), 'a1b2c3d4e5f6')
+        self.assertEqual([c[:2] for c in calls],
+                         [('network', 'create'), ('create', '--name'), ('create', '--name'),
+                          ('start', frontend), ('start', 'cube-doris-be-a1b2c3d4e5f6')])
+        subnet = calls[0][calls[0].index('--subnet') + 1]
+        base = subnet[:-len('0/24')]
+        self.assertRegex(subnet, r'^172[.](28|29|30|31)[.][0-9]{1,3}[.]0/24$')
+        fe, be = calls[1], calls[2]
+        # Digests, never tags; the frontend alone is published, on loopback only.
+        self.assertEqual((fe[-1], be[-1]), (doris.FE_IMAGE, doris.BE_IMAGE))
+        for image in (doris.FE_IMAGE, doris.BE_IMAGE):
+            self.assertRegex(image, r'^apache/doris@sha256:[0-9a-f]{64}$')
+        self.assertIn('127.0.0.1::9030', fe)
+        self.assertNotIn('--publish', be)
+        self.assertIn('FE_SERVERS=fe1:' + base + '2:9010', fe)
+        self.assertIn('FE_SERVERS=fe1:' + base + '2:9010', be)
+        self.assertIn('BE_ADDR=' + base + '3:9050', be)
+        self.assertEqual(owned, [('network', 'cube-doris-a1b2c3d4e5f6'), ('container', frontend),
+                                 ('container', 'cube-doris-be-a1b2c3d4e5f6')])
+        # Released in reverse: containers before the network they are on.
+        removed = []
+        doris.release(lambda *a, **k: removed.append(a), owned)
+        self.assertEqual(removed, [('rm', '--force', 'cube-doris-be-a1b2c3d4e5f6'),
+                                   ('rm', '--force', frontend),
+                                   ('network', 'rm', 'cube-doris-a1b2c3d4e5f6')])
+
+    def test_a_subnet_in_use_is_skipped_and_a_failed_start_releases_what_exists(self):
+        calls = []
+
+        def taken_once(*args, **kwargs):
+            calls.append(args)
+            if args[:2] == ('network', 'create') and len(calls) == 1:
+                raise subprocess.CalledProcessError(1, 'docker')
+        owned, _ = doris.provision(taken_once, 'a1b2c3d4e5f6')
+        first, second = (c[c.index('--subnet') + 1] for c in calls[:2])
+        self.assertNotEqual(first, second)
+        self.assertEqual(owned[0], ('network', 'cube-doris-a1b2c3d4e5f6'))
+
+        calls = []
+
+        def backend_fails(*args, **kwargs):
+            calls.append(args)
+            if args[0] == 'create' and 'cube-doris-be-a1b2c3d4e5f6' in args:
+                raise subprocess.CalledProcessError(1, 'docker')
+        with self.assertRaises(subprocess.CalledProcessError):
+            doris.provision(backend_fails, 'a1b2c3d4e5f6')
+        # Nothing this invocation did not create is touched.
+        self.assertEqual(calls[-2:], [('rm', '--force', 'cube-doris-fe-a1b2c3d4e5f6'),
+                                      ('network', 'rm', 'cube-doris-a1b2c3d4e5f6')])
+
+        def never(*args, **kwargs):
+            raise subprocess.CalledProcessError(1, 'docker')
+        with self.assertRaises(subprocess.CalledProcessError):
+            doris.provision(never, 'a1b2c3d4e5f6', attempts=3)

@@ -17,7 +17,7 @@ SESSION = {'offset_clause_enabled': 'true'}
 
 
 class LifecycleTests(unittest.TestCase):
-    def exercise(self, fail=None, verify_failure=False, version='"0.293-2f48ff6"'):
+    def exercise(self, fail=None, verify_failure=False, version='"0.296-8661b73"'):
         calls, endpoints = [], []
 
         def command(*args, **kwargs):
@@ -35,7 +35,7 @@ class LifecycleTests(unittest.TestCase):
             if verify_failure:
                 raise ValueError('mismatch')
 
-        if fail or verify_failure or version != '"0.293-2f48ff6"':
+        if fail or verify_failure or version != '"0.296-8661b73"':
             with self.assertRaises((subprocess.SubprocessError, ValueError, TimeoutError)):
                 runner.run(CASES, SESSION, command, verify, lambda _: None)
         else:
@@ -77,7 +77,7 @@ class LifecycleTests(unittest.TestCase):
             if args[0] == 'inspect':
                 return '{"8080/tcp":[{"HostPort":"12345"}]}'
             if 'SELECT DISTINCT node_version FROM system.runtime.nodes' in args:
-                return '"0.293-2f48ff6"'
+                return '"0.296-8661b73"'
             if any('cube_readiness_0 AS SELECT' in arg for arg in args):
                 raise subprocess.CalledProcessError(1, 'docker', stderr='No nodes available')
             return ''
