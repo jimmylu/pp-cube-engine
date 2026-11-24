@@ -54,9 +54,9 @@ FROM  cte_1  AS `fk_aggregate` ORDER BY  1  ASC
 -- parameters: [Text("2026-09-14T00:00:00.000"), Text("2026-10-18T23:59:59.999")]
 
  WITH 
-cte_0 AS (  SELECT DATE_TRUNC(CONVERT_TZ((DATE_ADD(`sales`.sold_at, INTERVAL 1 QUARTER)), 'UTC', 'UTC'), 'quarter') `sales__sold_at_quarter`, sum(`sales`.amount) `sales__amount`  
+cte_0 AS (  SELECT DATE_TRUNC(CONVERT_TZ((DATE_ADD(`sales`.sold_at, INTERVAL 3 MONTH)), 'UTC', 'UTC'), 'quarter') `sales__sold_at_quarter`, sum(`sales`.amount) `sales__amount`  
   FROM  dw.sales_dtl  AS `sales`
-  WHERE ((DATE_ADD(`sales`.sold_at, INTERVAL 1 QUARTER)) >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND (DATE_ADD(`sales`.sold_at, INTERVAL 1 QUARTER)) <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC),
+  WHERE ((DATE_ADD(`sales`.sold_at, INTERVAL 3 MONTH)) >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND (DATE_ADD(`sales`.sold_at, INTERVAL 3 MONTH)) <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC),
 cte_1 AS (  SELECT `fk_aggregate`.`sales__sold_at_quarter` `sales__sold_at_quarter`, `fk_aggregate`.`sales__amount` `sales__amount_prior_quarter`  
   FROM  cte_0  AS `fk_aggregate`),
 cte_2 AS (  SELECT DATE_TRUNC(CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC'), 'quarter') `sales__sold_at_quarter`, sum(`sales`.amount) `sales__amount`  

@@ -596,7 +596,7 @@ WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) 
 -- parameters: ["2026-10-01T00:00:00.000Z", "2026-10-31T23:59:59.999Z"]
 
 -- granularity_of_two_quarters
-SELECT QUARTER_FLOOR(CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC'), 2, CAST('2026-01-01 00:00:00.000' AS DATETIMEV2(3))) `sales__sold_at_half_year`, sum(`sales`.amount) `sales__amount`  
+SELECT MONTH_FLOOR(CONVERT_TZ(`sales`.sold_at, 'UTC', 'UTC'), 6, CAST('2026-01-01 00:00:00.000' AS DATETIMEV2(3))) `sales__sold_at_half_year`, sum(`sales`.amount) `sales__amount`  
 FROM  dw.sales_dtl  AS `sales`
 WHERE (`sales`.sold_at >= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3)) AND `sales`.sold_at <= CAST(LEFT(REPLACE(?, 'T', ' '), 23) AS DATETIMEV2(3))) GROUP BY 1 ORDER BY  1  ASC
 -- parameters: ["2026-10-01T00:00:00.000Z", "2026-10-31T23:59:59.999Z"]

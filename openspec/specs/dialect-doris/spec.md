@@ -85,3 +85,9 @@ Doris SHALL compile queries on views with the same ordered parameters, columns a
 #### Scenario: B1-DORIS-004 Views on Doris
 - **WHEN** a view is queried by a joined dimension, with filters and a page, and for a sum over repeated rows, compiled for Doris
 - **THEN** the SQL equals its reviewed golden, and parameters, columns and lineage equal those of the Presto compilation
+
+### Requirement: Doris quarters as months
+Doris SHALL write a quarter as three months wherever its SQL counts or moves time by an interval: periods of a declared granularity counted from an origin, and the intervals of rolling windows, time shifts and granularity offsets. Doris 2.1 has neither a quarter floor function nor a quarter unit in interval arithmetic.
+#### Scenario: B1-DORIS-005 Quarters on Doris
+- **WHEN** a granularity of two quarters from an origin and a shift of one quarter are compiled for Doris
+- **THEN** the first floors to six months from the origin and the second adds three months, and neither SQL names a quarter function or a quarter interval
