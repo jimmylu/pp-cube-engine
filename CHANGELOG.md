@@ -30,9 +30,11 @@ versions even when the SQL does not.
   join paths; queries on them; listed by GetMeta.
 
 **Service**
-- `--model-store`: model versions read from a shared directory laid out by
-  business line and asset type, each version a directory of one cube or view
-  per file with a manifest, followed while running. For several replicas.
+- `--model-store`: model versions read from shared storage, a directory or an
+  S3-protocol bucket, laid out by business line and asset type; each version a
+  directory of one cube or view per file with a manifest, followed while
+  running. For several replicas. Bucket credentials come from the standard
+  environment variables or the instance role.
 
 **Changed**
 - SQL may begin with `WITH`. The result is still one statement.

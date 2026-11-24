@@ -18,7 +18,7 @@
 //! by `/`, such as `property/motor/v12`.
 //!
 //! A store is a flat list of keys and a way to read one, which is what a
-//! directory tree and an S3-protocol bucket have in common.
+//! directory tree and an S3-protocol bucket (`crate::s3`) have in common.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -262,12 +262,18 @@ struct Manifest {
 pub struct Scan {
     pub loaded: Vec<String>,
     pub retired: Vec<String>,
+    /// Every version that cannot be offered now.
     pub rejected: Vec<Rejected>,
+    /// Those of `rejected` that the pass before rejected for the same reason:
+    /// counted, and not logged again.
+    pub unchanged: Vec<String>,
 }
 
 /// Keeps the versions of a service equal to the complete versions of a store.
 pub struct StoreSync {
     store: Box<dyn ModelStore>,
+    /// Tells the stores of one process apart in its metrics.
+    name: String,
     /// The versions this store put into the service; only those are retired by it.
     owned: Mutex<BTreeSet<String>>,
     /// The rejections of the last pass, to report a change once.
@@ -281,12 +287,19 @@ impl StoreSync {
     pub fn new(store: impl ModelStore + 'static) -> Self {
         Self {
             store: Box::new(store),
+            name: "0".to_owned(),
             owned: Mutex::default(),
             rejected: Mutex::default(),
             passes: AtomicU64::new(0),
             failures: AtomicU64::new(0),
             last_failed: AtomicU64::new(0),
         }
+    }
+
+    /// Names the store in its metrics; a process numbers its stores.
+    pub fn named(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
     }
 
     /// One pass: offer every complete version not yet offered, retire the ones this
@@ -337,11 +350,18 @@ impl StoreSync {
             owned.remove(&version);
             scan.retired.push(version);
         }
-        *self.rejected.lock().unwrap_or_else(|e| e.into_inner()) = scan
+        let mut before = self.rejected.lock().unwrap_or_else(|e| e.into_inner());
+        let unchanged = scan
+            .rejected
+            .iter()
+            .filter(|r| before.get(&r.version) == Some(&r.reason));
+        scan.unchanged = unchanged.map(|r| r.version.clone()).collect();
+        *before = scan
             .rejected
             .iter()
             .map(|r| (r.version.clone(), r.reason))
             .collect();
+        drop(before);
         self.passes.fetch_add(1, Ordering::Relaxed);
         self.last_failed.store(0, Ordering::Relaxed);
         Ok(scan)
@@ -418,23 +438,39 @@ impl StoreSync {
         }
     }
 
-    /// The store's part of the Prometheus exposition.
+    /// This store's part of the Prometheus exposition.
     pub fn render(&self) -> String {
-        let mut text = String::new();
-        let _ = writeln!(text, "# TYPE ppcube_model_store_scans_total counter");
-        for (outcome, count) in [("ok", &self.passes), ("error", &self.failures)] {
-            let count = count.load(Ordering::Relaxed);
+        render(&[self])
+    }
+}
+
+/// The stores' part of the Prometheus exposition, each labelled with its name.
+pub fn render(stores: &[&StoreSync]) -> String {
+    let mut text = String::new();
+    let _ = writeln!(text, "# TYPE ppcube_model_store_scans_total counter");
+    for store in stores {
+        for (outcome, count) in [("ok", &store.passes), ("error", &store.failures)] {
             let _ = writeln!(
                 text,
-                "ppcube_model_store_scans_total{{outcome=\"{outcome}\"}} {count}"
+                "ppcube_model_store_scans_total{{store=\"{}\",outcome=\"{outcome}\"}} {}",
+                store.name,
+                count.load(Ordering::Relaxed)
             );
         }
-        let _ = writeln!(text, "# TYPE ppcube_model_store_last_scan_failed gauge");
-        let failed = self.last_failed.load(Ordering::Relaxed);
-        let _ = writeln!(text, "ppcube_model_store_last_scan_failed {failed}");
-        let _ = writeln!(text, "# TYPE ppcube_model_store_rejected_versions gauge");
+    }
+    let _ = writeln!(text, "# TYPE ppcube_model_store_last_scan_failed gauge");
+    for store in stores {
+        let _ = writeln!(
+            text,
+            "ppcube_model_store_last_scan_failed{{store=\"{}\"}} {}",
+            store.name,
+            store.last_failed.load(Ordering::Relaxed)
+        );
+    }
+    let _ = writeln!(text, "# TYPE ppcube_model_store_rejected_versions gauge");
+    for store in stores {
         let mut reasons: BTreeMap<&str, usize> = BTreeMap::new();
-        for reason in self
+        for reason in store
             .rejected
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -445,15 +481,16 @@ impl StoreSync {
         for (reason, count) in reasons {
             let _ = writeln!(
                 text,
-                "ppcube_model_store_rejected_versions{{reason=\"{reason}\"}} {count}"
+                "ppcube_model_store_rejected_versions{{store=\"{}\",reason=\"{reason}\"}} {count}",
+                store.name
             );
         }
-        text
     }
+    text
 }
 
 /// One JSON line per change of a pass, for the host's log: versions and fixed
-/// reasons only.
+/// reasons only. A version that stays rejected for the same reason is logged once.
 pub fn log_lines(scan: &Scan) -> Vec<String> {
     let line = |version: &str, outcome: &str, reason: Option<&str>| {
         let mut event = serde_json::json!({"event": "model_store", "model_version": version, "outcome": outcome});
@@ -465,10 +502,10 @@ pub fn log_lines(scan: &Scan) -> Vec<String> {
     let mut lines = Vec::new();
     lines.extend(scan.loaded.iter().map(|v| line(v, "loaded", None)));
     lines.extend(scan.retired.iter().map(|v| line(v, "retired", None)));
-    lines.extend(
-        scan.rejected
-            .iter()
-            .map(|r| line(&r.version, "rejected", Some(r.reason.name()))),
-    );
+    let news = scan
+        .rejected
+        .iter()
+        .filter(|r| !scan.unchanged.contains(&r.version));
+    lines.extend(news.map(|r| line(&r.version, "rejected", Some(r.reason.name()))));
     lines
 }

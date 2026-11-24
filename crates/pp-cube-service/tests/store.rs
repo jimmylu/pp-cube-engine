@@ -208,12 +208,12 @@ fn complete_versions_are_offered_and_a_faulty_one_does_not_stop_the_others() {
     // Counted by reason for the metrics, with the passes.
     let metrics = sync.render();
     for line in [
-        "ppcube_model_store_scans_total{outcome=\"ok\"} 2",
-        "ppcube_model_store_scans_total{outcome=\"error\"} 0",
-        "ppcube_model_store_last_scan_failed 0",
-        "ppcube_model_store_rejected_versions{reason=\"manifest\"} 2",
-        "ppcube_model_store_rejected_versions{reason=\"files\"} 2",
-        "ppcube_model_store_rejected_versions{reason=\"digest\"} 1",
+        "ppcube_model_store_scans_total{store=\"0\",outcome=\"ok\"} 2",
+        "ppcube_model_store_scans_total{store=\"0\",outcome=\"error\"} 0",
+        "ppcube_model_store_last_scan_failed{store=\"0\"} 0",
+        "ppcube_model_store_rejected_versions{store=\"0\",reason=\"manifest\"} 2",
+        "ppcube_model_store_rejected_versions{store=\"0\",reason=\"files\"} 2",
+        "ppcube_model_store_rejected_versions{store=\"0\",reason=\"digest\"} 1",
     ] {
         assert!(metrics.contains(line), "{line}\n{metrics}");
     }
@@ -226,6 +226,37 @@ fn complete_versions_are_offered_and_a_faulty_one_does_not_stop_the_others() {
     assert!(lines
         .iter()
         .all(|line| !line.contains("cubes/") && !line.contains("dw.")));
+    // A version that stays rejected is counted every pass and logged once.
+    let again = sync.scan(&service).unwrap();
+    assert_eq!(again.rejected.len(), 7);
+    assert_eq!(again.unchanged.len(), 7);
+    assert!(pp_cube_service::store::log_lines(&again).is_empty());
+    // Rejected for another reason, it is news again.
+    write(&root, "property/motor/models/bad-schema/manifest.json", "{");
+    let changed = sync.scan(&service).unwrap();
+    assert_eq!(changed.unchanged.len(), 7);
+    let lines = pp_cube_service::store::log_lines(&changed);
+    assert!(
+        lines.is_empty(),
+        "the reason is still `manifest`: {lines:?}"
+    );
+    write(
+        &root,
+        "property/motor/models/bad-schema/manifest.json",
+        MANIFEST,
+    );
+    write(
+        &root,
+        "property/motor/models/bad-schema/cubes/extra.txt",
+        "x",
+    );
+    let changed = sync.scan(&service).unwrap();
+    assert_eq!(
+        pp_cube_service::store::log_lines(&changed),
+        [
+            r#"{"event":"model_store","model_version":"property/motor/bad-schema","outcome":"rejected","reason":"files"}"#
+        ]
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -276,8 +307,8 @@ fn later_passes_follow_the_store_and_leave_other_versions_alone() {
     assert!(sync.scan(&service).is_err());
     assert_eq!(service.versions().len(), 2);
     let metrics = sync.render();
-    assert!(metrics.contains("ppcube_model_store_scans_total{outcome=\"error\"} 1"));
-    assert!(metrics.contains("ppcube_model_store_last_scan_failed 1"));
+    assert!(metrics.contains("ppcube_model_store_scans_total{store=\"0\",outcome=\"error\"} 1"));
+    assert!(metrics.contains("ppcube_model_store_last_scan_failed{store=\"0\"} 1"));
 }
 
 // scenario: B1-STORE-002
