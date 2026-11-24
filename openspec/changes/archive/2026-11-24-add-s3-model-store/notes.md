@@ -26,7 +26,10 @@ Evidence, on the working tree that became the implementation commit:
   metadata service; these are covered by the stand-in only. MinIO could not
   be tried: its images were not pullable.
 - No golden changed; the engine tiers were not run. Cross-model review: not run.
-- CI_EVIDENCE
+- `check fast: PASSED — 4 steps, 0 skipped, 9`; after archiving, `check ci: PASSED — `. A first run after archiving failed at
+  `gitleaks`: two build artifacts under `target/` left by the `object_store`
+  trial matched an AWS key pattern from that crate's documentation. They were
+  untracked; removing them cleared it. Nothing in the repository matched.
 
 Open:
 - An S3-protocol server in the tiers (harness).

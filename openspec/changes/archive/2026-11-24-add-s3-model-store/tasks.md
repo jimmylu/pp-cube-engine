@@ -7,7 +7,7 @@
 - [x] 5 Log a rejection only when it changes; extend the B1-STORE-003 test.
 - [x] 6 Run the binary against a real S3-protocol server that verifies signatures; record it in notes.md.
 - [x] 7 Update the service guide, `docs/guide.md` and `CHANGELOG.md`.
-- [ ] 8 Run `scripts/check.sh ci`; record the last line in notes.md.
+- [x] 8 Run `scripts/check.sh ci`; record the last line in notes.md.
 
 ## Workflow follow-up
 
