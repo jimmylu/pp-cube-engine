@@ -1,0 +1,154 @@
+# pp-cube-engine as three replicas on Kubernetes.
+#
+# Three things are yours to supply before `kubectl apply -f deploy/kubernetes.yaml`:
+#
+#   1. The image. Replace the tag by the digest of the release you verified:
+#        gh attestation verify oci://ghcr.io/jimmylu/pp-cube-engine@sha256:… --repo jimmylu/pp-cube-engine
+#   2. The secret `pp-cube-engine`, with the certificate, its key and the tokens:
+#        kubectl create secret generic pp-cube-engine \
+#          --from-file=tls.crt=server.pem --from-file=tls.key=server.key \
+#          --from-file=read.token --from-file=admin.token
+#   3. The models. The volume `models` below is a claim on shared storage that
+#      the publisher writes; name your own claim. For an S3-protocol bucket see
+#      docs/deployment.md.
+#
+# and one line per data source of your models: `--data-source <name>=<dialect>`.
+#
+# Everything else is described in docs/deployment.md. A test starts the service
+# with exactly the arguments below, so an option the service does not have
+# cannot be written here unnoticed.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pp-cube-engine
+  labels:
+    app.kubernetes.io/name: pp-cube-engine
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pp-cube-engine
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # One replica at a time: two keep serving while one is replaced.
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pp-cube-engine
+    spec:
+      # Longer than --drain-seconds, so a replica finishes its requests.
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: pp-cube-engine
+      containers:
+        - name: service
+          image: ghcr.io/jimmylu/pp-cube-engine:0.2.0
+          args:
+            - "--listen"
+            - "0.0.0.0:50051"
+            - "--metrics-listen"
+            - "0.0.0.0:9100"
+            - "--tls-cert"
+            - "/etc/pp-cube-engine/tls.crt"
+            - "--tls-key"
+            - "/etc/pp-cube-engine/tls.key"
+            - "--token-file"
+            - "/etc/pp-cube-engine/read.token"
+            - "--admin-token-file"
+            - "/etc/pp-cube-engine/admin.token"
+            - "--model-store"
+            - "/var/lib/pp-cube-engine/models"
+            - "--model-refresh-seconds"
+            - "30"
+            - "--data-source"
+            - "warehouse=presto"
+            - "--workers"
+            - "2"
+            - "--queue"
+            - "16"
+            - "--drain-seconds"
+            - "30"
+          ports:
+            - name: grpc
+              containerPort: 50051
+            - name: metrics
+              containerPort: 9100
+          # The metrics endpoint answers once the models are validated and the
+          # service is bound. The gRPC port is encrypted, which a Kubernetes
+          # gRPC probe cannot speak.
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            periodSeconds: 20
+            failureThreshold: 3
+          # Starting values, not measured ones: one compilation uses one core, so
+          # the request follows --workers. Set them from your own load.
+          resources:
+            requests:
+              cpu: "2"
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: secrets
+              mountPath: /etc/pp-cube-engine
+              readOnly: true
+            - name: models
+              mountPath: /var/lib/pp-cube-engine/models
+              readOnly: true
+      volumes:
+        - name: secrets
+          secret:
+            secretName: pp-cube-engine
+        - name: models
+          persistentVolumeClaim:
+            claimName: pp-cube-engine-models
+            readOnly: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pp-cube-engine
+  labels:
+    app.kubernetes.io/name: pp-cube-engine
+spec:
+  selector:
+    app.kubernetes.io/name: pp-cube-engine
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: grpc
+---
+# A node drain or an upgrade of the cluster takes one replica at a time.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pp-cube-engine
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pp-cube-engine

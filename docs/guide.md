@@ -47,7 +47,9 @@ nothing else, so compile on as many threads as there are cores.
 
 See [the service guide](../crates/pp-cube-service/README.md) for running,
 securing and operating the gRPC service, and its `proto/engine.proto` for the
-contract. A container image builds from the repository root:
+contract. Released images, a manifest for three replicas, upgrading and
+rolling back are in [deploying and upgrading](deployment.md). An image also
+builds from the repository root:
 
 ```sh
 scripts/vendor-sync.sh

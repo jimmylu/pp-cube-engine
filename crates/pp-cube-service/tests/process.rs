@@ -653,3 +653,167 @@ async fn a_replica_serves_what_the_store_holds_and_follows_it_while_running() {
     assert!(compiles(&mut client, "property/motor/v2").await);
     let _ = std::fs::remove_dir_all(root);
 }
+
+/// The arguments of the service container in the shipped Kubernetes manifest,
+/// and the manifest's text. The list is one quoted string a line.
+fn deployment() -> (Vec<String>, String) {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../deploy/kubernetes.yaml");
+    let text = std::fs::read_to_string(path).expect("the deployment manifest is in the repository");
+    let lines = text
+        .lines()
+        .skip_while(|line| line.trim() != "args:")
+        .skip(1);
+    let arguments = lines
+        .map_while(|line| line.trim().strip_prefix("- \""))
+        .map(|rest| {
+            rest.strip_suffix('"')
+                .expect("a quoted argument")
+                .to_owned()
+        })
+        .collect();
+    (arguments, text)
+}
+
+// scenario: B1-API-004
+#[cfg(unix)]
+#[tokio::test(flavor = "current_thread")]
+async fn the_shipped_deployment_starts_replicas_that_serve_and_answer_the_probe() {
+    use std::io::{Read, Write};
+    let (arguments, manifest) = deployment();
+    // Three replicas, replaced one at a time, never fewer than two.
+    for stated in [
+        "  replicas: 3\n",
+        "      maxUnavailable: 1\n",
+        "  minAvailable: 2\n",
+        "kind: PodDisruptionBudget\n",
+        "kind: Service\n",
+    ] {
+        assert!(manifest.contains(stated), "{stated}");
+    }
+    // What the container is given: its secrets and the store, read-only, as
+    // a user that is not root. A version is named, never `latest`.
+    for stated in [
+        "runAsNonRoot: true",
+        "readOnlyRootFilesystem: true",
+        "image: ghcr.io/jimmylu/pp-cube-engine:",
+    ] {
+        assert!(manifest.contains(stated), "{stated}");
+    }
+    assert!(!manifest.contains(":latest"));
+    let image = manifest
+        .lines()
+        .find_map(|line| {
+            line.trim()
+                .strip_prefix("image: ghcr.io/jimmylu/pp-cube-engine:")
+        })
+        .unwrap();
+    assert_eq!(
+        image,
+        env!("CARGO_PKG_VERSION"),
+        "the manifest names this version"
+    );
+    // The probe asks the metrics port, and the pod outlives the drain.
+    let value = |flag: &str| {
+        let at = arguments
+            .iter()
+            .position(|a| a == flag)
+            .unwrap_or_else(|| panic!("{flag}"));
+        arguments[at + 1].clone()
+    };
+    assert_eq!(value("--metrics-listen"), "0.0.0.0:9100");
+    assert!(manifest.contains("path: /metrics") && manifest.contains("containerPort: 9100"));
+    let drain: u64 = value("--drain-seconds").parse().unwrap();
+    let grace: u64 = manifest
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("terminationGracePeriodSeconds: "))
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!(grace > drain, "{grace} > {drain}");
+
+    // The same arguments start the service. Only where they point changes: the
+    // mounted files are made here, and the ports are chosen by the system.
+    let (cert, key) = certificate();
+    let (read, admin, store) = (scratch("read"), scratch("admin"), scratch("models"));
+    std::fs::write(&read, READ).unwrap();
+    std::fs::write(&admin, ADMIN).unwrap();
+    let version = store
+        .join("property")
+        .join("motor")
+        .join("models")
+        .join("v1");
+    std::fs::create_dir_all(version.join("cubes")).unwrap();
+    std::fs::write(
+        version.join("cubes").join("sales.yml"),
+        "cubes:\n- name: sales\n  data_source: warehouse\n  sql_table: dw.sales\n  measures:\n  - {name: amount, type: sum, sql: '{CUBE}.amount'}\n",
+    )
+    .unwrap();
+    std::fs::write(version.join("manifest.json"), r#"{"schema": 1}"#).unwrap();
+    let placed: Vec<String> = arguments
+        .iter()
+        .map(|argument| match argument.as_str() {
+            "/etc/pp-cube-engine/tls.crt" => cert.display().to_string(),
+            "/etc/pp-cube-engine/tls.key" => key.display().to_string(),
+            "/etc/pp-cube-engine/read.token" => read.display().to_string(),
+            "/etc/pp-cube-engine/admin.token" => admin.display().to_string(),
+            "/var/lib/pp-cube-engine/models" => store.display().to_string(),
+            "0.0.0.0:50051" => "0.0.0.0:0".to_owned(),
+            "0.0.0.0:9100" => "127.0.0.1:0".to_owned(),
+            other => other.to_owned(),
+        })
+        .collect();
+    // Every path of the manifest was one this test knows and made.
+    assert!(!placed
+        .iter()
+        .any(|a| a.starts_with("/etc/pp-cube-engine") || a.starts_with("/var/lib/pp-cube-engine")));
+    let mut child = Process(
+        command()
+            .args(&placed)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let stdout = child.0.stdout.take().unwrap();
+    let (send, receive) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        for _ in 0..2 {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            let _ = send.send(line);
+        }
+    });
+    let announced = |prefix: &str| {
+        let line = receive
+            .recv_timeout(Duration::from_secs(15))
+            .expect("the service starts with the manifest's arguments");
+        let address = line.trim().strip_prefix(prefix).unwrap().to_owned();
+        address.rsplit(':').next().unwrap().to_owned()
+    };
+    let _port = announced("listening ");
+    let metrics_port = announced("metrics ");
+    // What the readiness probe asks, and what it shows: the store's version is served.
+    let probe = tokio::task::spawn_blocking(move || {
+        let mut stream = std::net::TcpStream::connect(format!("127.0.0.1:{metrics_port}")).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        write!(stream, "GET /metrics HTTP/1.1\r\nhost: localhost\r\n\r\n").unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        response
+    })
+    .await
+    .unwrap();
+    assert!(probe.starts_with("HTTP/1.1 200 OK\r\n"), "{probe}");
+    assert!(probe.contains("ppcube_model_versions 1\n"), "{probe}");
+    // Kubernetes stops a pod with SIGTERM; the replica drains and exits cleanly.
+    let pid = child.0.id().to_string();
+    assert!(Command::new("kill")
+        .args(["-TERM", &pid])
+        .status()
+        .unwrap()
+        .success());
+    assert!(child.0.wait().unwrap().success());
+}
