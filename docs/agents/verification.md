@@ -36,6 +36,12 @@ triggered, remote `presto-smoke`, `doris-smoke`, `druid-smoke` and `cube-core`. 
 no review; see [delivery.md](delivery.md). T0 remains Docker-free.
 Results from T3 are recorded publicly only as pass or fail per scenario.
 
+## Release
+
+A tag `v<version>` on main publishes the image and the GitHub release; see
+[release.md](release.md). A pull request that changes the release workflow or
+`scripts/release.sh` rehearses it without publishing.
+
 ## Tools
 
 The Rust toolchain is pinned by `rust-toolchain.toml` and installs itself through `rustup`. `ci` mode also needs `cargo-deny`, `typos`, `taplo`, Python 3 for controller regression tests and, once `openspec/` exists, the `openspec` CLI at the version named in `scripts/check.sh`. `actionlint` and `gitleaks` run when installed and are reported as skipped when not. Versions used in CI are in `.github/workflows/t0.yml`.

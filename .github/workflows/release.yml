@@ -1,0 +1,215 @@
+# The release: a tag v<version> on main publishes the service image to this
+# repository's own container registry, for amd64 and arm64, with its SBOM and
+# provenance, signed; and creates the GitHub release from the changelog.
+#
+# Safety properties this file must keep:
+#   - Only a pushed tag publishes. A pull request that changes this file or
+#     scripts/release.sh runs the same steps as a rehearsal: it builds both
+#     images and publishes, signs and releases nothing.
+#   - The tag must be v<workspace version>, its changelog section must exist and
+#     the tagged commit must be on main (scripts/release.sh check).
+#   - The image name is derived from the repository; nothing is hard-coded.
+#   - Jobs that do not publish have read-only permissions. No third-party action
+#     runs with write permissions.
+# See docs/agents/release.md.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - 'scripts/release.sh'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      image: ${{ steps.plan.outputs.image }}
+      publish: ${{ steps.plan.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Decide what this run is
+        id: plan
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version="$(scripts/release.sh version)"
+          if [[ "$EVENT" == push && "$REF_TYPE" == tag ]]; then
+            git fetch --quiet origin main:refs/remotes/origin/main
+            scripts/release.sh check "$REF_NAME"
+            publish=true
+          else
+            # A rehearsal: the checks that do not need a tag.
+            RELEASE_SKIP_MAIN_CHECK=1 scripts/release.sh check "v$version" || \
+              echo "rehearsal: version $version has no changelog section yet" >> "$GITHUB_STEP_SUMMARY"
+            publish=false
+          fi
+          {
+            echo "version=$version"
+            echo "image=$(scripts/release.sh image "$REPOSITORY")"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+          echo "version $version, publish: $publish" >> "$GITHUB_STEP_SUMMARY"
+
+  image-amd64:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the pinned upstream
+        run: scripts/vendor-sync.sh
+
+      - name: Build the image
+        id: build
+        shell: bash
+        env:
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PUBLISH: ${{ needs.prepare.outputs.publish }}
+          TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          docker buildx create --use >/dev/null
+          if [[ "$PUBLISH" == true ]]; then
+            echo "$TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
+            digest="$(scripts/release.sh build "$IMAGE" "$VERSION" amd64 "$GITHUB_SHA" push)"
+          else
+            digest="$(scripts/release.sh build "$IMAGE" "$VERSION" amd64 "$GITHUB_SHA")"
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "amd64 $digest" >> "$GITHUB_STEP_SUMMARY"
+
+  image-arm64:
+    needs: prepare
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the pinned upstream
+        run: scripts/vendor-sync.sh
+
+      - name: Build the image
+        id: build
+        shell: bash
+        env:
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PUBLISH: ${{ needs.prepare.outputs.publish }}
+          TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          docker buildx create --use >/dev/null
+          if [[ "$PUBLISH" == true ]]; then
+            echo "$TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
+            digest="$(scripts/release.sh build "$IMAGE" "$VERSION" arm64 "$GITHUB_SHA" push)"
+          else
+            digest="$(scripts/release.sh build "$IMAGE" "$VERSION" arm64 "$GITHUB_SHA")"
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "arm64 $digest" >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    needs: [prepare, image-amd64, image-arm64]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Publish the image of both architectures under the version
+        id: manifest
+        shell: bash
+        env:
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          AMD64: ${{ needs.image-amd64.outputs.digest }}
+          ARM64: ${{ needs.image-arm64.outputs.digest }}
+          TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          echo "$TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
+          # A version is published once. A tag that exists is never moved.
+          if docker buildx imagetools inspect "$IMAGE:$VERSION" >/dev/null 2>&1; then
+            echo "release: FAILED — $VERSION is already published" >&2
+            exit 1
+          fi
+          docker buildx imagetools create --tag "$IMAGE:$VERSION" "$IMAGE@$AMD64" "$IMAGE@$ARM64"
+          digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' \
+            | python3 -c 'import json, sys; print(json.load(sys.stdin)["digest"])')"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "$IMAGE:$VERSION@$digest" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Sign the image's provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ needs.prepare.outputs.image }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true
+
+      - name: Create the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          DIGEST: ${{ steps.manifest.outputs.digest }}
+          TAG: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          fence='```'
+          {
+            scripts/release.sh notes "$VERSION"
+            printf '\n## Image\n\n%s\n%s:%s@%s\n%s\n\n' "${fence}text" "$IMAGE" "$VERSION" "$DIGEST" "$fence"
+            printf 'For linux/amd64 and linux/arm64, with its SBOM and provenance. Verify before use:\n\n'
+            printf '%s\ngh attestation verify oci://%s@%s --repo %s\n%s\n' "${fence}sh" "$IMAGE" "$DIGEST" "$REPOSITORY" "$fence"
+          } > /tmp/notes.md
+          gh release create "$TAG" --repo "$REPOSITORY" --verify-tag --title "$TAG" --notes-file /tmp/notes.md
