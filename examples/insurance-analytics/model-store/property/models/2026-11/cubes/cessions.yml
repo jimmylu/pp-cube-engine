@@ -1,0 +1,12 @@
+cubes:
+  # Premium ceded to reinsurers, per policy and treaty.
+  - name: cessions
+    sql_table: dw.ins_cession
+    data_source: warehouse
+    joins:
+      - { name: policies, relationship: many_to_one, sql: "{CUBE}.policy_id = {policies.policy_id}" }
+    dimensions:
+      - { name: cession_id, sql: "{CUBE}.cession_id", type: number, primary_key: true }
+      - { name: treaty_cd, sql: "{CUBE}.treaty_cd", type: string }
+    measures:
+      - { name: ceded_premium, type: sum, sql: "{CUBE}.ceded_premium", format: currency }

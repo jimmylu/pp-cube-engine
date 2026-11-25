@@ -1,0 +1,26 @@
+cubes:
+  - name: claims
+    sql_table: dw.ins_claim
+    data_source: warehouse
+    joins:
+      - { name: policies, relationship: many_to_one, sql: "{CUBE}.policy_id = {policies.policy_id}" }
+      - { name: claim_reserves, relationship: one_to_one, sql: "{CUBE}.claim_id = {claim_reserves.claim_id}" }
+    dimensions:
+      - { name: claim_id, sql: "{CUBE}.claim_id", type: number, primary_key: true }
+      - { name: claim_no, sql: "{CUBE}.claim_no", type: string }
+      - { name: cause_cd, sql: "{CUBE}.cause_cd", type: string }
+      - { name: status, sql: "{CUBE}.status", type: string }
+      - { name: loss_at, sql: "{CUBE}.loss_at", type: time }
+      - { name: reported_at, sql: "{CUBE}.reported_at", type: time }
+    measures:
+      - { name: claim_count, type: count }
+      - name: open_count
+        type: count
+        filters:
+          - sql: "{CUBE}.status = 'OPEN'"
+      - { name: avg_report_lag_days, type: avg, sql: "{CUBE}.report_lag_days" }
+      - { name: max_report_lag_days, type: max, sql: "{CUBE}.report_lag_days" }
+      # Reported claims with their reserve: one row each, so one SELECT.
+      - { name: avg_outstanding, type: number, sql: "{claim_reserves.outstanding} / NULLIF({claim_count}, 0)" }
+    segments:
+      - { name: large_loss, sql: "{CUBE}.is_large_loss = 1" }

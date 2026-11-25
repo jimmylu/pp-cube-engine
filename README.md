@@ -16,7 +16,7 @@ compiles for the B0 baseline and is not yet executed in the checks; production
 packaging is not built.
 Implemented behaviour is recorded in [openspec/specs](openspec/specs).
 
-Start with [the guide](docs/guide.md); latency figures are in [performance](docs/performance.md), and running it as replicas in [deploying and upgrading](docs/deployment.md).
+Start with [the guide](docs/guide.md); latency figures are in [performance](docs/performance.md), and running it as replicas in [deploying and upgrading](docs/deployment.md). Java callers start from [the Java client](clients/java) and [a runnable example](examples/insurance-analytics).
 
 ## Approach
 

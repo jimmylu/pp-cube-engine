@@ -1,0 +1,8 @@
+cubes:
+  - name: products
+    sql_table: dw.ins_product
+    data_source: warehouse
+    dimensions:
+      - { name: product_cd, sql: "{CUBE}.product_cd", type: string, primary_key: true }
+      - { name: product_name, sql: "{CUBE}.product_name", type: string }
+      - { name: line_of_business, sql: "{CUBE}.line_of_business", type: string }

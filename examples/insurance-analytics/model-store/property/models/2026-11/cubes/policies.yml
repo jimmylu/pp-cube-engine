@@ -1,0 +1,45 @@
+cubes:
+  # One row per policy term. A renewal is a new row that names the term it renews.
+  - name: policies
+    sql_table: dw.ins_policy
+    data_source: warehouse
+    joins:
+      - { name: products, relationship: many_to_one, sql: "{CUBE}.product_cd = {products.product_cd}" }
+      - { name: channels, relationship: many_to_one, sql: "{CUBE}.channel_cd = {channels.channel_cd}" }
+      - { name: branches, relationship: many_to_one, sql: "{CUBE}.branch_cd = {branches.branch_cd}" }
+    dimensions:
+      - { name: policy_id, sql: "{CUBE}.policy_id", type: number, primary_key: true }
+      - { name: policy_no, sql: "{CUBE}.policy_no", type: string }
+      - { name: insured_type, sql: "{CUBE}.insured_type", type: string }
+      - { name: is_renewal, sql: "{CUBE}.renewal_of IS NOT NULL", type: boolean }
+      - name: issued_at
+        sql: "{CUBE}.issued_at"
+        type: time
+        granularities:
+          # The underwriting year starts in April.
+          - { name: underwriting_year, interval: 1 year, offset: 3 month }
+    measures:
+      - { name: policy_count, type: count }
+      - { name: written_premium, type: sum, sql: "{CUBE}.written_premium", format: currency }
+      - { name: sum_insured, type: sum, sql: "{CUBE}.sum_insured", format: currency }
+      - { name: avg_premium, type: avg, sql: "{CUBE}.written_premium" }
+      - { name: insured_count, type: count_distinct, sql: "{CUBE}.insured_id" }
+      - { name: insured_count_approx, type: count_distinct_approx, sql: "{CUBE}.insured_id" }
+      - name: renewed_count
+        type: count
+        filters:
+          - sql: "{CUBE}.renewal_of IS NOT NULL"
+      - { name: renewal_share, type: number, sql: "CAST({renewed_count} AS DOUBLE) / NULLIF({policy_count}, 0)", format: percent }
+      # Premium rate per thousand of sum insured.
+      - { name: rate_per_mille, type: number, sql: "1000 * {written_premium} / NULLIF({sum_insured}, 0)" }
+      - { name: written_premium_ytd, type: sum, sql: "{CUBE}.written_premium", rolling_window: { type: to_date, granularity: year } }
+      - { name: written_premium_qtd, type: sum, sql: "{CUBE}.written_premium", rolling_window: { type: to_date, granularity: quarter } }
+      - name: written_premium_prior_year
+        type: number
+        sql: "{written_premium}"
+        multi_stage: true
+        time_shift:
+          - { time_dimension: issued_at, interval: 1 year, type: prior }
+      - { name: written_premium_growth, type: number, sql: "({written_premium} - {written_premium_prior_year}) / NULLIF({written_premium_prior_year}, 0)", multi_stage: true, format: percent }
+    segments:
+      - { name: in_force, sql: "{CUBE}.status = 'IN_FORCE'" }

@@ -1,0 +1,8 @@
+cubes:
+  - name: branches
+    sql_table: dw.ins_branch
+    data_source: warehouse
+    dimensions:
+      - { name: branch_cd, sql: "{CUBE}.branch_cd", type: string, primary_key: true }
+      - { name: branch_name, sql: "{CUBE}.branch_name", type: string }
+      - { name: region_name, sql: "{CUBE}.region_name", type: string }

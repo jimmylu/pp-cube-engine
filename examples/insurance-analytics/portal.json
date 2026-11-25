@@ -1,0 +1,873 @@
+{
+  "about": "The dashboards of an insurer's analytics portal. Each user sees their questions; `rowFilters` are the row-level rules the portal derives from who the user is and passes to the kernel as security filters. `expect` is the answer worked out by hand from warehouse/insurance.sql, and the example checks it. A question with `refused` is one the kernel answers without SQL; `kind` is why, and `then` is what the portal does about it.",
+  "modelVersion": "property/2026-11",
+  "dialect": "presto",
+  "timezone": "UTC",
+  "users": [
+    {
+      "name": "chief.underwriter",
+      "title": "Chief underwriter, head office",
+      "rowFilters": [],
+      "questions": [
+        {
+          "name": "uw_renewal_share_by_branch",
+          "title": "Renewal share by branch",
+          "query": {
+            "dimensions": [
+              "branches.branch_name"
+            ],
+            "measures": [
+              "policies.renewal_share",
+              "policies.renewed_count",
+              "policies.policy_count"
+            ],
+            "order": [
+              [
+                "branches.branch_name",
+                "asc"
+              ]
+            ]
+          },
+          "expect": {
+            "columns": [
+              "branches__branch_name",
+              "policies__renewal_share",
+              "policies__renewed_count",
+              "policies__policy_count"
+            ],
+            "rows": [
+              [
+                "East Branch",
+                0.5,
+                2,
+                4
+              ],
+              [
+                "Lake Branch",
+                0.0,
+                0,
+                3
+              ],
+              [
+                "North Branch",
+                0.5,
+                1,
+                2
+              ]
+            ]
+          }
+        },
+        {
+          "name": "uw_branches_second_page",
+          "title": "Policies by branch, the page after the first branch",
+          "query": {
+            "measures": [
+              "policies.policy_count"
+            ],
+            "dimensions": [
+              "branches.branch_name"
+            ],
+            "order": [
+              [
+                "branches.branch_name",
+                "asc"
+              ]
+            ],
+            "limit": 2,
+            "offset": 1
+          },
+          "expect": {
+            "columns": [
+              "branches__branch_name",
+              "policies__policy_count"
+            ],
+            "rows": [
+              [
+                "Lake Branch",
+                3
+              ],
+              [
+                "North Branch",
+                2
+              ]
+            ]
+          }
+        },
+        {
+          "name": "uw_premium_ytd_by_month",
+          "title": "Written premium by month and year to date, first half of 2026",
+          "query": {
+            "measures": [
+              "policies.written_premium",
+              "policies.written_premium_ytd"
+            ],
+            "order": [
+              [
+                "policies.issued_at",
+                "asc"
+              ]
+            ],
+            "timeDimensions": [
+              {
+                "dateRange": [
+                  "2026-01-01",
+                  "2026-06-30"
+                ],
+                "dimension": "policies.issued_at",
+                "granularity": "month"
+              }
+            ]
+          },
+          "expect": {
+            "columns": [
+              "policies__issued_at_month",
+              "policies__written_premium",
+              "policies__written_premium_ytd"
+            ],
+            "rows": [
+              [
+                {
+                  "timestamp": "2026-01-01T00:00:00"
+                },
+                800,
+                800
+              ],
+              [
+                {
+                  "timestamp": "2026-02-01T00:00:00"
+                },
+                2150,
+                2950
+              ],
+              [
+                {
+                  "timestamp": "2026-03-01T00:00:00"
+                },
+                5500,
+                8450
+              ],
+              [
+                {
+                  "timestamp": "2026-04-01T00:00:00"
+                },
+                2400,
+                10850
+              ],
+              [
+                {
+                  "timestamp": "2026-05-01T00:00:00"
+                },
+                950,
+                11800
+              ],
+              [
+                {
+                  "timestamp": "2026-06-01T00:00:00"
+                },
+                null,
+                11800
+              ]
+            ]
+          }
+        },
+        {
+          "name": "uw_by_underwriting_year",
+          "title": "Written premium by underwriting year (from April)",
+          "query": {
+            "measures": [
+              "policies.written_premium"
+            ],
+            "order": [
+              [
+                "policies.issued_at",
+                "asc"
+              ]
+            ],
+            "timeDimensions": [
+              {
+                "dateRange": [
+                  "2025-01-01",
+                  "2026-12-31"
+                ],
+                "dimension": "policies.issued_at",
+                "granularity": "underwriting_year"
+              }
+            ]
+          },
+          "expect": {
+            "columns": [
+              "policies__issued_at_underwriting_year",
+              "policies__written_premium"
+            ],
+            "rows": [
+              [
+                {
+                  "timestamp": "2024-04-01T00:00:00"
+                },
+                6200
+              ],
+              [
+                {
+                  "timestamp": "2025-04-01T00:00:00"
+                },
+                9350
+              ],
+              [
+                {
+                  "timestamp": "2026-04-01T00:00:00"
+                },
+                3350
+              ]
+            ]
+          }
+        },
+        {
+          "name": "uw_policy_listing",
+          "title": "Renewed policies, one row each",
+          "query": {
+            "dimensions": [
+              "policies.policy_no",
+              "products.product_name",
+              "branches.branch_name"
+            ],
+            "filters": [
+              {
+                "member": "policies.is_renewal",
+                "operator": "equals",
+                "values": [
+                  "true"
+                ]
+              }
+            ],
+            "limit": 50,
+            "measures": [
+              "policies.written_premium"
+            ],
+            "order": [
+              [
+                "policies.policy_no",
+                "asc"
+              ]
+            ],
+            "ungrouped": true
+          },
+          "expect": {
+            "columns": [
+              "policies__policy_no",
+              "products__product_name",
+              "branches__branch_name",
+              "policies__written_premium"
+            ],
+            "rows": [
+              [
+                "POL-004",
+                "Motor Own Damage",
+                "East Branch",
+                1300
+              ],
+              [
+                "POL-005",
+                "Home",
+                "North Branch",
+                950
+              ],
+              [
+                "POL-006",
+                "Public Liability",
+                "East Branch",
+                5500
+              ]
+            ]
+          }
+        },
+        {
+          "name": "uw_premium_ytd_by_quarter",
+          "title": "Written premium year to date, by quarter",
+          "query": {
+            "measures": [
+              "policies.written_premium_ytd"
+            ],
+            "timeDimensions": [
+              {
+                "dimension": "policies.issued_at",
+                "granularity": "quarter",
+                "dateRange": [
+                  "2026-01-01",
+                  "2026-12-31"
+                ]
+              }
+            ]
+          },
+          "refused": {
+            "kind": "UNSUPPORTED",
+            "then": "This warehouse has no interval of a quarter. The portal offers the same by month, as above; it does not retry."
+          }
+        }
+      ]
+    },
+    {
+      "name": "claims.manager",
+      "title": "Claims manager, head office",
+      "rowFilters": [],
+      "questions": [
+        {
+          "name": "cl_counts_by_cause",
+          "title": "Claims by cause: count, open, report lag",
+          "query": {
+            "dimensions": [
+              "claims.cause_cd"
+            ],
+            "measures": [
+              "claims.claim_count",
+              "claims.open_count",
+              "claims.avg_report_lag_days",
+              "claims.max_report_lag_days"
+            ],
+            "order": [
+              [
+                "claims.cause_cd",
+                "asc"
+              ]
+            ]
+          },
+          "expect": {
+            "columns": [
+              "claims__cause_cd",
+              "claims__claim_count",
+              "claims__open_count",
+              "claims__avg_report_lag_days",
+              "claims__max_report_lag_days"
+            ],
+            "rows": [
+              [
+                "COLLISION",
+                3,
+                1,
+                1.0,
+                2
+              ],
+              [
+                "INJURY",
+                1,
+                1,
+                15.0,
+                15
+              ],
+              [
+                "THEFT",
+                1,
+                1,
+                3.0,
+                3
+              ],
+              [
+                "WATER",
+                1,
+                1,
+                7.0,
+                7
+              ]
+            ]
+          }
+        },
+        {
+          "name": "cl_paid_and_outstanding_by_line",
+          "title": "Paid and outstanding by line of business",
+          "query": {
+            "dimensions": [
+              "products.line_of_business"
+            ],
+            "measures": [
+              "claim_payments.paid_amount",
+              "claim_reserves.outstanding"
+            ],
+            "order": [
+              [
+                "products.line_of_business",
+                "asc"
+              ]
+            ]
+          },
+          "expect": {
+            "columns": [
+              "products__line_of_business",
+              "claim_payments__paid_amount",
+              "claim_reserves__outstanding"
+            ],
+            "rows": [
+              [
+                "LIABILITY",
+                3400,
+                8000
+              ],
+              [
+                "MOTOR",
+                5500,
+                15000
+              ],
+              [
+                "PROPERTY",
+                300,
+                600
+              ]
+            ]
+          }
+        },
+        {
+          "name": "cl_development_triangle",
+          "title": "Paid by loss year and payment year",
+          "query": {
+            "measures": [
+              "claim_payments.paid_amount"
+            ],
+            "order": [
+              [
+                "claims.loss_at",
+                "asc"
+              ],
+              [
+                "claim_payments.paid_at",
+                "asc"
+              ]
+            ],
+            "timeDimensions": [
+              {
+                "dimension": "claims.loss_at",
+                "granularity": "year"
+              },
+              {
+                "dimension": "claim_payments.paid_at",
+                "granularity": "year"
+              }
+            ]
+          },
+          "expect": {
+            "columns": [
+              "claims__loss_at_year",
+              "claim_payments__paid_at_year",
+              "claim_payments__paid_amount"
+            ],
+            "rows": [
+              [
+                {
+                  "timestamp": "2025-01-01T00:00:00"
+                },
+                {
+                  "timestamp": "2025-01-01T00:00:00"
+                },
+                750
+              ],
+              [
+                {
+                  "timestamp": "2025-01-01T00:00:00"
+                },
+                {
+                  "timestamp": "2026-01-01T00:00:00"
+                },
+                3400
+              ],
+              [
+                {
+                  "timestamp": "2026-01-01T00:00:00"
+                },
+                {
+                  "timestamp": "2026-01-01T00:00:00"
+                },
+                5050
+              ]
+            ]
+          }
+        },
+        {
+          "name": "v_claims_by_line_cause",
+          "title": "Payments of 2026 by line and cause",
+          "query": {
+            "dimensions": [
+              "claims_overview.line_of_business",
+              "claims_overview.cause_cd"
+            ],
+            "measures": [
+              "claims_overview.paid_amount",
+              "claims_overview.claim_count",
+              "claims_overview.paid_per_claim"
+            ],
+            "order": [
+              [
+                "claims_overview.line_of_business",
+                "asc"
+              ],
+              [
+                "claims_overview.cause_cd",
+                "asc"
+              ]
+            ],
+            "timeDimensions": [
+              {
+                "dateRange": [
+                  "2026-01-01",
+                  "2026-12-31"
+                ],
+                "dimension": "claims_overview.paid_at"
+              }
+            ]
+          },
+          "expect": {
+            "columns": [
+              "claims_overview__line_of_business",
+              "claims_overview__cause_cd",
+              "claims_overview__paid_amount",
+              "claims_overview__claim_count",
+              "claims_overview__paid_per_claim"
+            ],
+            "rows": [
+              [
+                "LIABILITY",
+                "INJURY",
+                3400,
+                1,
+                3400.0
+              ],
+              [
+                "MOTOR",
+                "COLLISION",
+                500,
+                1,
+                500.0
+              ],
+              [
+                "MOTOR",
+                "THEFT",
+                4250,
+                1,
+                4250.0
+              ],
+              [
+                "PROPERTY",
+                "WATER",
+                300,
+                1,
+                300.0
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "finance.controller",
+      "title": "Financial controller, head office",
+      "rowFilters": [],
+      "questions": [
+        {
+          "name": "x_totals",
+          "title": "Written, earned, paid, outstanding and ceded: the totals",
+          "query": {
+            "measures": [
+              "policies.written_premium",
+              "earned_premiums.earned_premium",
+              "claim_payments.paid_amount",
+              "claim_reserves.outstanding",
+              "cessions.ceded_premium"
+            ]
+          },
+          "expect": {
+            "columns": [
+              "policies__written_premium",
+              "earned_premiums__earned_premium",
+              "claim_payments__paid_amount",
+              "claim_reserves__outstanding",
+              "cessions__ceded_premium"
+            ],
+            "rows": [
+              [
+                18900,
+                2380,
+                9200,
+                24500,
+                4560
+              ]
+            ]
+          }
+        },
+        {
+          "name": "ep_written_vs_earned_by_line",
+          "title": "Written against earned premium by line",
+          "query": {
+            "dimensions": [
+              "products.line_of_business"
+            ],
+            "measures": [
+              "policies.written_premium",
+              "earned_premiums.earned_premium"
+            ],
+            "order": [
+              [
+                "products.line_of_business",
+                "asc"
+              ]
+            ]
+          },
+          "expect": {
+            "columns": [
+              "products__line_of_business",
+              "policies__written_premium",
+              "earned_premiums__earned_premium"
+            ],
+            "rows": [
+              [
+                "LIABILITY",
+                10500,
+                1340
+              ],
+              [
+                "MOTOR",
+                5700,
+                960
+              ],
+              [
+                "PROPERTY",
+                2700,
+                80
+              ]
+            ]
+          }
+        },
+        {
+          "name": "ep_rolling_12m_by_month",
+          "title": "Earned premium over the last twelve months, by month",
+          "query": {
+            "measures": [
+              "earned_premiums.earned_premium_12m"
+            ],
+            "order": [
+              [
+                "earned_premiums.earned_month",
+                "asc"
+              ]
+            ],
+            "timeDimensions": [
+              {
+                "dateRange": [
+                  "2026-01-01",
+                  "2026-06-30"
+                ],
+                "dimension": "earned_premiums.earned_month",
+                "granularity": "month"
+              }
+            ]
+          },
+          "expect": {
+            "columns": [
+              "earned_premiums__earned_month_month",
+              "earned_premiums__earned_premium_12m"
+            ],
+            "rows": [
+              [
+                {
+                  "timestamp": "2026-01-01T00:00:00"
+                },
+                620
+              ],
+              [
+                {
+                  "timestamp": "2026-02-01T00:00:00"
+                },
+                690
+              ],
+              [
+                {
+                  "timestamp": "2026-03-01T00:00:00"
+                },
+                870
+              ],
+              [
+                {
+                  "timestamp": "2026-04-01T00:00:00"
+                },
+                1440
+              ],
+              [
+                {
+                  "timestamp": "2026-05-01T00:00:00"
+                },
+                2100
+              ],
+              [
+                {
+                  "timestamp": "2026-06-01T00:00:00"
+                },
+                2380
+              ]
+            ]
+          }
+        },
+        {
+          "name": "x_premium_paid_by_line",
+          "title": "Earned premium, paid claims and claims with a payment, by line",
+          "query": {
+            "dimensions": [
+              "products.line_of_business"
+            ],
+            "measures": [
+              "earned_premiums.earned_premium",
+              "claim_payments.paid_amount",
+              "claims.claim_count"
+            ],
+            "order": [
+              [
+                "products.line_of_business",
+                "asc"
+              ]
+            ]
+          },
+          "expect": {
+            "columns": [
+              "products__line_of_business",
+              "earned_premiums__earned_premium",
+              "claim_payments__paid_amount",
+              "claims__claim_count"
+            ],
+            "rows": [
+              [
+                "LIABILITY",
+                1340,
+                3400,
+                1
+              ],
+              [
+                "MOTOR",
+                960,
+                5500,
+                4
+              ],
+              [
+                "PROPERTY",
+                80,
+                300,
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "name": "ep_loss_ratio_by_line",
+          "title": "Paid loss ratio by line, as one measure",
+          "query": {
+            "measures": [
+              "earned_premiums.paid_loss_ratio"
+            ],
+            "dimensions": [
+              "products.line_of_business"
+            ]
+          },
+          "refused": {
+            "kind": "QUERY",
+            "then": "The portal shows the reason to whoever built the question. A ratio of two facts is asked as its two measures, as in the question above, and divided in the portal."
+          }
+        }
+      ]
+    },
+    {
+      "name": "east.manager",
+      "title": "Regional manager, East",
+      "rowFilters": [
+        {
+          "member": "branches.region_name",
+          "operator": "equals",
+          "values": [
+            "East"
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "name": "x_premium_paid_by_line",
+          "title": "Earned premium, paid claims and claims with a payment, by line: East only",
+          "query": {
+            "dimensions": [
+              "products.line_of_business"
+            ],
+            "measures": [
+              "earned_premiums.earned_premium",
+              "claim_payments.paid_amount",
+              "claims.claim_count"
+            ],
+            "order": [
+              [
+                "products.line_of_business",
+                "asc"
+              ]
+            ]
+          },
+          "expect": {
+            "columns": [
+              "products__line_of_business",
+              "earned_premiums__earned_premium",
+              "claim_payments__paid_amount",
+              "claims__claim_count"
+            ],
+            "rows": [
+              [
+                "LIABILITY",
+                1340,
+                3400,
+                1
+              ],
+              [
+                "MOTOR",
+                420,
+                5500,
+                3
+              ]
+            ]
+          }
+        },
+        {
+          "name": "x_premium_paid_ceded_by_region",
+          "title": "Motor: written, ceded and paid by region. Only East is visible",
+          "query": {
+            "dimensions": [
+              "branches.region_name"
+            ],
+            "filters": [
+              {
+                "member": "products.line_of_business",
+                "operator": "equals",
+                "values": [
+                  "MOTOR"
+                ]
+              }
+            ],
+            "measures": [
+              "policies.written_premium",
+              "cessions.ceded_premium",
+              "claim_payments.paid_amount"
+            ],
+            "order": [
+              [
+                "branches.region_name",
+                "asc"
+              ]
+            ]
+          },
+          "expect": {
+            "columns": [
+              "branches__region_name",
+              "policies__written_premium",
+              "cessions__ceded_premium",
+              "claim_payments__paid_amount"
+            ],
+            "rows": [
+              [
+                "East",
+                2500,
+                390,
+                5500
+              ]
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

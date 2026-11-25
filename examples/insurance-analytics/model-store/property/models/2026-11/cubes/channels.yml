@@ -1,0 +1,7 @@
+cubes:
+  - name: channels
+    sql_table: dw.ins_channel
+    data_source: warehouse
+    dimensions:
+      - { name: channel_cd, sql: "{CUBE}.channel_cd", type: string, primary_key: true }
+      - { name: channel_name, sql: "{CUBE}.channel_name", type: string }
