@@ -365,9 +365,9 @@ BUILD_TRIGGER_PATHS = ('Dockerfile', '.dockerignore', 'Cargo.toml', 'Cargo.lock'
                        '.github/workflows/build.yml')
 
 
-# The Java client and the example that runs it. Keep both tuples in step with
+# The Java and Python clients and the example that runs them. Keep both tuples in step with
 # .github/workflows/clients.yml.
-CLIENT_CHECKS = ('java-client', 'java-example')
+CLIENT_CHECKS = ('java-client', 'java-example', 'python-client', 'python-example')
 CLIENT_TRIGGER_PATHS = ('clients/**', 'examples/**', 'crates/**', 'templates/**', 'deploy/**',
                         'Dockerfile', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml',
                         'scripts/check.sh', 'scripts/vendor-sync.sh',

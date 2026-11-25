@@ -12,6 +12,8 @@
 #   scripts/check.sh image              build the service image and verify a container
 #   scripts/check.sh java-client        build the Java client from the contract and run its tests
 #   scripts/check.sh java-example       run examples/insurance-analytics end to end, on containers
+#   scripts/check.sh python-client      build the Python client from the contract and run its tests
+#   scripts/check.sh python-example     the same example with its Python back end
 #
 # BASE_REF (default origin/main) is the branch a change is compared against.
 
@@ -273,24 +275,48 @@ case "$MODE" in
     echo "check java-client: FAILED — on Java $java_version" >&2
     exit 1
     ;;
-  java-example)
+  java-example|python-example)
     # The example reports its own questions; its last lines are the evidence.
     log="$(mktemp)"
-    if examples/insurance-analytics/run.sh > "$log" 2>&1; then
+    if examples/insurance-analytics/run.sh "${MODE%-example}" > "$log" 2>&1; then
       grep -E '^[0-9]+ questions asked' "$log" | tail -1
       rm -f "$log"
-      echo "check java-example: PASSED — examples/insurance-analytics on real containers"
+      echo "check $MODE: PASSED — examples/insurance-analytics on real containers"
       exit 0
     fi
     # The example's output holds no secret: its rows are the fixture's and the
     # tokens are never printed.
     tail -40 "$log" >&2
     rm -f "$log"
-    echo "check java-example: FAILED" >&2
+    echo "check $MODE: FAILED" >&2
+    exit 1
+    ;;
+  python-client)
+    # The interpreter is the caller's: PYTHON decides which Python the client is proved on.
+    python="${PYTHON:-python3}"
+    command -v "$python" >/dev/null || { echo "check python-client: NOT RUN — $python is needed" >&2; exit 2; }
+    python_version="$("$python" -c 'import platform; print(platform.python_version())')"
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+    log="$work/log"
+    # As a caller installs it: an environment of its own, the package built from
+    # the contract of this checkout, then its tests against what was installed.
+    if "$python" -m venv "$work/venv" > "$log" 2>&1 \
+        && "$work/venv/bin/pip" --quiet --disable-pip-version-check install --upgrade pip >> "$log" 2>&1 \
+        && "$work/venv/bin/pip" --quiet --disable-pip-version-check install clients/python >> "$log" 2>&1 \
+        && (cd "$work" && "$work/venv/bin/python" -W ignore::Warning -m unittest discover \
+              -s "$OLDPWD/clients/python/tests" -t "$OLDPWD/clients/python/tests") >> "$log" 2>&1; then
+      tests="$(sed -n 's/^Ran \([0-9]*\) tests.*/\1/p' "$log" | tail -1)"
+      [[ "${tests:-0}" -gt 0 ]] || { echo "check python-client: FAILED — no test ran" >&2; exit 1; }
+      echo "check python-client: PASSED — $tests tests on Python $python_version"
+      exit 0
+    fi
+    tail -30 "$log" >&2
+    echo "check python-client: FAILED — on Python $python_version" >&2
     exit 1
     ;;
   *)
-    echo "usage: scripts/check.sh fast|ci|conformance|engines|engines-container|doris-container|druid-container|image|java-client|java-example" >&2
+    echo "usage: scripts/check.sh fast|ci|conformance|engines|engines-container|doris-container|druid-container|image|java-client|java-example|python-client|python-example" >&2
     exit 64
     ;;
 esac

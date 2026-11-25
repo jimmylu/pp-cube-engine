@@ -1,7 +1,8 @@
-# The Java client and the example that uses it. The client is built from the
-# service's contract and tested on the lowest Java it supports; the example runs
-# end to end: the service image built from the pull request, Presto, and a Java
-# back end that compiles, executes and checks its answers.
+# The Java and Python clients and the example that uses them. Each client is
+# built from the service's contract and tested on the lowest version of its
+# language it supports; the example runs end to end, once with each back end: the
+# service image built from the pull request, Presto, and a back end that
+# compiles, executes and checks its answers.
 # Nothing is published. The path filter and job names are mirrored in scripts/dev
 # (CLIENT_TRIGGER_PATHS, CLIENT_CHECKS); scripts/tests/test_delivery.py keeps them in step.
 name: clients
@@ -77,4 +78,56 @@ jobs:
           result=$?
           cat /tmp/java-example-evidence.txt
           tail -2 /tmp/java-example-evidence.txt >> "$GITHUB_STEP_SUMMARY"
+          exit "$result"
+
+  python-client:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The runner's own Python is newer than the oldest the client supports.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        id: python
+        with:
+          python-version: '3.9'
+
+      - name: Build and test the client on Python 3.9
+        shell: bash
+        env:
+          PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          set -o pipefail
+          echo "SHA: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          scripts/check.sh python-client > /tmp/python-client-evidence.txt 2>&1
+          result=$?
+          cat /tmp/python-client-evidence.txt
+          tail -1 /tmp/python-client-evidence.txt >> "$GITHUB_STEP_SUMMARY"
+          exit "$result"
+
+  python-example:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the pinned upstream
+        run: scripts/vendor-sync.sh
+
+      # The example makes its own environment from the runner's Python.
+      - name: Run the example end to end with the Python back end
+        shell: bash
+        run: |
+          set -o pipefail
+          echo "SHA: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          scripts/check.sh python-example > /tmp/python-example-evidence.txt 2>&1
+          result=$?
+          cat /tmp/python-example-evidence.txt
+          tail -2 /tmp/python-example-evidence.txt >> "$GITHUB_STEP_SUMMARY"
           exit "$result"

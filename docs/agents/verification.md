@@ -33,30 +33,33 @@ where a change to the crates alone is covered. A failure on main is fixed forwar
 `scripts/dev deliver` requires local `ci`, remote `t0`, remote `image` and `aarch64`
 when the `build` workflow is triggered and, when the `engines` workflow is
 triggered, remote `presto-smoke`, `doris-smoke`, `druid-smoke` and `cube-core`, and remote
-`java-client` and `java-example` when the `clients` workflow is triggered. It starts no local container and runs
+`java-client`, `java-example`, `python-client` and `python-example` when the
+`clients` workflow is triggered. It starts no local container and runs
 no review; see [delivery.md](delivery.md). T0 remains Docker-free.
 Results from T3 are recorded publicly only as pass or fail per scenario.
 
 ## Clients
 
-`scripts/check.sh java-client` builds the Java client from the service's
-contract and runs its unit tests, on the JDK that `JAVA_HOME` names; it needs
-Maven. `scripts/check.sh java-example` runs `examples/insurance-analytics/run.sh`:
-the service image built from the checkout, Presto 0.296 and a Java back end
-that compiles, executes and checks its answers. It needs Docker with Compose, a
-JDK, Maven and openssl, and the pinned upstream checked out.
+| Command | Does | Needs |
+| --- | --- | --- |
+| `scripts/check.sh java-client` | Builds the Java client from the service's contract and runs its unit tests, on the JDK `JAVA_HOME` names | Maven |
+| `scripts/check.sh python-client` | Installs the Python client into an environment of its own, built from the contract, and runs its unit tests against what was installed, on the interpreter `PYTHON` names (default `python3`) | Python with `venv`, network for pip |
+| `scripts/check.sh java-example`, `python-example` | Runs `examples/insurance-analytics/run.sh` with that back end: the service image built from the checkout, Presto 0.296, and a back end that compiles, executes and checks its answers | Docker with Compose, openssl, the pinned upstream checked out, and the back end's language |
 
-The `clients` workflow runs both, `java-client` on Java 11, the lowest version
-the client supports, and `java-example` on Java 17. It runs on pull requests
-that change the client, the example, the crates or templates, the deployment
-manifest, the Dockerfile or the Cargo manifests, and on every push to main.
-Neither is part of `ci`: T0 stays free of Docker and of a JVM. What T0 holds
-about the example are the two Rust tests of `client-java`, which need neither.
+The `clients` workflow runs all four: `java-client` on Java 11 and
+`python-client` on Python 3.9, the lowest versions the clients support, and the
+example once with each back end. It runs on pull requests that change a client,
+the example, the crates or templates, the deployment manifest, the Dockerfile
+or the Cargo manifests, and on every push to main. None is part of `ci`: T0
+stays free of Docker, a JVM and Python packages. What T0 holds about the
+clients and the example are the Rust tests of `client-java` and
+`client-python`, which need none of them.
 
-A failure of `java-example` prints the last lines of the example's own output:
-which question, and what differed. Its rows are the fixture's and its tokens
-are never printed. Reproduce with `KEEP=1 examples/insurance-analytics/run.sh`
-and ask the running service or warehouse by hand.
+A client check fails if no test ran. A failure of an example check prints the
+last lines of the example's own output: which question, and what differed. Its
+rows are the fixture's and its tokens are never printed. Reproduce with
+`KEEP=1 examples/insurance-analytics/run.sh [java|python]` and ask the running
+service or warehouse by hand.
 
 ## Release
 
