@@ -8,7 +8,13 @@ versions even when the SQL does not.
 
 ## Unreleased
 
-Nothing yet.
+**Clients**
+- A Java client, `clients/java`: stubs generated from the service's contract
+  and a typed layer for compiling, binding parameters and telling a refusal
+  from a failed call.
+- A runnable example, `examples/insurance-analytics`: an insurer's analytics
+  portal compiling through the service and executing on Presto.
+- The contract names its Java package; the wire is unchanged.
 
 ## 0.2.0
 

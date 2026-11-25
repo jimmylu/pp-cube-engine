@@ -1,0 +1,12 @@
+views:
+  # What underwriting analysts query: policies with their product, channel and branch.
+  - name: underwriting
+    cubes:
+      - join_path: policies
+        includes: [policy_count, written_premium, sum_insured, renewal_share, written_premium_ytd, written_premium_prior_year, insured_type, issued_at]
+      - join_path: policies.products
+        includes: [product_name, line_of_business]
+      - join_path: policies.channels
+        includes: [channel_name]
+      - join_path: policies.branches
+        includes: [branch_name, region_name]

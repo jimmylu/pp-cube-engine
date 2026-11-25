@@ -2,3 +2,8 @@
 .DS_Store
 *.snap.new
 *.pending-snap
+
+# Java builds and what the examples make when they run.
+/clients/java/target/
+/examples/*/app/target/
+/examples/*/.run/

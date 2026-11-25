@@ -1,0 +1,9 @@
+cubes:
+  # The case reserve of a claim as it stands: at most one row per claim.
+  - name: claim_reserves
+    sql_table: dw.ins_claim_reserve
+    data_source: warehouse
+    dimensions:
+      - { name: claim_id, sql: "{CUBE}.claim_id", type: number, primary_key: true }
+    measures:
+      - { name: outstanding, type: sum, sql: "{CUBE}.outstanding", format: currency }

@@ -1,0 +1,48 @@
+# The two systems the portal talks to: the compile service, set up as
+# deploy/kubernetes.yaml sets up a replica, and the warehouse it compiles for.
+#
+# run.sh makes the certificate and tokens under .run/ and starts this; see README.md.
+services:
+  pp-cube-engine:
+    # A released image, or the one built from this checkout.
+    image: ${CINDERVALE_IMAGE:-cindervale-example:local}
+    build:
+      context: ../..
+    command:
+      - "--listen"
+      - "0.0.0.0:50051"
+      - "--metrics-listen"
+      - "0.0.0.0:9100"
+      - "--tls-cert"
+      - "/etc/pp-cube-engine/tls.crt"
+      - "--tls-key"
+      - "/etc/pp-cube-engine/tls.key"
+      - "--token-file"
+      - "/etc/pp-cube-engine/read.token"
+      - "--admin-token-file"
+      - "/etc/pp-cube-engine/admin.token"
+      - "--model-store"
+      - "/var/lib/pp-cube-engine/models"
+      - "--model-refresh-seconds"
+      - "5"
+      - "--data-source"
+      - "warehouse=presto"
+    volumes:
+      - ./.run/secrets:/etc/pp-cube-engine:ro
+      # What a publisher wrote to shared storage: business line, asset type, version.
+      - ./model-store:/var/lib/pp-cube-engine/models:ro
+    ports:
+      - "127.0.0.1::50051"
+      - "127.0.0.1::9100"
+    read_only: true
+    cap_drop: ["ALL"]
+
+  warehouse:
+    # Presto 0.296, the version in production, by the digest the engine tier uses.
+    image: prestodb/presto@sha256:9f55110be575dd44da6d4c993a39f80610c5a0dae0f79eb93c7af2cf58c9f4d1
+    platform: linux/amd64
+    volumes:
+      - ./presto/memory.properties:/opt/presto-server/etc/catalog/memory.properties:ro
+    ports:
+      - "127.0.0.1::8080"
+    mem_limit: 2g

@@ -1,0 +1,16 @@
+cubes:
+  # Premium earned per policy and month, with the exposure earned in it.
+  - name: earned_premiums
+    sql_table: dw.ins_earned_premium
+    data_source: warehouse
+    joins:
+      - { name: policies, relationship: many_to_one, sql: "{CUBE}.policy_id = {policies.policy_id}" }
+    dimensions:
+      - { name: earned_id, sql: "{CUBE}.earned_id", type: number, primary_key: true }
+      - { name: earned_month, sql: "{CUBE}.earned_month", type: time }
+    measures:
+      - { name: earned_premium, type: sum, sql: "{CUBE}.earned_premium", format: currency }
+      - { name: exposure, type: sum, sql: "{CUBE}.exposure" }
+      - { name: earned_premium_12m, type: sum, sql: "{CUBE}.earned_premium", rolling_window: { trailing: 12 month } }
+      # The ratio analysts ask for first. Its numerator is another fact's measure.
+      - { name: paid_loss_ratio, type: number, sql: "{claim_payments.paid_amount} / NULLIF({earned_premium}, 0)", format: percent }

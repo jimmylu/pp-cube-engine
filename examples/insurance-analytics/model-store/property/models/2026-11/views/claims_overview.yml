@@ -1,0 +1,12 @@
+views:
+  # What claims analysts query: payments with their claim, its reserve, policy and product.
+  - name: claims_overview
+    cubes:
+      - join_path: claim_payments
+        includes: [paid_amount, indemnity_paid, expense_paid, paid_per_claim, paid_at]
+      - join_path: claim_payments.claims
+        includes: [claim_count, cause_cd, status, loss_at]
+      - join_path: claim_payments.claims.policies.products
+        includes: [line_of_business]
+      - join_path: claim_payments.claims.policies.branches
+        includes: [region_name]

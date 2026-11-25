@@ -1,0 +1,26 @@
+cubes:
+  - name: claim_payments
+    sql_table: dw.ins_claim_payment
+    data_source: warehouse
+    joins:
+      - { name: claims, relationship: many_to_one, sql: "{CUBE}.claim_id = {claims.claim_id}" }
+    dimensions:
+      - { name: payment_id, sql: "{CUBE}.payment_id", type: number, primary_key: true }
+      - { name: payment_type, sql: "{CUBE}.payment_type", type: string }
+      - { name: paid_at, sql: "{CUBE}.paid_at", type: time }
+    measures:
+      - { name: paid_amount, type: sum, sql: "{CUBE}.paid_amount", format: currency }
+      - { name: payment_count, type: count }
+      - name: indemnity_paid
+        type: sum
+        sql: "{CUBE}.paid_amount"
+        filters:
+          - sql: "{CUBE}.payment_type = 'INDEMNITY'"
+      - name: expense_paid
+        type: sum
+        sql: "{CUBE}.paid_amount"
+        filters:
+          - sql: "{CUBE}.payment_type = 'EXPENSE'"
+      # Severity: paid per claim that has a payment.
+      - { name: paid_per_claim, type: number, sql: "{paid_amount} / NULLIF({claims.claim_count}, 0)" }
+      - { name: paid_amount_ytd, type: sum, sql: "{CUBE}.paid_amount", rolling_window: { type: to_date, granularity: year } }
