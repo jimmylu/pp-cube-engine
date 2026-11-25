@@ -208,10 +208,17 @@ pull request.
   Druid 26 rejects. An offset in weeks or quarters is unsupported on Druid and
   on Presto: their interval literals have neither.
 
-- **Refused by name on Druid:** measures of several cubes and sums over rows a
-  join repeats (Druid rejects that SQL), ungrouped queries (a Druid scan
-  cannot be ordered by a column other than time), rolling windows and time
-  shifts (not built for Druid yet).
+- **Several SELECT statements on Druid.** Measures of several cubes, sums over rows a
+  join repeats and time shifts compile. Cube Core merges their aggregates
+  through a join on `a = b OR (a IS NULL AND b IS NULL)` over a union of keys,
+  and Druid 26 rejects both. The kernel merges them by a `FULL JOIN` on
+  equality and a `GROUP BY` of the merged keys, where rows with a NULL key
+  meet. Druid runs such a join on its broker: every aggregate is a subquery,
+  and one that returns more groups than `druid.server.http.maxSubqueryRows`
+  (100000 by default) fails on the engine. Filter or coarsen such a query.
+- **Refused by name on Druid:** ungrouped queries (a Druid scan cannot be
+  ordered by a column other than time) and rolling windows (Druid joins on
+  equality only).
 - **Apply the query context.** Every Druid result declares
   `useApproximateCountDistinct=false`; without it Druid estimates
   `COUNT(DISTINCT)`. It does not change a `count_distinct_approx` measure,

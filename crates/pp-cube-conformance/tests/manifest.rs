@@ -266,7 +266,7 @@ fn druid_manifest_holds_the_cases_its_dialect_compiles_and_lists_the_rest() {
         .map(|c| c["name"].as_str().unwrap())
         .collect();
     assert_eq!(names, compiled);
-    assert_eq!(names.len(), 57);
+    assert_eq!(names.len(), 73);
     assert!(support
         .iter()
         .all(|(_, outcome)| outcome == "compiled" || outcome.starts_with("unsupported: ")));
@@ -279,8 +279,8 @@ fn druid_manifest_holds_the_cases_its_dialect_compiles_and_lists_the_rest() {
         }
         assert_eq!(case["scenario"], "B0-DRUID-004", "{name}");
         let sql = case["sql"].as_str().unwrap();
-        // One SELECT on Druid's own schema, never the shared one.
-        assert!(sql.starts_with("SELECT") && !sql.contains("dw."), "{name}");
+        // Druid's own schema, never the shared one.
+        assert!(!sql.contains("dw."), "{name}");
         assert!(sql.contains("druid."), "{name}");
         assert_eq!(
             sql.matches('?').count(),
@@ -329,18 +329,35 @@ fn only_druid_cases_state_a_relation_to_cube_core_and_only_the_reviewed_ones() {
         .iter()
         .map(|(name, relation)| (name.as_str(), relation.as_str()))
         .collect();
-    // Cube's Druid dialect has no approximate count and no date bin, and writes
-    // an interval Druid rejects. Everything else must equal Cube Core's SQL.
+    // Cube's Druid dialect has no approximate count and no date bin; it writes
+    // an interval Druid rejects, and merges several SELECT statements in a way Druid
+    // rejects. Everything else must equal Cube Core's SQL.
+    let refused: Vec<&str> = stated
+        .iter()
+        .filter(|(_, relation)| *relation == "refuses")
+        .map(|(name, _)| *name)
+        .collect();
     assert_eq!(
-        stated,
+        refused,
         [
-            ("approximate_distinct_count", "refuses"),
-            ("granularity_of_two_days", "refuses"),
-            ("granularity_of_two_quarters", "refuses"),
-            ("granularity_with_offset", "differs"),
-            ("uw_by_underwriting_year", "differs"),
+            "approximate_distinct_count",
+            "granularity_of_two_days",
+            "granularity_of_two_quarters"
         ]
     );
+    let cases = druid["cases"].as_array().unwrap();
+    for case in cases {
+        let (name, sql) = (
+            case["name"].as_str().unwrap(),
+            case["sql"].as_str().unwrap(),
+        );
+        let differs = stated.contains(&(name, "differs"));
+        // A statement of several SELECT statements over shared keys, or with interval
+        // arithmetic, is where the kernel leaves Cube Core, and nowhere else.
+        let beyond = sql.contains("FULL JOIN") || sql.contains("INTERVAL '");
+        assert_eq!(differs, beyond, "{name}");
+    }
+    assert_eq!(stated.len(), 3 + 16);
     assert!(sources("presto")["cases"]
         .as_array()
         .unwrap()

@@ -106,16 +106,6 @@ fn druid_refuses_by_name_what_it_cannot_answer() {
     let days = r#""granularity": "day", "dateRange": ["2026-10-01", "2026-10-03"]"#;
     for (model, query, message) in [
         (
-            RETAIL,
-            r#"{"measures": ["sales.amount", "refunds.amount"], "dimensions": ["stores.store_name"]}"#.to_owned(),
-            "The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats",
-        ),
-        (
-            RETAIL,
-            r#"{"measures": ["stores.floor_area"], "dimensions": ["sales.channel_cd"]}"#.to_owned(),
-            "The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats",
-        ),
-        (
             DETAIL,
             r#"{"ungrouped": true, "dimensions": ["sales.sale_id"]}"#.to_owned(),
             "The query is ungrouped, which druid does not support",
@@ -129,11 +119,6 @@ fn druid_refuses_by_name_what_it_cannot_answer() {
             WINDOWS,
             over("sales.amount_mtd", days),
             "Measure `sales.amount_mtd` has a rolling window, which druid does not support",
-        ),
-        (
-            WINDOWS,
-            over("sales.growth", days),
-            "Measure `sales.amount_prior_year` is shifted in time, which druid does not support",
         ),
     ] {
         assert_eq!(refused(model, &query), message, "{query}");
@@ -206,4 +191,70 @@ fn druid_estimates_distinct_counts_and_groups_by_declared_granularities() {
         Err(CompileError::Unsupported(_))
     ));
     assert!(compile_in(&weekly, DialectId::Doris, &by("fiscal_year")).is_ok());
+}
+
+// scenario: B1-DRUID-002
+#[test]
+fn druid_merges_several_selects_by_a_full_join_and_a_group() {
+    // Cube's Druid dialect merges aggregates through a null-safe join over a
+    // union of keys, which Druid rejects. Here they meet in a FULL JOIN on
+    // plain equality and a GROUP BY of the merged keys.
+    let days = r#""granularity": "day", "dateRange": ["2026-10-01", "2026-10-03"]"#;
+    let shifted = format!(
+        r#"{{"measures": ["sales.growth"], "timeDimensions": [{{"dimension": "sales.sold_at", {days}}}]}}"#
+    );
+    let queries = [
+        // Two facts over a shared dimension.
+        (
+            RETAIL,
+            r#"{"measures": ["sales.amount", "refunds.amount"], "dimensions": ["stores.store_name"]}"#,
+        ),
+        // A filter on a measure, an order and a page over the merged rows.
+        // Three facts in a chain are goldens of `pp-cube-conformance`.
+        (
+            RETAIL,
+            r#"{"measures": ["sales.amount", "refunds.amount"], "dimensions": ["stores.store_name"],
+            "filters": [{"member": "refunds.amount", "operator": "gt", "values": ["0"]}],
+            "order": [["sales.amount", "desc"]], "limit": 5, "offset": 5}"#,
+        ),
+        // A sum over rows a join repeats.
+        (
+            RETAIL,
+            r#"{"measures": ["stores.floor_area"], "dimensions": ["sales.channel_cd"]}"#,
+        ),
+        // A measure beside itself a year earlier.
+        (WINDOWS, shifted.as_str()),
+        // Totals: no key to merge on, and no order to group for.
+        (
+            RETAIL,
+            r#"{"measures": ["sales.amount", "refunds.amount"]}"#,
+        ),
+    ];
+    let mut golden = String::new();
+    for (model, query) in queries {
+        let on_druid = druid(model, query).expect("the query compiles");
+        assert!(on_druid.sql.starts_with(" WITH"), "{query}");
+        // No condition Druid cannot join on, and no union of keys.
+        assert!(!on_druid.sql.contains("IS NULL) AND"), "{query}");
+        assert!(!on_druid.sql.contains("UNION"), "{query}");
+        // The same question as on Presto: parameters, columns and lineage.
+        let on_presto = compile_in(model, DialectId::Presto, query).unwrap();
+        assert_eq!(on_druid.parameters, on_presto.parameters, "{query}");
+        assert_eq!(on_druid.columns, on_presto.columns, "{query}");
+        assert_eq!(on_druid.used_cubes, on_presto.used_cubes, "{query}");
+        golden.push_str(&format!(
+            "{}\n-- parameters: {:?}\n\n",
+            on_druid.sql, on_druid.parameters
+        ));
+    }
+    insta::assert_snapshot!(golden);
+    // A shift by a unit Druid's interval literal lacks is refused, naming it.
+    let weekly = WINDOWS.replace("interval: 1 year", "interval: 1 week");
+    assert_ne!(weekly, WINDOWS);
+    match druid(&weekly, &shifted) {
+        Err(CompileError::Unsupported(message)) => {
+            assert!(message.contains("`1 week`"), "{message}")
+        }
+        other => panic!("expected Unsupported, got {other:?}"),
+    }
 }
