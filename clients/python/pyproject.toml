@@ -1,0 +1,23 @@
+[build-system]
+# grpcio-tools generates the stubs from the service's contract when the package is built.
+requires = ["setuptools>=77", "grpcio-tools>=1.66,<2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pp-cube-engine-client"
+# The version of the kernel whose contract this client is built from.
+version = "0.2.0"
+description = "A client for the pp-cube-engine compile service: Cube queries in, SQL and parameters out."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+dependencies = ["grpcio>=1.66,<2", "protobuf>=5.26,<8"]
+
+[project.urls]
+Repository = "https://github.com/jimmylu/pp-cube-engine"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ppcube = ["py.typed"]

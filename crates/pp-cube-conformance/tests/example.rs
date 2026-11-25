@@ -197,6 +197,61 @@ fn the_example_runs_the_service_as_the_shipped_deployment_does() {
     assert!(contract.contains("option java_package = \"dev.ppcube.engine.v1\";"));
 }
 
+// scenario: B1-CLIENT-003
+#[test]
+fn the_python_client_is_built_from_the_contract_and_asks_the_same_questions() {
+    let client = example().join("../../clients/python");
+    // The stubs come from the service's contract at build time; no copy is kept.
+    let generate = read(&client.join("generate.py"));
+    assert!(generate.contains("HERE.parents[1] / 'crates' / 'pp-cube-service' / 'proto'"));
+    assert!(read(&client.join("setup.py")).contains("generate()"));
+    assert!(
+        read(&example().join("../../.gitignore")).contains("/clients/python/src/ppcube/_contract/")
+    );
+    for entry in std::fs::read_dir(&client).unwrap() {
+        let name = entry.unwrap().file_name();
+        assert!(!name.to_str().unwrap().ends_with(".proto"), "{name:?}");
+    }
+    // It carries the kernel's version, in its metadata and in the module.
+    let version = env!("CARGO_PKG_VERSION");
+    assert!(read(&client.join("pyproject.toml")).contains(&format!("version = \"{version}\"")));
+    let module = read(&client.join("src/ppcube/__init__.py"));
+    assert!(module.contains(&format!("__version__ = '{version}'")));
+    // The module is named after the contract's package, as the Java packages are.
+    assert!(
+        read(&client.join("src/ppcube/client.py")).contains("from ._contract import engine_pb2")
+    );
+
+    // The Python back end of the example is the Java one's twin: the same
+    // file of users, rules, questions and answers, the same environment, and
+    // the same sentence at the end.
+    let python = read(&example().join("app-python/portal.py"));
+    let java = read(&example().join("app/src/main/java/dev/ppcube/example/Portal.java"));
+    for shared in [
+        "PORTAL_FILE",
+        "PPCUBE_TARGET",
+        "PPCUBE_CA",
+        "PPCUBE_TOKEN_FILE",
+        "WAREHOUSE_URL",
+        "WAREHOUSE_SQL",
+        "questions asked: %d answered as expected, %d refused as expected, %d served from the cache",
+        "example: PASSED",
+        "example: FAILED",
+    ] {
+        assert!(python.contains(shared) && java.contains(shared), "{shared}");
+    }
+    // Parameters go to the driver apart from the statement, in both.
+    assert!(python.contains("cursor.execute(compiled.sql, list(compiled.parameters))"));
+    assert!(java.contains("compiled.bind(statement)"));
+    let run = read(&example().join("run.sh"));
+    assert!(run.contains("app-python/portal.py") && run.contains("exec:java"));
+    // The warehouse's driver is pinned, like the warehouse.
+    let requirements = read(&example().join("app-python/requirements.txt"));
+    assert!(requirements
+        .lines()
+        .any(|line| line.starts_with("presto-python-client==")));
+}
+
 /// Every `.java` file under `folder`.
 fn collect(folder: &Path, found: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(folder).unwrap() {

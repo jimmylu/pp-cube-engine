@@ -7,3 +7,10 @@
 /clients/java/target/
 /examples/*/app/target/
 /examples/*/.run/
+
+# Python: the stubs generated from the contract, builds and environments.
+/clients/python/src/ppcube/_contract/
+/clients/python/build/
+/clients/python/src/*.egg-info/
+__pycache__/
+/examples/*/.venv/

@@ -2,10 +2,12 @@
 # Runs the example end to end: the compile service and a warehouse in containers,
 # and the portal's back end asking its questions through both.
 #
-#   ./run.sh           start, load, ask, check, stop
+#   ./run.sh           start, load, ask, check, stop: the Java back end
+#   ./run.sh python    the same with the Python back end
 #   KEEP=1 ./run.sh    leave the containers running, and .run/, afterwards
 #
-# Needs Docker with Compose, a JDK 11 or later, Maven and openssl. The service
+# Needs Docker with Compose and openssl; a JDK 11 or later and Maven for the Java
+# back end; Python 3.9 or later for the Python one. The service
 # image is built from this checkout (run scripts/vendor-sync.sh once first), or
 # set PPCUBE_IMAGE to a released image. Nothing is published, and everything
 # it makes is under .run/ here.
@@ -16,7 +18,13 @@ ROOT="$(cd ../.. && pwd)"
 RUN="$PWD/.run"
 SECRETS="$RUN/secrets"
 
-for tool in docker mvn java openssl; do
+APP="${1:-java}"
+case "$APP" in
+  java) tools="docker openssl mvn java" ;;
+  python) tools="docker openssl python3" ;;
+  *) echo "usage: run.sh [java|python]" >&2; exit 64 ;;
+esac
+for tool in $tools; do
   command -v "$tool" >/dev/null || { echo "example: $tool is needed" >&2; exit 2; }
 done
 
@@ -61,10 +69,6 @@ docker compose up --detach --quiet-pull --no-build >/dev/null
 
 port() { docker compose port "$1" "$2" | sed 's/.*://'; }
 
-echo "example: building the client and the portal" >&2
-mvn --quiet --file "$ROOT/clients/java/pom.xml" install -DskipTests
-mvn --quiet --file app/pom.xml compile
-
 export PPCUBE_TARGET="localhost:$(port pp-cube-engine 50051)"
 export PPCUBE_CA="$SECRETS/tls.crt"
 export PPCUBE_TOKEN_FILE="$SECRETS/read.token"
@@ -72,10 +76,24 @@ export WAREHOUSE_URL="jdbc:presto://localhost:$(port warehouse 8080)/memory/dw"
 export WAREHOUSE_SQL="$PWD/warehouse/insurance.sql"
 export PORTAL_FILE="$PWD/portal.json"
 
-echo "example: asking" >&2
 set +e
-mvn --quiet --file app/pom.xml exec:java
-status=$?
+if [[ "$APP" == java ]]; then
+  echo "example: building the client and the portal" >&2
+  mvn --quiet --file "$ROOT/clients/java/pom.xml" install -DskipTests \
+    && mvn --quiet --file app/pom.xml compile \
+    && { echo "example: asking" >&2; mvn --quiet --file app/pom.xml exec:java; }
+  status=$?
+else
+  # An environment of its own, with the client built from this checkout.
+  echo "example: building the client and the portal" >&2
+  # A current pip builds the client where it is, beside the contract it is generated from.
+  python3 -m venv "$RUN/venv" \
+    && "$RUN/venv/bin/pip" --quiet --disable-pip-version-check install --upgrade pip \
+    && "$RUN/venv/bin/pip" --quiet --disable-pip-version-check install \
+         "$ROOT/clients/python" --requirement app-python/requirements.txt \
+    && { echo "example: asking" >&2; "$RUN/venv/bin/python" -W ignore::Warning app-python/portal.py; }
+  status=$?
+fi
 set -e
 if [[ $status -ne 0 ]]; then
   echo "example: the service's last lines:" >&2
