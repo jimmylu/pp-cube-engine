@@ -5,7 +5,7 @@ in, SQL and its parameters out. It is the generated gRPC stubs of the service's
 contract and a small typed layer over them. It executes nothing.
 
 ```java
-try (CindervaleClient kernel = CindervaleClient.to("pp-cube-engine.internal:50051")
+try (CubeEngineClient kernel = CubeEngineClient.to("pp-cube-engine.internal:50051")
     .trust(Paths.get("/etc/portal/pp-cube-engine-ca.pem"))   // omit to trust the system's authorities
     .token(readToken)
     .build()) {

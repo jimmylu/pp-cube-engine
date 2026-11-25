@@ -1,14 +1,14 @@
-package dev.cindervale.example;
+package dev.ppcube.example;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.facebook.presto.jdbc.PrestoConnection;
-import dev.cindervale.client.CindervaleClient;
-import dev.cindervale.client.Compilation;
-import dev.cindervale.client.CompileRefusedException;
-import dev.cindervale.client.CompiledQuery;
-import dev.cindervale.engine.v1.CubeMeta;
-import dev.cindervale.engine.v1.GetMetaResponse;
+import dev.ppcube.client.CubeEngineClient;
+import dev.ppcube.client.Compilation;
+import dev.ppcube.client.CompileRefusedException;
+import dev.ppcube.client.CompiledQuery;
+import dev.ppcube.engine.v1.CubeMeta;
+import dev.ppcube.engine.v1.GetMetaResponse;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import java.nio.charset.StandardCharsets;
@@ -42,7 +42,7 @@ import java.util.stream.Collectors;
 public final class Portal {
   private static final ObjectMapper JSON = new ObjectMapper();
 
-  private final CindervaleClient kernel;
+  private final CubeEngineClient kernel;
   private final String warehouseUrl;
   private final JsonNode portal;
   /** Results by fingerprint: the same SQL for the same rules is run once. */
@@ -53,7 +53,7 @@ public final class Portal {
   private int served;
   private final List<String> wrong = new ArrayList<>();
 
-  private Portal(CindervaleClient kernel, String warehouseUrl, JsonNode portal) {
+  private Portal(CubeEngineClient kernel, String warehouseUrl, JsonNode portal) {
     this.kernel = kernel;
     this.warehouseUrl = warehouseUrl;
     this.portal = portal;
@@ -61,12 +61,12 @@ public final class Portal {
 
   public static void main(String[] arguments) throws Exception {
     String token =
-        new String(Files.readAllBytes(Paths.get(env("CINDERVALE_TOKEN_FILE"))), StandardCharsets.UTF_8);
+        new String(Files.readAllBytes(Paths.get(env("PPCUBE_TOKEN_FILE"))), StandardCharsets.UTF_8);
     JsonNode portal = JSON.readTree(Paths.get(env("PORTAL_FILE")).toFile());
     String warehouseUrl = env("WAREHOUSE_URL");
-    try (CindervaleClient kernel =
-        CindervaleClient.to(env("CINDERVALE_TARGET"))
-            .trust(Paths.get(env("CINDERVALE_CA")))
+    try (CubeEngineClient kernel =
+        CubeEngineClient.to(env("PPCUBE_TARGET"))
+            .trust(Paths.get(env("PPCUBE_CA")))
             .token(token)
             .deadline(Duration.ofSeconds(20))
             .build()) {

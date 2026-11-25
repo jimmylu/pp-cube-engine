@@ -2,7 +2,7 @@
 
 ## 1. Client
 
-- [x] 1.1 `clients/java`: build from the contract, `CindervaleClient`, `Compilation`, `CompiledQuery`, `CompileRefusedException`; unit tests against a stand-in service.
+- [x] 1.1 `clients/java`: build from the contract, `CubeEngineClient`, `Compilation`, `CompiledQuery`, `CompileRefusedException`; unit tests against a stand-in service.
 - [x] 1.2 Name the Java package in the contract.
 
 ## 2. Example

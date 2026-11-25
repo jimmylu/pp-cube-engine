@@ -1,11 +1,11 @@
-package dev.cindervale.client;
+package dev.ppcube.client;
 
-import dev.cindervale.engine.v1.CompileFailure;
-import dev.cindervale.engine.v1.CompileRequest;
-import dev.cindervale.engine.v1.CompileResponse;
-import dev.cindervale.engine.v1.CubeEngineGrpc;
-import dev.cindervale.engine.v1.GetMetaRequest;
-import dev.cindervale.engine.v1.GetMetaResponse;
+import dev.ppcube.engine.v1.CompileFailure;
+import dev.ppcube.engine.v1.CompileRequest;
+import dev.ppcube.engine.v1.CompileResponse;
+import dev.ppcube.engine.v1.CubeEngineGrpc;
+import dev.ppcube.engine.v1.GetMetaRequest;
+import dev.ppcube.engine.v1.GetMetaResponse;
 import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
@@ -31,7 +31,7 @@ import java.util.concurrent.TimeUnit;
  * with its status code; a request the service answered without SQL is a
  * {@link CompileRefusedException}.
  */
-public final class CindervaleClient implements AutoCloseable {
+public final class CubeEngineClient implements AutoCloseable {
   private static final Metadata.Key<String> AUTHORIZATION =
       Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER);
 
@@ -39,7 +39,7 @@ public final class CindervaleClient implements AutoCloseable {
   private final CubeEngineGrpc.CubeEngineBlockingStub stub;
   private final Duration deadline;
 
-  private CindervaleClient(ManagedChannel owned, Channel channel, String token, Duration deadline) {
+  private CubeEngineClient(ManagedChannel owned, Channel channel, String token, Duration deadline) {
     this.owned = owned;
     CubeEngineGrpc.CubeEngineBlockingStub plain = CubeEngineGrpc.newBlockingStub(channel);
     this.stub = token == null ? plain : plain.withInterceptors(new Bearer(token));
@@ -120,7 +120,7 @@ public final class CindervaleClient implements AutoCloseable {
     }
   }
 
-  /** Builds a {@link CindervaleClient}. */
+  /** Builds a {@link CubeEngineClient}. */
   public static final class Builder {
     private final String target;
     private Path trusted;
@@ -162,7 +162,7 @@ public final class CindervaleClient implements AutoCloseable {
       return this;
     }
 
-    public CindervaleClient build() throws IOException {
+    public CubeEngineClient build() throws IOException {
       if (plaintext && token != null) {
         // A token over an unencrypted connection is a token given away.
         throw new IllegalStateException("A token is not sent over a plaintext connection");
@@ -179,12 +179,12 @@ public final class CindervaleClient implements AutoCloseable {
       } else {
         channel = Grpc.newChannelBuilder(target, TlsChannelCredentials.create()).build();
       }
-      return new CindervaleClient(channel, channel, token, deadline);
+      return new CubeEngineClient(channel, channel, token, deadline);
     }
 
     /** For tests and for hosts that manage channels themselves; the channel is not closed. */
-    public CindervaleClient over(Channel channel) {
-      return new CindervaleClient(null, channel, token, deadline);
+    public CubeEngineClient over(Channel channel) {
+      return new CubeEngineClient(null, channel, token, deadline);
     }
   }
 

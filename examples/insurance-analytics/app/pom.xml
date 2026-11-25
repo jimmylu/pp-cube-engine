@@ -3,7 +3,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>dev.cindervale.example</groupId>
+  <groupId>dev.ppcube.example</groupId>
   <artifactId>insurance-analytics</artifactId>
   <version>0.2.0</version>
   <packaging>jar</packaging>
@@ -17,7 +17,7 @@
   <dependencies>
     <!-- Built from clients/java of this repository: mvn -f ../../../clients/java install -->
     <dependency>
-      <groupId>dev.cindervale</groupId>
+      <groupId>dev.ppcube</groupId>
       <artifactId>pp-cube-engine-client</artifactId>
       <version>0.2.0</version>
     </dependency>
@@ -46,7 +46,7 @@
         <artifactId>exec-maven-plugin</artifactId>
         <version>3.5.0</version>
         <configuration>
-          <mainClass>dev.cindervale.example.Portal</mainClass>
+          <mainClass>dev.ppcube.example.Portal</mainClass>
         </configuration>
       </plugin>
     </plugins>

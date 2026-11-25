@@ -5,7 +5,7 @@
 services:
   pp-cube-engine:
     # A released image, or the one built from this checkout.
-    image: ${CINDERVALE_IMAGE:-cindervale-example:local}
+    image: ${PPCUBE_IMAGE:-ppcube-example:local}
     build:
       context: ../..
     command:

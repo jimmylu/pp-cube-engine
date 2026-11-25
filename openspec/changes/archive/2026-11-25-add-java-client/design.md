@@ -3,7 +3,7 @@
 ## Decisions
 
 1. **Stubs from the contract, not from a copy.** `clients/java/pom.xml` points the protobuf plugin at `crates/pp-cube-service/proto`. A client built from a checkout cannot drift from that checkout's service. The artifact carries the kernel's version; a Rust test fails when they differ.
-2. **A thin layer, on the two calls a caller makes all day.** `CindervaleClient.compile` and `meta`. Model management stays on the generated stubs: it is an operator's tool with different credentials, and wrapping it would add surface without removing a mistake.
+2. **A thin layer, on the two calls a caller makes all day.** `CubeEngineClient.compile` and `meta`. Model management stays on the generated stubs: it is an operator's tool with different credentials, and wrapping it would add surface without removing a mistake.
 3. **The layer exists to remove four mistakes.**
    - Splicing values into SQL: `CompiledQuery.bind(PreparedStatement)` binds by type, in order.
    - Dropping session properties: they are a map on the result, named in every description of it.
