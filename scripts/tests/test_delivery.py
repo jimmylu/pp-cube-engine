@@ -28,6 +28,9 @@ class DeliveryTests(unittest.TestCase):
         builds = patch.object(dev, 'builds_expected', return_value=False)
         self.builds_expected = builds.start()
         self.addCleanup(builds.stop)
+        clients = patch.object(dev, 'clients_expected', return_value=False)
+        self.clients_expected = clients.start()
+        self.addCleanup(clients.stop)
 
     def test_ready_transition_triggers_gate(self):
         workflow = (Path(__file__).parents[2] / '.github/workflows/gate.yml').read_text()
@@ -158,6 +161,40 @@ class DeliveryTests(unittest.TestCase):
             with self.subTest(changed=changed), \
                  patch.object(dev, 'git', return_value=changed + '\0'):
                 self.assertIs(dev.triggered({'base': 'a', 'head': 'b'}, dev.BUILD_TRIGGER_PATHS), expected)
+
+    def test_client_expectation_matches_the_workflow(self):
+        workflow = (Path(__file__).parents[2] / '.github/workflows/clients.yml').read_text()
+        paths = workflow.split('    paths:\n', 1)[1].split('  push:', 1)[0]
+        self.assertEqual(tuple(line.strip()[3:-1] for line in paths.splitlines() if line.strip()),
+                         dev.CLIENT_TRIGGER_PATHS)
+        for name in dev.CLIENT_CHECKS:
+            self.assertIn('\n  ' + name + ':\n', workflow)
+        self.assertRegex(workflow, r'push:\s+branches: \[main\]')
+        # The client is proved on the lowest Java it supports.
+        self.assertIn('JAVA_HOME_11_X64', workflow)
+        for changed, expected in [
+                ('clients/java/pom.xml', True), ('examples/insurance-analytics/portal.json', True),
+                ('crates/pp-cube-service/proto/engine.proto', True), ('deploy/kubernetes.yaml', True),
+                ('Dockerfile', True), ('.github/workflows/clients.yml', True),
+                ('docs/guide.md', False), ('scripts/dev', False), ('openspec/specs/client-java/spec.md', False)]:
+            with self.subTest(changed=changed), \
+                 patch.object(dev, 'git', return_value=changed + '\0'):
+                self.assertIs(dev.triggered({'base': 'a', 'head': 'b'}, dev.CLIENT_TRIGGER_PATHS), expected)
+
+    def test_triggered_client_checks_are_required_and_reported(self):
+        self.clients_expected.return_value = True
+
+        def remote(name, conclusion, number):
+            return dict(id=number, name=name, app={'slug': 'github-actions'},
+                        status='completed', conclusion=conclusion)
+        failing = {'check_runs': [remote('t0', 'success', 1), remote('java-client', 'success', 2),
+                                  remote('java-example', 'failure', 3)]}
+        with patch.object(dev, 'publish'), patch.object(dev, 'binding', return_value={'head': 'a'}), \
+             patch.object(dev, 'check'), patch.object(dev, 'engines_expected', return_value=False), \
+             patch.object(dev, 'run', return_value=json.dumps(failing)):
+            with self.assertRaisesRegex(ValueError, 'Remote java-example failed'):
+                dev.deliver()
+            self.assertFalse((dev.state / 'evidence.md').exists())
 
     def test_triggered_build_checks_are_required_and_reported(self):
         self.builds_expected.return_value = True

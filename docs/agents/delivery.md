@@ -46,6 +46,9 @@ context without changing harness code; repeat the flag for additional files.
 `doris-smoke`, `druid-smoke` and `cube-core` when the diff touches a path that starts the
 `engines` workflow (crates, templates, engine scripts, `scripts/check.sh`,
 `scripts/vendor-sync.sh`, the Cargo manifests and toolchain, the workflow itself).
+`java-client` and `java-example` are required when the diff touches a path that
+starts the `clients` workflow (the client, the example, crates, templates, the
+deployment manifest, the Dockerfile, the Cargo manifests, `scripts/check.sh`).
 When they pass it marks the PR Ready and posts an evidence comment that says what
 ran and what did not. A failing local or remote check leaves the PR Draft; fix it
 and run `deliver` again. It never waits for owner approval itself.

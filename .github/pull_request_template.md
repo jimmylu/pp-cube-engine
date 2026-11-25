@@ -8,7 +8,7 @@
 
 ## Evidence
 
-- Remote checks on the pushed commit: `t0`, and `presto-smoke` / `doris-smoke` / `druid-smoke` / `cube-core` when triggered.
+- Remote checks on the pushed commit: `t0`, and `presto-smoke` / `doris-smoke` / `druid-smoke` / `cube-core`, `image` / `aarch64`, `java-client` / `java-example` when triggered.
 - `scripts/check.sh ci` summary line, run on the pushed commit:
 
   ```text
