@@ -10,6 +10,8 @@
 #   scripts/check.sh doris-container    live-compiled manifest on a disposable pinned Doris
 #   scripts/check.sh druid-container    the same on a disposable pinned Druid, compared with Cube Core
 #   scripts/check.sh image              build the service image and verify a container
+#   scripts/check.sh java-client        build the Java client from the contract and run its tests
+#   scripts/check.sh java-example       run examples/insurance-analytics end to end, on containers
 #
 # BASE_REF (default origin/main) is the branch a change is compared against.
 
@@ -258,8 +260,37 @@ case "$MODE" in
     python3 scripts/engines/cube-core.py
     exit $?
     ;;
+  java-client)
+    # The JDK is the caller's: JAVA_HOME decides which Java the client is proved on.
+    command -v mvn >/dev/null || { echo "check java-client: NOT RUN — Maven is needed" >&2; exit 2; }
+    java_version="$(mvn --version 2>/dev/null | sed -n 's/^Java version: \([^,]*\),.*/\1/p')"
+    if mvn --quiet --batch-mode --file clients/java/pom.xml verify; then
+      tests="$(cat clients/java/target/surefire-reports/*.txt 2>/dev/null | sed -n 's/^Tests run: \([0-9]*\), Failures: 0, Errors: 0, Skipped: 0.*/\1/p' | paste -sd+ - | bc)"
+      [[ "${tests:-0}" -gt 0 ]] || { echo "check java-client: FAILED — no test ran" >&2; exit 1; }
+      echo "check java-client: PASSED — $tests tests on Java $java_version"
+      exit 0
+    fi
+    echo "check java-client: FAILED — on Java $java_version" >&2
+    exit 1
+    ;;
+  java-example)
+    # The example reports its own questions; its last lines are the evidence.
+    log="$(mktemp)"
+    if examples/insurance-analytics/run.sh > "$log" 2>&1; then
+      grep -E '^[0-9]+ questions asked' "$log" | tail -1
+      rm -f "$log"
+      echo "check java-example: PASSED — examples/insurance-analytics on real containers"
+      exit 0
+    fi
+    # The example's output holds no secret: its rows are the fixture's and the
+    # tokens are never printed.
+    tail -40 "$log" >&2
+    rm -f "$log"
+    echo "check java-example: FAILED" >&2
+    exit 1
+    ;;
   *)
-    echo "usage: scripts/check.sh fast|ci|conformance|engines|engines-container|doris-container|druid-container|image" >&2
+    echo "usage: scripts/check.sh fast|ci|conformance|engines|engines-container|doris-container|druid-container|image|java-client|java-example" >&2
     exit 64
     ;;
 esac

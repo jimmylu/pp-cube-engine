@@ -365,6 +365,15 @@ BUILD_TRIGGER_PATHS = ('Dockerfile', '.dockerignore', 'Cargo.toml', 'Cargo.lock'
                        '.github/workflows/build.yml')
 
 
+# The Java client and the example that runs it. Keep both tuples in step with
+# .github/workflows/clients.yml.
+CLIENT_CHECKS = ('java-client', 'java-example')
+CLIENT_TRIGGER_PATHS = ('clients/**', 'examples/**', 'crates/**', 'templates/**', 'deploy/**',
+                        'Dockerfile', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml',
+                        'scripts/check.sh', 'scripts/vendor-sync.sh',
+                        '.github/workflows/clients.yml')
+
+
 def triggered(bound, patterns):
     """Whether this diff touches a path of a workflow's pull_request filter."""
     changed = git('diff', '--no-renames', '--name-only', '-z',
@@ -383,6 +392,11 @@ def builds_expected(bound):
     return triggered(bound, BUILD_TRIGGER_PATHS)
 
 
+def clients_expected(bound):
+    """Whether GitHub starts the clients workflow for this diff."""
+    return triggered(bound, CLIENT_TRIGGER_PATHS)
+
+
 def deliver():
     """Local CI, then the remote checks, then Ready. No model runs here: cross-model
     review is `scripts/dev review`, started by a person when they want one."""
@@ -391,7 +405,9 @@ def deliver():
     check('ci')
     engines = engines_expected(bound)
     builds = builds_expected(bound)
-    required = ('t0',) + (ENGINE_CHECKS if engines else ()) + (BUILD_CHECKS if builds else ())
+    clients = clients_expected(bound)
+    required = (('t0',) + (ENGINE_CHECKS if engines else ()) + (BUILD_CHECKS if builds else ())
+                + (CLIENT_CHECKS if clients else ()))
     deadline = time.monotonic() + 2700
     while True:
         checks = json.loads(run('gh', 'api', f'repos/{repo}/commits/{bound["head"]}/check-runs?filter=latest&per_page=100'))
@@ -419,6 +435,8 @@ def deliver():
            'Remote engine containers were not triggered: no engine-relevant path changed.\n')
         + ('Remote build checks passed: ' + ', '.join(BUILD_CHECKS) + '.\n' if builds else
            'Remote build checks were not triggered: no build-deciding path changed; they run on main.\n')
+        + ('Remote client checks passed: ' + ', '.join(CLIENT_CHECKS) + '.\n' if clients else
+           'Remote client checks were not triggered: no path a client or the example depends on changed.\n')
         + 'Local engine containers are on demand and were not run by delivery.\n'
         + (f'Cross-model review on demand at this head by {reviewed["reviewer"]}: '
            f'{len(reviewed.get("findings", []))} findings, {len(reviewed.get("questions", []))} questions.\n'

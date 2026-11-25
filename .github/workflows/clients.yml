@@ -1,0 +1,80 @@
+# The Java client and the example that uses it. The client is built from the
+# service's contract and tested on the lowest Java it supports; the example runs
+# end to end: the service image built from the pull request, Presto, and a Java
+# back end that compiles, executes and checks its answers.
+# Nothing is published. The path filter and job names are mirrored in scripts/dev
+# (CLIENT_TRIGGER_PATHS, CLIENT_CHECKS); scripts/tests/test_delivery.py keeps them in step.
+name: clients
+
+on:
+  pull_request:
+    paths:
+      - 'clients/**'
+      - 'examples/**'
+      - 'crates/**'
+      - 'templates/**'
+      - 'deploy/**'
+      - 'Dockerfile'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'scripts/check.sh'
+      - 'scripts/vendor-sync.sh'
+      - '.github/workflows/clients.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clients-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  java-client:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The runner image carries Maven and several JDKs; no action installs one.
+      - name: Build and test the client on Java 11
+        shell: bash
+        run: |
+          set -o pipefail
+          echo "SHA: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          export JAVA_HOME="$JAVA_HOME_11_X64"
+          set +e
+          scripts/check.sh java-client > /tmp/java-client-evidence.txt 2>&1
+          result=$?
+          cat /tmp/java-client-evidence.txt
+          tail -1 /tmp/java-client-evidence.txt >> "$GITHUB_STEP_SUMMARY"
+          exit "$result"
+
+  java-example:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the pinned upstream
+        run: scripts/vendor-sync.sh
+
+      - name: Run the example end to end
+        shell: bash
+        run: |
+          set -o pipefail
+          echo "SHA: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          set +e
+          scripts/check.sh java-example > /tmp/java-example-evidence.txt 2>&1
+          result=$?
+          cat /tmp/java-example-evidence.txt
+          tail -2 /tmp/java-example-evidence.txt >> "$GITHUB_STEP_SUMMARY"
+          exit "$result"
