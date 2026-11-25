@@ -13,7 +13,7 @@ interval_units: [year, month, day, hour, minute, second]
 refuses: [ungrouped, rolling-window]
 templates:
   # Cube's statement, with what Druid 26 needs of a statement over other
-  # SELECTs. Rows of two aggregates are merged by a FULL JOIN on plain equality
+  # SELECT statements. Rows of two aggregates are merged by a FULL JOIN on plain equality
   # and a GROUP BY of the merged keys with MAX of each measure: a NULL key
   # matches nothing in the join and meets its counterpart in the group. Druid
   # has no null-safe join condition, and its planner fails on a projection over
@@ -162,7 +162,7 @@ templates:
   driver/date_bin:
     source: Druid TIME_FLOOR with an ISO 8601 period and an origin; DruidQuery.ts has none
     text: "TIME_FLOOR({{ source }}, '{% if unit == 'year' %}P{{ count }}Y{% elif unit == 'quarter' %}P{{ count * 3 }}M{% elif unit == 'month' %}P{{ count }}M{% elif unit == 'week' %}P{{ count }}W{% elif unit == 'day' %}P{{ count }}D{% elif unit == 'hour' %}PT{{ count }}H{% elif unit == 'minute' %}PT{{ count }}M{% else %}PT{{ count }}S{% endif %}', TIME_PARSE('{{ origin }}'))"
-  # Several SELECTs. Cube's Druid dialect merges them through a join on
+  # Several SELECT statements. Cube's Druid dialect merges them through a join on
   # `a = b OR (a IS NULL AND b IS NULL)` over a union of the keys; Druid 26
   # rejects both. These choose the planner's FULL JOIN merge instead, which
   # statements/select completes.

@@ -71,7 +71,7 @@ pub fn fixture(fixture: Fixture) -> &'static [&'static str] {
 /// How Cube Core's Druid dialect answers a case, where not with the kernel's
 /// SQL. `refuses`: it has no template for the feature and returns an error.
 /// `differs`: its SQL is other than the kernel's and Druid 26 rejects it: an
-/// interval written `INTERVAL 3 day`, or several SELECTs merged through a
+/// interval written `INTERVAL 3 day`, or several SELECT statements merged through a
 /// null-safe join over a union of keys. A Druid execution tier holds each to
 /// its word; a case not listed here must compile to Cube Core's SQL.
 pub fn cube_core(case: &str) -> Option<&'static str> {
@@ -84,7 +84,7 @@ pub fn cube_core(case: &str) -> Option<&'static str> {
         | "uw_by_underwriting_year"
         | "prior_day"
         | "change_from_prior_day" => Some("differs"),
-        // Several SELECTs over shared dimensions. Totals are not here: without
+        // Several SELECT statements over shared dimensions. Totals are not here: without
         // a dimension Cube joins them `ON 1 = 1`, as the kernel does.
         "multi_fact_by_dimension"
         | "multi_fact_null_key"

@@ -208,7 +208,7 @@ pull request.
   Druid 26 rejects. An offset in weeks or quarters is unsupported on Druid and
   on Presto: their interval literals have neither.
 
-- **Several SELECTs on Druid.** Measures of several cubes, sums over rows a
+- **Several SELECT statements on Druid.** Measures of several cubes, sums over rows a
   join repeats and time shifts compile. Cube Core merges their aggregates
   through a join on `a = b OR (a IS NULL AND b IS NULL)` over a union of keys,
   and Druid 26 rejects both. The kernel merges them by a `FULL JOIN` on

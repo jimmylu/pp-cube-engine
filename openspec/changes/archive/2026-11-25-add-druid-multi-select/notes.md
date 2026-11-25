@@ -2,7 +2,7 @@
 
 ## Done
 
-- Druid compiles queries of several SELECTs: several facts over shared dimensions, sums over repeated rows, time shifts. Sixteen more shared cases, 73 of 85. Templates only.
+- Druid compiles queries of several SELECT statements: several facts over shared dimensions, sums over repeated rows, time shifts. Sixteen more shared cases, 73 of 85. Templates only.
 - Fourteen cases state `cube_core: differs`; the two totals equal Cube Core's SQL. With the five of the change before, sixteen state `differs` and three `refuses`.
 - Still refused by name on Druid: ungrouped queries and rolling windows, twelve cases.
 
@@ -24,3 +24,5 @@
 - `maxSubqueryRows` bounds every aggregate of a merged query on Druid; whether production raises it is the owner's to say.
 - Rolling windows on Druid.
 - The adapter's refusal of `multi-stage` is now declared by no dialect; it stays for a dialect that needs it.
+
+- The first delivery stopped at `typos`: the plural of the keyword SELECT reads as a misspelling. Reworded to "SELECT statements" throughout; no rule was added.

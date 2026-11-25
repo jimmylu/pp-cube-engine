@@ -330,7 +330,7 @@ fn only_druid_cases_state_a_relation_to_cube_core_and_only_the_reviewed_ones() {
         .map(|(name, relation)| (name.as_str(), relation.as_str()))
         .collect();
     // Cube's Druid dialect has no approximate count and no date bin; it writes
-    // an interval Druid rejects, and merges several SELECTs in a way Druid
+    // an interval Druid rejects, and merges several SELECT statements in a way Druid
     // rejects. Everything else must equal Cube Core's SQL.
     let refused: Vec<&str> = stated
         .iter()
@@ -352,7 +352,7 @@ fn only_druid_cases_state_a_relation_to_cube_core_and_only_the_reviewed_ones() {
             case["sql"].as_str().unwrap(),
         );
         let differs = stated.contains(&(name, "differs"));
-        // A statement of several SELECTs over shared keys, or with interval
+        // A statement of several SELECT statements over shared keys, or with interval
         // arithmetic, is where the kernel leaves Cube Core, and nowhere else.
         let beyond = sql.contains("FULL JOIN") || sql.contains("INTERVAL '");
         assert_eq!(differs, beyond, "{name}");
