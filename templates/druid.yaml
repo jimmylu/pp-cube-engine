@@ -7,16 +7,21 @@ commit: 486f0d26bab58ab4fe0be0e4cdd39818b35a7870
 timestamp_precision: 3
 # Druid's interval literal takes one of these units; a week or a quarter is not one.
 interval_units: [year, month, day, hour, minute, second]
-# What Druid 26 cannot answer, or what is not built for it yet. Established on
-# Druid 26.0.0: the SQL of several facts joins on `a = b OR (a IS NULL AND b IS
-# NULL)` and unions inside a subquery, both rejected; a scan cannot be ordered
-# by a column other than time. Rolling windows and time shifts need more than
-# one SELECT.
-refuses: [multi-stage, ungrouped, rolling-window, time-shift]
+# What Druid 26 cannot answer, established on Druid 26.0.0. A scan cannot be
+# ordered by a column other than time, so an ungrouped query is refused. A
+# rolling window joins on a range of time, and Druid joins on equality only.
+refuses: [ungrouped, rolling-window]
 templates:
+  # Cube's statement, with what Druid 26 needs of a statement over other
+  # SELECTs. Rows of two aggregates are merged by a FULL JOIN on plain equality
+  # and a GROUP BY of the merged keys with MAX of each measure: a NULL key
+  # matches nothing in the join and meets its counterpart in the group. Druid
+  # has no null-safe join condition, and its planner fails on a projection over
+  # a join. The outermost statement is grouped by all its columns: Druid
+  # orders a grouped result by any column, but a scan only by time.
   statements/select:
-    source: BaseQuery.ts
-    text: "{% if ctes %} WITH \n{{ ctes | join(',\n') }}\n{% endif %}SELECT {% if distinct %}DISTINCT {% endif %}{{ select_concat | map(attribute='aliased') | join(', ') }} {% if from %}\nFROM (\n{{ from | indent(2, true) }}\n) AS {{ from_alias }}{% elif from_prepared %}\nFROM {{ from_prepared }}{% endif %}{% for join in joins %}\n{{ join }}{% endfor %}{% if filter %}\nWHERE {{ filter }}{% endif %}{% if group_by %}\nGROUP BY {{ group_by }}{% endif %}{% if having %}\nHAVING {{ having }}{% endif %}{% if order_by %}\nORDER BY {{ order_by | map(attribute='expr') | join(', ') }}{% endif %}{% if limit is not none %}\nLIMIT {{ limit }}{% endif %}{% if offset is not none %}\nOFFSET {{ offset }}{% endif %}"
+    source: BaseQuery.ts; the merge and the outer grouping are the kernel's
+    text: "{% set keys = select_concat | selectattr('expr', 'startingwith', 'COALESCE(\"q_l\".') | list | length %}{% set merge = (not group_by) and keys > 0 and from_prepared and 'FULL JOIN ' in from_prepared %}{% if ctes %} WITH \n{{ ctes | join(',\n') }}\n{% endif %}SELECT {% if distinct %}DISTINCT {% endif %}{% if merge %}{% for column in select_concat %}{% if column.expr is startingwith('COALESCE(\"q_l\".') %}{{ column.aliased }}{% else %}MAX({{ column.expr }}) \"{{ column.alias }}\"{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}{{ select_concat | map(attribute='aliased') | join(', ') }}{% endif %} {% if from %}\nFROM (\n{{ from | indent(2, true) }}\n) AS {{ from_alias }}{% elif from_prepared %}\nFROM {{ from_prepared }}{% endif %}{% for join in joins %}\n{{ join }}{% endfor %}{% if filter %}\nWHERE {{ filter }}{% endif %}{% if group_by %}\nGROUP BY {{ group_by }}{% elif merge %}\nGROUP BY {{ range(1, keys + 1) | join(', ') }}{% elif ctes and order_by %}\nGROUP BY {{ range(1, (select_concat | length) + 1) | join(', ') }}{% endif %}{% if having %}\nHAVING {{ having }}{% endif %}{% if order_by %}\nORDER BY {{ order_by | map(attribute='expr') | join(', ') }}{% endif %}{% if limit is not none %}\nLIMIT {{ limit }}{% endif %}{% if offset is not none %}\nOFFSET {{ offset }}{% endif %}"
   functions/COUNT_DISTINCT:
     source: BaseQuery.ts
     text: "COUNT(DISTINCT {{ args_concat }})"
@@ -157,3 +162,16 @@ templates:
   driver/date_bin:
     source: Druid TIME_FLOOR with an ISO 8601 period and an origin; DruidQuery.ts has none
     text: "TIME_FLOOR({{ source }}, '{% if unit == 'year' %}P{{ count }}Y{% elif unit == 'quarter' %}P{{ count * 3 }}M{% elif unit == 'month' %}P{{ count }}M{% elif unit == 'week' %}P{{ count }}W{% elif unit == 'day' %}P{{ count }}D{% elif unit == 'hour' %}PT{{ count }}H{% elif unit == 'minute' %}PT{{ count }}M{% else %}PT{{ count }}S{% endif %}', TIME_PARSE('{{ origin }}'))"
+  # Several SELECTs. Cube's Druid dialect merges them through a join on
+  # `a = b OR (a IS NULL AND b IS NULL)` over a union of the keys; Druid 26
+  # rejects both. These choose the planner's FULL JOIN merge instead, which
+  # statements/select completes.
+  tesseract/join_types_full:
+    source: BaseQuery.ts; DruidQuery.ts does not offer it
+    text: "FULL"
+  expressions/is_not_distinct_from:
+    source: plain equality; statements/select merges the NULL keys in its GROUP BY
+    text: "{{ left }} = {{ right }}"
+  functions/COALESCE:
+    source: BaseQuery.ts
+    text: "COALESCE({{ args_concat }})"

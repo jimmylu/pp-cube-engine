@@ -70,15 +70,34 @@ pub fn fixture(fixture: Fixture) -> &'static [&'static str] {
 // Compared with pinned Cube Core by a Druid execution tier, not by T0.
 /// How Cube Core's Druid dialect answers a case, where not with the kernel's
 /// SQL. `refuses`: it has no template for the feature and returns an error.
-/// `differs`: it writes an interval as `INTERVAL 3 day`, which Druid 26
-/// rejects. A Druid execution tier holds each to its word; a case not listed
-/// here must compile to Cube Core's SQL.
+/// `differs`: its SQL is other than the kernel's and Druid 26 rejects it: an
+/// interval written `INTERVAL 3 day`, or several SELECTs merged through a
+/// null-safe join over a union of keys. A Druid execution tier holds each to
+/// its word; a case not listed here must compile to Cube Core's SQL.
 pub fn cube_core(case: &str) -> Option<&'static str> {
     match case {
         "approximate_distinct_count"
         | "granularity_of_two_days"
         | "granularity_of_two_quarters" => Some("refuses"),
-        "granularity_with_offset" | "uw_by_underwriting_year" => Some("differs"),
+        // An interval literal Druid cannot parse.
+        "granularity_with_offset"
+        | "uw_by_underwriting_year"
+        | "prior_day"
+        | "change_from_prior_day" => Some("differs"),
+        // Several SELECTs over shared dimensions. Totals are not here: without
+        // a dimension Cube joins them `ON 1 = 1`, as the kernel does.
+        "multi_fact_by_dimension"
+        | "multi_fact_null_key"
+        | "multi_fact_page"
+        | "sum_over_repeated_rows"
+        | "security_multi_fact"
+        | "view_sum_over_repeated_rows"
+        | "view_formula_and_one_to_one"
+        | "ep_written_vs_earned_by_line"
+        | "cl_paid_and_outstanding_by_line"
+        | "x_premium_paid_by_line"
+        | "x_premium_paid_ceded_by_region"
+        | "security_region_across_facts" => Some("differs"),
         _ => None,
     }
 }

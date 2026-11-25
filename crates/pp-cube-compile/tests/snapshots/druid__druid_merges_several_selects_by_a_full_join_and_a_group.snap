@@ -1,0 +1,89 @@
+---
+source: crates/pp-cube-compile/tests/druid.rs
+expression: golden
+---
+ WITH 
+cte_0 AS (  SELECT "stores".store_name "stores__store_name", sum("sales".amount) "sales__amount" 
+  FROM  dw.sales_dtl  AS "sales"
+  LEFT JOIN  dw.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+  GROUP BY 1),
+cte_1 AS (  SELECT "stores".store_name "stores__store_name", sum("refunds".amount) "refunds__amount" 
+  FROM  dw.refund_dtl  AS "refunds"
+  LEFT JOIN  dw.dim_store  AS "stores" ON "refunds".store_cd = "stores".store_cd
+  GROUP BY 1)
+SELECT "full_aggregate"."stores__store_name" "stores__store_name", "full_aggregate"."sales__amount" "sales__amount", "full_aggregate"."refunds__amount" "refunds__amount" 
+FROM (SELECT COALESCE("q_l"."stores__store_name", "q_r"."stores__store_name") "stores__store_name", MAX("q_l"."sales__amount") "sales__amount", MAX("q_r"."refunds__amount") "refunds__amount" 
+FROM  cte_0  AS "q_l"
+FULL JOIN  cte_1  AS "q_r" ON ("q_l"."stores__store_name" = "q_r"."stores__store_name")
+GROUP BY 1) AS "full_aggregate"
+GROUP BY 1, 2, 3
+ORDER BY  2  DESC
+-- parameters: []
+
+ WITH 
+cte_0 AS (  SELECT "stores".store_name "stores__store_name", sum("sales".amount) "sales__amount" 
+  FROM  dw.sales_dtl  AS "sales"
+  LEFT JOIN  dw.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+  GROUP BY 1),
+cte_1 AS (  SELECT "stores".store_name "stores__store_name", sum("refunds".amount) "refunds__amount" 
+  FROM  dw.refund_dtl  AS "refunds"
+  LEFT JOIN  dw.dim_store  AS "stores" ON "refunds".store_cd = "stores".store_cd
+  GROUP BY 1)
+SELECT "full_aggregate"."stores__store_name" "stores__store_name", "full_aggregate"."sales__amount" "sales__amount", "full_aggregate"."refunds__amount" "refunds__amount" 
+FROM (SELECT COALESCE("q_l"."stores__store_name", "q_r"."stores__store_name") "stores__store_name", MAX("q_l"."sales__amount") "sales__amount", MAX("q_r"."refunds__amount") "refunds__amount" 
+FROM  cte_0  AS "q_l"
+FULL JOIN  cte_1  AS "q_r" ON ("q_l"."stores__store_name" = "q_r"."stores__store_name")
+GROUP BY 1) AS "full_aggregate"
+WHERE ("full_aggregate"."refunds__amount" > ?)
+GROUP BY 1, 2, 3
+ORDER BY  2  DESC
+LIMIT 5
+OFFSET 5
+-- parameters: [Text("0")]
+
+ WITH 
+cte_0 AS (  SELECT "keys"."sales__channel_cd" "sales__channel_cd", sum("stores_key_stores".floor_area) "stores__floor_area" 
+  FROM (SELECT DISTINCT "stores_key_sales".channel_cd "sales__channel_cd", "stores_key_stores".store_cd "stores__store_cd" 
+  FROM  dw.sales_dtl  AS "stores_key_sales"
+  LEFT JOIN  dw.dim_store  AS "stores_key_stores" ON "stores_key_sales".store_cd = "stores_key_stores".store_cd) AS "keys"
+  LEFT JOIN  dw.dim_store  AS "stores_key_stores" ON (("keys"."stores__store_cd" = "stores_key_stores".store_cd))
+  GROUP BY 1)
+SELECT "fk_aggregate"."sales__channel_cd" "sales__channel_cd", "fk_aggregate"."stores__floor_area" "stores__floor_area" 
+FROM  cte_0  AS "fk_aggregate"
+GROUP BY 1, 2
+ORDER BY  2  DESC
+-- parameters: []
+
+ WITH 
+cte_0 AS (  SELECT DATE_TRUNC('day', CAST(TIME_FORMAT("sales".sold_at, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount" 
+  FROM  dw.sales_dtl  AS "sales"
+  WHERE ("sales".sold_at >= TIME_PARSE(?) AND "sales".sold_at <= TIME_PARSE(?))
+  GROUP BY 1
+  ORDER BY  1  ASC),
+cte_1 AS (  SELECT DATE_TRUNC('day', CAST(TIME_FORMAT((("sales".sold_at + INTERVAL '1' YEAR)), 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount" 
+  FROM  dw.sales_dtl  AS "sales"
+  WHERE ((("sales".sold_at + INTERVAL '1' YEAR)) >= TIME_PARSE(?) AND (("sales".sold_at + INTERVAL '1' YEAR)) <= TIME_PARSE(?))
+  GROUP BY 1
+  ORDER BY  1  ASC),
+cte_2 AS (  SELECT "fk_aggregate"."sales__sold_at_day" "sales__sold_at_day", "fk_aggregate"."sales__amount" "sales__amount_prior_year" 
+  FROM  cte_1  AS "fk_aggregate"),
+cte_3 AS (  SELECT "full_aggregate"."sales__sold_at_day" "sales__sold_at_day", ("full_aggregate"."sales__amount" - "full_aggregate"."sales__amount_prior_year") / NULLIF("full_aggregate"."sales__amount_prior_year", 0) "sales__growth" 
+  FROM (SELECT COALESCE("q_l"."sales__sold_at_day", "q_r"."sales__sold_at_day") "sales__sold_at_day", MAX("q_l"."sales__amount") "sales__amount", MAX("q_r"."sales__amount_prior_year") "sales__amount_prior_year" 
+  FROM  cte_0  AS "q_l"
+  FULL JOIN  cte_2  AS "q_r" ON ("q_l"."sales__sold_at_day" = "q_r"."sales__sold_at_day")
+  GROUP BY 1) AS "full_aggregate")
+SELECT "fk_aggregate"."sales__sold_at_day" "sales__sold_at_day", "fk_aggregate"."sales__growth" "sales__growth" 
+FROM  cte_3  AS "fk_aggregate"
+GROUP BY 1, 2
+ORDER BY  1  ASC
+-- parameters: [Text("2026-09-30T15:00:00.000Z"), Text("2026-10-03T14:59:59.999Z"), Text("2026-09-30T15:00:00.000Z"), Text("2026-10-03T14:59:59.999Z")]
+
+ WITH 
+cte_0 AS (  SELECT sum("sales".amount) "sales__amount" 
+  FROM  dw.sales_dtl  AS "sales"),
+cte_1 AS (  SELECT sum("refunds".amount) "refunds__amount" 
+  FROM  dw.refund_dtl  AS "refunds")
+SELECT "q_0"."sales__amount" "sales__amount", "q_1"."refunds__amount" "refunds__amount" 
+FROM  cte_0  AS "q_0"
+INNER JOIN  cte_1  AS "q_1" ON 1 = 1
+-- parameters: []

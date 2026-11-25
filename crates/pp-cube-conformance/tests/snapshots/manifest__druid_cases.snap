@@ -286,6 +286,108 @@ GROUP BY 1
 ORDER BY  1  ASC
 -- parameters: []
 
+-- multi_fact_by_dimension
+ WITH 
+cte_0 AS (  SELECT "stores".store_name "stores__store_name", sum("sales".amount) "sales__amount" 
+  FROM  druid.sales_dtl  AS "sales"
+  LEFT JOIN  druid.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+  WHERE ("stores".store_name IS NOT NULL)
+  GROUP BY 1),
+cte_1 AS (  SELECT "stores".store_name "stores__store_name", sum("refunds".amount) "refunds__amount", count("refunds".refund_id) "refunds__refund_count" 
+  FROM  druid.refund_dtl  AS "refunds"
+  LEFT JOIN  druid.dim_store  AS "stores" ON "refunds".store_cd = "stores".store_cd
+  WHERE ("stores".store_name IS NOT NULL)
+  GROUP BY 1)
+SELECT "full_aggregate"."stores__store_name" "stores__store_name", "full_aggregate"."sales__amount" "sales__amount", "full_aggregate"."refunds__amount" "refunds__amount", "full_aggregate"."refunds__refund_count" "refunds__refund_count" 
+FROM (SELECT COALESCE("q_l"."stores__store_name", "q_r"."stores__store_name") "stores__store_name", MAX("q_l"."sales__amount") "sales__amount", MAX("q_r"."refunds__amount") "refunds__amount", MAX("q_r"."refunds__refund_count") "refunds__refund_count" 
+FROM  cte_0  AS "q_l"
+FULL JOIN  cte_1  AS "q_r" ON ("q_l"."stores__store_name" = "q_r"."stores__store_name")
+GROUP BY 1) AS "full_aggregate"
+GROUP BY 1, 2, 3, 4
+ORDER BY  1  ASC
+-- parameters: []
+
+-- multi_fact_null_key
+ WITH 
+cte_0 AS (  SELECT "stores".store_name "stores__store_name", sum("sales".amount) "sales__amount" 
+  FROM  druid.sales_dtl  AS "sales"
+  LEFT JOIN  druid.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+  GROUP BY 1),
+cte_1 AS (  SELECT "stores".store_name "stores__store_name", sum("refunds".amount) "refunds__amount" 
+  FROM  druid.refund_dtl  AS "refunds"
+  LEFT JOIN  druid.dim_store  AS "stores" ON "refunds".store_cd = "stores".store_cd
+  GROUP BY 1),
+cte_2 AS (  SELECT "stores".store_name "stores__store_name", count("visits".visit_id) "visits__visit_count" 
+  FROM  druid.visit  AS "visits"
+  LEFT JOIN  druid.dim_store  AS "stores" ON "visits".store_cd = "stores".store_cd
+  GROUP BY 1)
+SELECT "full_aggregate"."stores__store_name" "stores__store_name", "full_aggregate"."sales__amount" "sales__amount", "full_aggregate"."refunds__amount" "refunds__amount", "full_aggregate"."visits__visit_count" "visits__visit_count" 
+FROM (SELECT COALESCE("q_l"."stores__store_name", "q_r"."stores__store_name") "stores__store_name", MAX("q_l"."sales__amount") "sales__amount", MAX("q_l"."refunds__amount") "refunds__amount", MAX("q_r"."visits__visit_count") "visits__visit_count" 
+FROM (SELECT COALESCE("q_l"."stores__store_name", "q_r"."stores__store_name") "stores__store_name", MAX("q_l"."sales__amount") "sales__amount", MAX("q_r"."refunds__amount") "refunds__amount" 
+FROM  cte_0  AS "q_l"
+FULL JOIN  cte_1  AS "q_r" ON ("q_l"."stores__store_name" = "q_r"."stores__store_name")
+GROUP BY 1) AS "q_l"
+FULL JOIN  cte_2  AS "q_r" ON ("q_l"."stores__store_name" = "q_r"."stores__store_name")
+GROUP BY 1) AS "full_aggregate"
+WHERE ("full_aggregate"."visits__visit_count" > ?)
+GROUP BY 1, 2, 3, 4
+ORDER BY  4  DESC,  2  DESC
+-- parameters: ["0"]
+
+-- multi_fact_totals
+ WITH 
+cte_0 AS (  SELECT sum("sales".amount) "sales__amount" 
+  FROM  druid.sales_dtl  AS "sales"),
+cte_1 AS (  SELECT sum("refunds".amount) "refunds__amount" 
+  FROM  druid.refund_dtl  AS "refunds")
+SELECT "q_0"."sales__amount" "sales__amount", "q_1"."refunds__amount" "refunds__amount" 
+FROM  cte_0  AS "q_0"
+INNER JOIN  cte_1  AS "q_1" ON 1 = 1
+-- parameters: []
+
+-- multi_fact_page
+ WITH 
+cte_0 AS (  SELECT "stores".store_name "stores__store_name", sum("sales".amount) "sales__amount" 
+  FROM  druid.sales_dtl  AS "sales"
+  LEFT JOIN  druid.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+  WHERE ("stores".store_name IS NOT NULL)
+  GROUP BY 1),
+cte_1 AS (  SELECT "stores".store_name "stores__store_name", sum("refunds".amount) "refunds__amount" 
+  FROM  druid.refund_dtl  AS "refunds"
+  LEFT JOIN  druid.dim_store  AS "stores" ON "refunds".store_cd = "stores".store_cd
+  WHERE ("stores".store_name IS NOT NULL)
+  GROUP BY 1)
+SELECT "full_aggregate"."stores__store_name" "stores__store_name", "full_aggregate"."sales__amount" "sales__amount", "full_aggregate"."refunds__amount" "refunds__amount" 
+FROM (SELECT COALESCE("q_l"."stores__store_name", "q_r"."stores__store_name") "stores__store_name", MAX("q_l"."sales__amount") "sales__amount", MAX("q_r"."refunds__amount") "refunds__amount" 
+FROM  cte_0  AS "q_l"
+FULL JOIN  cte_1  AS "q_r" ON ("q_l"."stores__store_name" = "q_r"."stores__store_name")
+GROUP BY 1) AS "full_aggregate"
+GROUP BY 1, 2, 3
+ORDER BY  2  DESC
+LIMIT 1
+OFFSET 1
+-- parameters: []
+
+-- sum_over_repeated_rows
+ WITH 
+cte_0 AS (  SELECT "sales".category_cd "sales__category_cd", sum("sales".amount) "sales__amount" 
+  FROM  druid.sales_dtl  AS "sales"
+  GROUP BY 1),
+cte_1 AS (  SELECT "keys"."sales__category_cd" "sales__category_cd", sum("stores_key_stores".floor_area) "stores__floor_area" 
+  FROM (SELECT DISTINCT "stores_key_sales".category_cd "sales__category_cd", "stores_key_stores".store_cd "stores__store_cd" 
+  FROM  druid.sales_dtl  AS "stores_key_sales"
+  LEFT JOIN  druid.dim_store  AS "stores_key_stores" ON "stores_key_sales".store_cd = "stores_key_stores".store_cd) AS "keys"
+  LEFT JOIN  druid.dim_store  AS "stores_key_stores" ON (("keys"."stores__store_cd" = "stores_key_stores".store_cd))
+  GROUP BY 1)
+SELECT "full_aggregate"."sales__category_cd" "sales__category_cd", "full_aggregate"."sales__amount" "sales__amount", "full_aggregate"."stores__floor_area" "stores__floor_area" 
+FROM (SELECT COALESCE("q_l"."sales__category_cd", "q_r"."sales__category_cd") "sales__category_cd", MAX("q_l"."sales__amount") "sales__amount", MAX("q_r"."stores__floor_area") "stores__floor_area" 
+FROM  cte_0  AS "q_l"
+FULL JOIN  cte_1  AS "q_r" ON ("q_l"."sales__category_cd" = "q_r"."sales__category_cd")
+GROUP BY 1) AS "full_aggregate"
+GROUP BY 1, 2, 3
+ORDER BY  1  ASC
+-- parameters: []
+
 -- two_cubes_in_one_select
 SELECT "sales".channel_cd "sales__channel_cd", sum("sales".amount) "sales__amount", sum("receipts".tax) "receipts__tax" 
 FROM  druid.sales_dtl  AS "sales"
@@ -293,6 +395,29 @@ LEFT JOIN  druid.receipt  AS "receipts" ON "sales".receipt_no = "receipts".recei
 GROUP BY 1
 ORDER BY  1  ASC
 -- parameters: []
+
+-- security_multi_fact
+ WITH 
+cte_0 AS (  SELECT "stores".store_name "stores__store_name", sum("sales".amount) "sales__amount" 
+  FROM  druid.sales_dtl  AS "sales"
+  LEFT JOIN  druid.dim_store  AS "stores" ON "sales".store_cd = "stores".store_cd
+  LEFT JOIN  druid.dim_region  AS "regions" ON "stores".region_cd = "regions".region_cd
+  WHERE ("regions".region_name = ?)
+  GROUP BY 1),
+cte_1 AS (  SELECT "stores".store_name "stores__store_name", sum("refunds".amount) "refunds__amount" 
+  FROM  druid.refund_dtl  AS "refunds"
+  LEFT JOIN  druid.dim_store  AS "stores" ON "refunds".store_cd = "stores".store_cd
+  LEFT JOIN  druid.dim_region  AS "regions" ON "stores".region_cd = "regions".region_cd
+  WHERE ("regions".region_name = ?)
+  GROUP BY 1)
+SELECT "full_aggregate"."stores__store_name" "stores__store_name", "full_aggregate"."sales__amount" "sales__amount", "full_aggregate"."refunds__amount" "refunds__amount" 
+FROM (SELECT COALESCE("q_l"."stores__store_name", "q_r"."stores__store_name") "stores__store_name", MAX("q_l"."sales__amount") "sales__amount", MAX("q_r"."refunds__amount") "refunds__amount" 
+FROM  cte_0  AS "q_l"
+FULL JOIN  cte_1  AS "q_r" ON ("q_l"."stores__store_name" = "q_r"."stores__store_name")
+GROUP BY 1) AS "full_aggregate"
+GROUP BY 1, 2, 3
+ORDER BY  1  ASC
+-- parameters: ["north", "north"]
 
 -- security_two_hop_join
 SELECT sum("sales".amount) "sales__amount" 
@@ -307,6 +432,53 @@ SELECT sum("sales".amount) "sales__amount"
 FROM  druid.sales_dtl  AS "sales"
 WHERE (((LOWER("sales".region_cd) LIKE CONCAT('%', LOWER(?), '%') ESCAPE '\')) OR ("sales".channel_cd = ?)) AND ((LOWER("sales".region_cd) LIKE CONCAT('', LOWER(?), '%') ESCAPE '\'))
 -- parameters: ["north", "C3", "a\\%"]
+
+-- prior_day
+ WITH 
+cte_0 AS (  SELECT DATE_TRUNC('day', CAST(TIME_FORMAT((("sales".__time + INTERVAL '1' DAY)), 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount" 
+  FROM  druid.sales_dtl  AS "sales"
+  WHERE ((("sales".__time + INTERVAL '1' DAY)) >= TIME_PARSE(?) AND (("sales".__time + INTERVAL '1' DAY)) <= TIME_PARSE(?))
+  GROUP BY 1
+  ORDER BY  1  ASC),
+cte_1 AS (  SELECT "fk_aggregate"."sales__sold_at_day" "sales__sold_at_day", "fk_aggregate"."sales__amount" "sales__amount_prior_day" 
+  FROM  cte_0  AS "fk_aggregate"),
+cte_2 AS (  SELECT DATE_TRUNC('day', CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount" 
+  FROM  druid.sales_dtl  AS "sales"
+  WHERE ("sales".__time >= TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?))
+  GROUP BY 1)
+SELECT "full_aggregate"."sales__sold_at_day" "sales__sold_at_day", "full_aggregate"."sales__amount" "sales__amount", "full_aggregate"."sales__amount_prior_day" "sales__amount_prior_day" 
+FROM (SELECT COALESCE("q_l"."sales__sold_at_day", "q_r"."sales__sold_at_day") "sales__sold_at_day", MAX("q_l"."sales__amount_prior_day") "sales__amount_prior_day", MAX("q_r"."sales__amount") "sales__amount" 
+FROM  cte_1  AS "q_l"
+FULL JOIN  cte_2  AS "q_r" ON ("q_l"."sales__sold_at_day" = "q_r"."sales__sold_at_day")
+GROUP BY 1) AS "full_aggregate"
+GROUP BY 1, 2, 3
+ORDER BY  1  ASC
+-- parameters: ["2026-10-02T00:00:00.000Z", "2026-10-04T23:59:59.999Z", "2026-10-02T00:00:00.000Z", "2026-10-04T23:59:59.999Z"]
+
+-- change_from_prior_day
+ WITH 
+cte_0 AS (  SELECT DATE_TRUNC('day', CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount" 
+  FROM  druid.sales_dtl  AS "sales"
+  WHERE ("sales".__time >= TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?))
+  GROUP BY 1
+  ORDER BY  1  ASC),
+cte_1 AS (  SELECT DATE_TRUNC('day', CAST(TIME_FORMAT((("sales".__time + INTERVAL '1' DAY)), 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount" 
+  FROM  druid.sales_dtl  AS "sales"
+  WHERE ((("sales".__time + INTERVAL '1' DAY)) >= TIME_PARSE(?) AND (("sales".__time + INTERVAL '1' DAY)) <= TIME_PARSE(?))
+  GROUP BY 1
+  ORDER BY  1  ASC),
+cte_2 AS (  SELECT "fk_aggregate"."sales__sold_at_day" "sales__sold_at_day", "fk_aggregate"."sales__amount" "sales__amount_prior_day" 
+  FROM  cte_1  AS "fk_aggregate"),
+cte_3 AS (  SELECT "full_aggregate"."sales__sold_at_day" "sales__sold_at_day", "full_aggregate"."sales__amount" - "full_aggregate"."sales__amount_prior_day" "sales__amount_change" 
+  FROM (SELECT COALESCE("q_l"."sales__sold_at_day", "q_r"."sales__sold_at_day") "sales__sold_at_day", MAX("q_l"."sales__amount") "sales__amount", MAX("q_r"."sales__amount_prior_day") "sales__amount_prior_day" 
+  FROM  cte_0  AS "q_l"
+  FULL JOIN  cte_2  AS "q_r" ON ("q_l"."sales__sold_at_day" = "q_r"."sales__sold_at_day")
+  GROUP BY 1) AS "full_aggregate")
+SELECT "fk_aggregate"."sales__sold_at_day" "sales__sold_at_day", "fk_aggregate"."sales__amount_change" "sales__amount_change" 
+FROM  cte_3  AS "fk_aggregate"
+GROUP BY 1, 2
+ORDER BY  1  ASC
+-- parameters: ["2026-10-02T00:00:00.000Z", "2026-10-04T23:59:59.999Z", "2026-10-02T00:00:00.000Z", "2026-10-04T23:59:59.999Z"]
 
 -- approximate_distinct_count
 SELECT "sales".channel_cd "sales__channel_cd", APPROX_COUNT_DISTINCT("sales".order_no) "sales__order_count_approx" 
@@ -357,6 +529,44 @@ GROUP BY 1
 ORDER BY  1  ASC
 -- parameters: ["C1", "C2"]
 
+-- view_sum_over_repeated_rows
+ WITH 
+cte_0 AS (  SELECT "sales".channel_cd "sales_overview__channel_cd", sum("sales".amount) "sales__amount" 
+  FROM  druid.sales_dtl  AS "sales"
+  GROUP BY 1),
+cte_1 AS (  SELECT "keys"."sales_overview__channel_cd" "sales_overview__channel_cd", sum("stores_key_stores".floor_area) "stores__floor_area" 
+  FROM (SELECT DISTINCT "stores_key_sales".channel_cd "sales_overview__channel_cd", "stores_key_stores".store_cd "stores__store_cd" 
+  FROM  druid.sales_dtl  AS "stores_key_sales"
+  LEFT JOIN  druid.dim_store  AS "stores_key_stores" ON "stores_key_sales".store_cd = "stores_key_stores".store_cd) AS "keys"
+  LEFT JOIN  druid.dim_store  AS "stores_key_stores" ON (("keys"."stores__store_cd" = "stores_key_stores".store_cd))
+  GROUP BY 1)
+SELECT "full_aggregate"."sales_overview__channel_cd" "sales_overview__channel_cd", "full_aggregate"."sales__amount" "sales_overview__amount", "full_aggregate"."stores__floor_area" "sales_overview__stores_floor_area" 
+FROM (SELECT COALESCE("q_l"."sales_overview__channel_cd", "q_r"."sales_overview__channel_cd") "sales_overview__channel_cd", MAX("q_l"."sales__amount") "sales__amount", MAX("q_r"."stores__floor_area") "stores__floor_area" 
+FROM  cte_0  AS "q_l"
+FULL JOIN  cte_1  AS "q_r" ON ("q_l"."sales_overview__channel_cd" = "q_r"."sales_overview__channel_cd")
+GROUP BY 1) AS "full_aggregate"
+GROUP BY 1, 2, 3
+ORDER BY  1  ASC
+-- parameters: []
+
+-- view_formula_and_one_to_one
+ WITH 
+cte_0 AS (  SELECT "sales".channel_cd "sales_overview__channel_cd", sum("sales".amount) / NULLIF(COUNT(DISTINCT "sales".order_no), 0) "sales__amount_per_order" 
+  FROM  druid.sales_dtl  AS "sales"
+  GROUP BY 1),
+cte_1 AS (  SELECT "sales".channel_cd "sales_overview__channel_cd", sum("receipts".tax) "receipts__tax" 
+  FROM  druid.sales_dtl  AS "sales"
+  LEFT JOIN  druid.receipt  AS "receipts" ON "sales".receipt_no = "receipts".receipt_no
+  GROUP BY 1)
+SELECT "full_aggregate"."sales_overview__channel_cd" "sales_overview__channel_cd", "full_aggregate"."sales__amount_per_order" "sales_overview__amount_per_order", "full_aggregate"."receipts__tax" "sales_overview__tax" 
+FROM (SELECT COALESCE("q_l"."sales_overview__channel_cd", "q_r"."sales_overview__channel_cd") "sales_overview__channel_cd", MAX("q_l"."sales__amount_per_order") "sales__amount_per_order", MAX("q_r"."receipts__tax") "receipts__tax" 
+FROM  cte_0  AS "q_l"
+FULL JOIN  cte_1  AS "q_r" ON ("q_l"."sales_overview__channel_cd" = "q_r"."sales_overview__channel_cd")
+GROUP BY 1) AS "full_aggregate"
+GROUP BY 1, 2, 3
+ORDER BY  1  ASC
+-- parameters: []
+
 -- security_view
 SELECT "stores".store_name "sales_overview__stores_store_name", sum("sales".amount) "sales_overview__amount" 
 FROM  druid.sales_dtl  AS "sales"
@@ -383,6 +593,26 @@ GROUP BY 1
 ORDER BY  1  ASC
 -- parameters: ["2025-01-01T00:00:00.000Z", "2026-12-31T23:59:59.999Z"]
 
+-- ep_written_vs_earned_by_line
+ WITH 
+cte_0 AS (  SELECT "products".line_of_business "products__line_of_business", sum("policies".written_premium) "policies__written_premium" 
+  FROM  druid.ins_policy  AS "policies"
+  LEFT JOIN  druid.ins_product  AS "products" ON "policies".product_cd = "products".product_cd
+  GROUP BY 1),
+cte_1 AS (  SELECT "products".line_of_business "products__line_of_business", sum("earned_premiums".earned_premium) "earned_premiums__earned_premium" 
+  FROM  druid.ins_earned_premium  AS "earned_premiums"
+  LEFT JOIN  druid.ins_policy  AS "policies" ON "earned_premiums".policy_id = "policies".policy_id
+  LEFT JOIN  druid.ins_product  AS "products" ON "policies".product_cd = "products".product_cd
+  GROUP BY 1)
+SELECT "full_aggregate"."products__line_of_business" "products__line_of_business", "full_aggregate"."policies__written_premium" "policies__written_premium", "full_aggregate"."earned_premiums__earned_premium" "earned_premiums__earned_premium" 
+FROM (SELECT COALESCE("q_l"."products__line_of_business", "q_r"."products__line_of_business") "products__line_of_business", MAX("q_l"."policies__written_premium") "policies__written_premium", MAX("q_r"."earned_premiums__earned_premium") "earned_premiums__earned_premium" 
+FROM  cte_0  AS "q_l"
+FULL JOIN  cte_1  AS "q_r" ON ("q_l"."products__line_of_business" = "q_r"."products__line_of_business")
+GROUP BY 1) AS "full_aggregate"
+GROUP BY 1, 2, 3
+ORDER BY  1  ASC
+-- parameters: []
+
 -- cl_counts_by_cause
 SELECT "claims".cause_cd "claims__cause_cd", count("claims".claim_id) "claims__claim_count", count(CASE WHEN ("claims".status = 'OPEN') THEN "claims".claim_id END) "claims__open_count", avg("claims".report_lag_days) "claims__avg_report_lag_days", max("claims".report_lag_days) "claims__max_report_lag_days" 
 FROM  druid.ins_claim  AS "claims"
@@ -400,12 +630,123 @@ GROUP BY 1
 ORDER BY  1  ASC
 -- parameters: []
 
+-- cl_paid_and_outstanding_by_line
+ WITH 
+cte_0 AS (  SELECT "products".line_of_business "products__line_of_business", sum("claim_payments".paid_amount) "claim_payments__paid_amount" 
+  FROM  druid.ins_claim_payment  AS "claim_payments"
+  LEFT JOIN  druid.ins_claim  AS "claims" ON "claim_payments".claim_id = "claims".claim_id
+  LEFT JOIN  druid.ins_policy  AS "policies" ON "claims".policy_id = "policies".policy_id
+  LEFT JOIN  druid.ins_product  AS "products" ON "policies".product_cd = "products".product_cd
+  GROUP BY 1),
+cte_1 AS (  SELECT "keys"."products__line_of_business" "products__line_of_business", sum("claim_reserves_key_claim_reserves".outstanding) "claim_reserves__outstanding" 
+  FROM (SELECT DISTINCT "claim_reserves_key_products".line_of_business "products__line_of_business", "claim_reserves_key_claim_reserves".claim_id "claim_reserves__claim_id" 
+  FROM  druid.ins_claim_payment  AS "claim_reserves_key_claim_payments"
+  LEFT JOIN  druid.ins_claim  AS "claim_reserves_key_claims" ON "claim_reserves_key_claim_payments".claim_id = "claim_reserves_key_claims".claim_id
+  LEFT JOIN  druid.ins_policy  AS "claim_reserves_key_policies" ON "claim_reserves_key_claims".policy_id = "claim_reserves_key_policies".policy_id
+  LEFT JOIN  druid.ins_product  AS "claim_reserves_key_products" ON "claim_reserves_key_policies".product_cd = "claim_reserves_key_products".product_cd
+  LEFT JOIN  druid.ins_claim_reserve  AS "claim_reserves_key_claim_reserves" ON "claim_reserves_key_claims".claim_id = "claim_reserves_key_claim_reserves".claim_id) AS "keys"
+  LEFT JOIN  druid.ins_claim_reserve  AS "claim_reserves_key_claim_reserves" ON (("keys"."claim_reserves__claim_id" = "claim_reserves_key_claim_reserves".claim_id))
+  GROUP BY 1)
+SELECT "full_aggregate"."products__line_of_business" "products__line_of_business", "full_aggregate"."claim_payments__paid_amount" "claim_payments__paid_amount", "full_aggregate"."claim_reserves__outstanding" "claim_reserves__outstanding" 
+FROM (SELECT COALESCE("q_l"."products__line_of_business", "q_r"."products__line_of_business") "products__line_of_business", MAX("q_l"."claim_payments__paid_amount") "claim_payments__paid_amount", MAX("q_r"."claim_reserves__outstanding") "claim_reserves__outstanding" 
+FROM  cte_0  AS "q_l"
+FULL JOIN  cte_1  AS "q_r" ON ("q_l"."products__line_of_business" = "q_r"."products__line_of_business")
+GROUP BY 1) AS "full_aggregate"
+GROUP BY 1, 2, 3
+ORDER BY  1  ASC
+-- parameters: []
+
 -- cl_development_triangle
 SELECT DATE_TRUNC('year', CAST(TIME_FORMAT("claims".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "claims__loss_at_year", DATE_TRUNC('year', CAST(TIME_FORMAT("claim_payments".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "claim_payments__paid_at_year", sum("claim_payments".paid_amount) "claim_payments__paid_amount" 
 FROM  druid.ins_claim_payment  AS "claim_payments"
 LEFT JOIN  druid.ins_claim  AS "claims" ON "claim_payments".claim_id = "claims".claim_id
 GROUP BY 1, 2
 ORDER BY  1  ASC,  2  ASC
+-- parameters: []
+
+-- x_premium_paid_by_line
+ WITH 
+cte_0 AS (  SELECT "products".line_of_business "products__line_of_business", sum("earned_premiums".earned_premium) "earned_premiums__earned_premium" 
+  FROM  druid.ins_earned_premium  AS "earned_premiums"
+  LEFT JOIN  druid.ins_policy  AS "policies" ON "earned_premiums".policy_id = "policies".policy_id
+  LEFT JOIN  druid.ins_product  AS "products" ON "policies".product_cd = "products".product_cd
+  GROUP BY 1),
+cte_1 AS (  SELECT "products".line_of_business "products__line_of_business", sum("claim_payments".paid_amount) "claim_payments__paid_amount" 
+  FROM  druid.ins_claim_payment  AS "claim_payments"
+  LEFT JOIN  druid.ins_claim  AS "claims" ON "claim_payments".claim_id = "claims".claim_id
+  LEFT JOIN  druid.ins_policy  AS "policies" ON "claims".policy_id = "policies".policy_id
+  LEFT JOIN  druid.ins_product  AS "products" ON "policies".product_cd = "products".product_cd
+  GROUP BY 1),
+cte_2 AS (  SELECT "products".line_of_business "products__line_of_business", count("claims".claim_id) "claims__claim_count" 
+  FROM  druid.ins_claim  AS "claims"
+  LEFT JOIN  druid.ins_policy  AS "policies" ON "claims".policy_id = "policies".policy_id
+  LEFT JOIN  druid.ins_product  AS "products" ON "policies".product_cd = "products".product_cd
+  GROUP BY 1)
+SELECT "full_aggregate"."products__line_of_business" "products__line_of_business", "full_aggregate"."earned_premiums__earned_premium" "earned_premiums__earned_premium", "full_aggregate"."claim_payments__paid_amount" "claim_payments__paid_amount", "full_aggregate"."claims__claim_count" "claims__claim_count" 
+FROM (SELECT COALESCE("q_l"."products__line_of_business", "q_r"."products__line_of_business") "products__line_of_business", MAX("q_l"."earned_premiums__earned_premium") "earned_premiums__earned_premium", MAX("q_l"."claim_payments__paid_amount") "claim_payments__paid_amount", MAX("q_r"."claims__claim_count") "claims__claim_count" 
+FROM (SELECT COALESCE("q_l"."products__line_of_business", "q_r"."products__line_of_business") "products__line_of_business", MAX("q_l"."earned_premiums__earned_premium") "earned_premiums__earned_premium", MAX("q_r"."claim_payments__paid_amount") "claim_payments__paid_amount" 
+FROM  cte_0  AS "q_l"
+FULL JOIN  cte_1  AS "q_r" ON ("q_l"."products__line_of_business" = "q_r"."products__line_of_business")
+GROUP BY 1) AS "q_l"
+FULL JOIN  cte_2  AS "q_r" ON ("q_l"."products__line_of_business" = "q_r"."products__line_of_business")
+GROUP BY 1) AS "full_aggregate"
+GROUP BY 1, 2, 3, 4
+ORDER BY  1  ASC
+-- parameters: []
+
+-- x_premium_paid_ceded_by_region
+ WITH 
+cte_0 AS (  SELECT "branches".region_name "branches__region_name", sum("policies".written_premium) "policies__written_premium" 
+  FROM  druid.ins_policy  AS "policies"
+  LEFT JOIN  druid.ins_branch  AS "branches" ON "policies".branch_cd = "branches".branch_cd
+  LEFT JOIN  druid.ins_product  AS "products" ON "policies".product_cd = "products".product_cd
+  WHERE ("products".line_of_business = ?)
+  GROUP BY 1),
+cte_1 AS (  SELECT "branches".region_name "branches__region_name", sum("cessions".ceded_premium) "cessions__ceded_premium" 
+  FROM  druid.ins_cession  AS "cessions"
+  LEFT JOIN  druid.ins_policy  AS "policies" ON "cessions".policy_id = "policies".policy_id
+  LEFT JOIN  druid.ins_branch  AS "branches" ON "policies".branch_cd = "branches".branch_cd
+  LEFT JOIN  druid.ins_product  AS "products" ON "policies".product_cd = "products".product_cd
+  WHERE ("products".line_of_business = ?)
+  GROUP BY 1),
+cte_2 AS (  SELECT "branches".region_name "branches__region_name", sum("claim_payments".paid_amount) "claim_payments__paid_amount" 
+  FROM  druid.ins_claim_payment  AS "claim_payments"
+  LEFT JOIN  druid.ins_claim  AS "claims" ON "claim_payments".claim_id = "claims".claim_id
+  LEFT JOIN  druid.ins_policy  AS "policies" ON "claims".policy_id = "policies".policy_id
+  LEFT JOIN  druid.ins_branch  AS "branches" ON "policies".branch_cd = "branches".branch_cd
+  LEFT JOIN  druid.ins_product  AS "products" ON "policies".product_cd = "products".product_cd
+  WHERE ("products".line_of_business = ?)
+  GROUP BY 1)
+SELECT "full_aggregate"."branches__region_name" "branches__region_name", "full_aggregate"."policies__written_premium" "policies__written_premium", "full_aggregate"."cessions__ceded_premium" "cessions__ceded_premium", "full_aggregate"."claim_payments__paid_amount" "claim_payments__paid_amount" 
+FROM (SELECT COALESCE("q_l"."branches__region_name", "q_r"."branches__region_name") "branches__region_name", MAX("q_l"."policies__written_premium") "policies__written_premium", MAX("q_l"."cessions__ceded_premium") "cessions__ceded_premium", MAX("q_r"."claim_payments__paid_amount") "claim_payments__paid_amount" 
+FROM (SELECT COALESCE("q_l"."branches__region_name", "q_r"."branches__region_name") "branches__region_name", MAX("q_l"."policies__written_premium") "policies__written_premium", MAX("q_r"."cessions__ceded_premium") "cessions__ceded_premium" 
+FROM  cte_0  AS "q_l"
+FULL JOIN  cte_1  AS "q_r" ON ("q_l"."branches__region_name" = "q_r"."branches__region_name")
+GROUP BY 1) AS "q_l"
+FULL JOIN  cte_2  AS "q_r" ON ("q_l"."branches__region_name" = "q_r"."branches__region_name")
+GROUP BY 1) AS "full_aggregate"
+GROUP BY 1, 2, 3, 4
+ORDER BY  1  ASC
+-- parameters: ["MOTOR", "MOTOR", "MOTOR"]
+
+-- x_totals
+ WITH 
+cte_0 AS (  SELECT sum("policies".written_premium) "policies__written_premium" 
+  FROM  druid.ins_policy  AS "policies"),
+cte_1 AS (  SELECT sum("earned_premiums".earned_premium) "earned_premiums__earned_premium" 
+  FROM  druid.ins_earned_premium  AS "earned_premiums"),
+cte_2 AS (  SELECT sum("claim_payments".paid_amount) "claim_payments__paid_amount" 
+  FROM  druid.ins_claim_payment  AS "claim_payments"),
+cte_3 AS (  SELECT sum("claim_reserves".outstanding) "claim_reserves__outstanding" 
+  FROM  druid.ins_claim_reserve  AS "claim_reserves"),
+cte_4 AS (  SELECT sum("cessions".ceded_premium) "cessions__ceded_premium" 
+  FROM  druid.ins_cession  AS "cessions")
+SELECT "q_0"."policies__written_premium" "policies__written_premium", "q_1"."earned_premiums__earned_premium" "earned_premiums__earned_premium", "q_2"."claim_payments__paid_amount" "claim_payments__paid_amount", "q_3"."claim_reserves__outstanding" "claim_reserves__outstanding", "q_4"."cessions__ceded_premium" "cessions__ceded_premium" 
+FROM  cte_0  AS "q_0"
+INNER JOIN  cte_1  AS "q_1" ON 1 = 1
+INNER JOIN  cte_2  AS "q_2" ON 1 = 1
+INNER JOIN  cte_3  AS "q_3" ON 1 = 1
+INNER JOIN  cte_4  AS "q_4" ON 1 = 1
 -- parameters: []
 
 -- v_claims_by_line_cause
@@ -418,3 +759,39 @@ WHERE ("claim_payments".__time >= TIME_PARSE(?) AND "claim_payments".__time <= T
 GROUP BY 1, 2
 ORDER BY  1  ASC,  2  ASC
 -- parameters: ["2026-01-01T00:00:00.000Z", "2026-12-31T23:59:59.999Z"]
+
+-- security_region_across_facts
+ WITH 
+cte_0 AS (  SELECT "products".line_of_business "products__line_of_business", sum("earned_premiums".earned_premium) "earned_premiums__earned_premium" 
+  FROM  druid.ins_earned_premium  AS "earned_premiums"
+  LEFT JOIN  druid.ins_policy  AS "policies" ON "earned_premiums".policy_id = "policies".policy_id
+  LEFT JOIN  druid.ins_product  AS "products" ON "policies".product_cd = "products".product_cd
+  LEFT JOIN  druid.ins_branch  AS "branches" ON "policies".branch_cd = "branches".branch_cd
+  WHERE ("branches".region_name = ?)
+  GROUP BY 1),
+cte_1 AS (  SELECT "products".line_of_business "products__line_of_business", sum("claim_payments".paid_amount) "claim_payments__paid_amount" 
+  FROM  druid.ins_claim_payment  AS "claim_payments"
+  LEFT JOIN  druid.ins_claim  AS "claims" ON "claim_payments".claim_id = "claims".claim_id
+  LEFT JOIN  druid.ins_policy  AS "policies" ON "claims".policy_id = "policies".policy_id
+  LEFT JOIN  druid.ins_product  AS "products" ON "policies".product_cd = "products".product_cd
+  LEFT JOIN  druid.ins_branch  AS "branches" ON "policies".branch_cd = "branches".branch_cd
+  WHERE ("branches".region_name = ?)
+  GROUP BY 1),
+cte_2 AS (  SELECT "products".line_of_business "products__line_of_business", count("claims".claim_id) "claims__claim_count" 
+  FROM  druid.ins_claim  AS "claims"
+  LEFT JOIN  druid.ins_policy  AS "policies" ON "claims".policy_id = "policies".policy_id
+  LEFT JOIN  druid.ins_product  AS "products" ON "policies".product_cd = "products".product_cd
+  LEFT JOIN  druid.ins_branch  AS "branches" ON "policies".branch_cd = "branches".branch_cd
+  WHERE ("branches".region_name = ?)
+  GROUP BY 1)
+SELECT "full_aggregate"."products__line_of_business" "products__line_of_business", "full_aggregate"."earned_premiums__earned_premium" "earned_premiums__earned_premium", "full_aggregate"."claim_payments__paid_amount" "claim_payments__paid_amount", "full_aggregate"."claims__claim_count" "claims__claim_count" 
+FROM (SELECT COALESCE("q_l"."products__line_of_business", "q_r"."products__line_of_business") "products__line_of_business", MAX("q_l"."earned_premiums__earned_premium") "earned_premiums__earned_premium", MAX("q_l"."claim_payments__paid_amount") "claim_payments__paid_amount", MAX("q_r"."claims__claim_count") "claims__claim_count" 
+FROM (SELECT COALESCE("q_l"."products__line_of_business", "q_r"."products__line_of_business") "products__line_of_business", MAX("q_l"."earned_premiums__earned_premium") "earned_premiums__earned_premium", MAX("q_r"."claim_payments__paid_amount") "claim_payments__paid_amount" 
+FROM  cte_0  AS "q_l"
+FULL JOIN  cte_1  AS "q_r" ON ("q_l"."products__line_of_business" = "q_r"."products__line_of_business")
+GROUP BY 1) AS "q_l"
+FULL JOIN  cte_2  AS "q_r" ON ("q_l"."products__line_of_business" = "q_r"."products__line_of_business")
+GROUP BY 1) AS "full_aggregate"
+GROUP BY 1, 2, 3, 4
+ORDER BY  1  ASC
+-- parameters: ["East", "East", "East"]
