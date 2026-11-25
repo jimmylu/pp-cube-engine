@@ -266,7 +266,7 @@ fn druid_manifest_holds_the_cases_its_dialect_compiles_and_lists_the_rest() {
         .map(|c| c["name"].as_str().unwrap())
         .collect();
     assert_eq!(names, compiled);
-    assert_eq!(names.len(), 52);
+    assert_eq!(names.len(), 57);
     assert!(support
         .iter()
         .all(|(_, outcome)| outcome == "compiled" || outcome.starts_with("unsupported: ")));
@@ -307,4 +307,57 @@ fn druid_manifest_holds_the_cases_its_dialect_compiles_and_lists_the_rest() {
         .collect();
     insta::assert_snapshot!("druid_support", matrix);
     insta::assert_snapshot!("druid_cases", golden_text("druid"));
+}
+
+// scenario: B0-EXEC-007
+#[test]
+fn only_druid_cases_state_a_relation_to_cube_core_and_only_the_reviewed_ones() {
+    let sources = |dialect: &str| -> Value {
+        serde_json::from_str(&pp_cube_conformance::manifest_with_sources(dialect).unwrap()).unwrap()
+    };
+    let mut druid = sources("druid");
+    let stated: Vec<(String, String)> = druid["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|case| {
+            let relation = case.get("cube_core")?.as_str().unwrap().to_owned();
+            Some((case["name"].as_str().unwrap().to_owned(), relation))
+        })
+        .collect();
+    let stated: Vec<(&str, &str)> = stated
+        .iter()
+        .map(|(name, relation)| (name.as_str(), relation.as_str()))
+        .collect();
+    // Cube's Druid dialect has no approximate count and no date bin, and writes
+    // an interval Druid rejects. Everything else must equal Cube Core's SQL.
+    assert_eq!(
+        stated,
+        [
+            ("approximate_distinct_count", "refuses"),
+            ("granularity_of_two_days", "refuses"),
+            ("granularity_of_two_quarters", "refuses"),
+            ("granularity_with_offset", "differs"),
+            ("uw_by_underwriting_year", "differs"),
+        ]
+    );
+    assert!(sources("presto")["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|case| case.get("cube_core").is_none()));
+    // Without sources and relations it is the plain manifest.
+    let document = druid.as_object_mut().unwrap();
+    document.remove("model");
+    document.remove("data_sources");
+    for case in document["cases"].as_array_mut().unwrap() {
+        let case = case.as_object_mut().unwrap();
+        for field in ["query", "timezone", "security_filters"] {
+            assert!(case.remove(field).is_some());
+        }
+        case.remove("cube_core");
+    }
+    let plain: Value =
+        serde_json::from_str(&pp_cube_conformance::manifest("druid").unwrap()).unwrap();
+    assert_eq!(druid, plain);
 }

@@ -135,16 +135,6 @@ fn druid_refuses_by_name_what_it_cannot_answer() {
             over("sales.growth", days),
             "Measure `sales.amount_prior_year` is shifted in time, which druid does not support",
         ),
-        (
-            DETAIL,
-            r#"{"measures": ["sales.per_buyer"]}"#.to_owned(),
-            "Measure `sales.buyers_approx` is an approximate distinct count, which druid does not support",
-        ),
-        (
-            DETAIL,
-            over("sales.amount", r#""granularity": "fiscal_year""#),
-            "`sales.sold_at` is grouped by `fiscal_year`, a granularity it declares, which druid does not support",
-        ),
     ] {
         assert_eq!(refused(model, &query), message, "{query}");
     }
@@ -162,4 +152,58 @@ fn druid_refuses_by_name_what_it_cannot_answer() {
         druid(RETAIL, r#"{"measures": ["refunds.amount"], "dimensions": ["regions.region_name"]}"#),
         Err(CompileError::Query(message)) if message.contains("more than one join path")
     ));
+}
+
+// scenario: B1-DRUID-001
+#[test]
+fn druid_estimates_distinct_counts_and_groups_by_declared_granularities() {
+    // Cube's Druid dialect has no SQL for the first four and SQL Druid rejects
+    // for the fifth; these are the kernel's own, each one SELECT.
+    let by = |granularity: &str| {
+        format!(
+            r#"{{"measures": ["sales.amount"], "timeDimensions": [{{"dimension": "sales.sold_at",
+                "granularity": "{granularity}", "dateRange": ["2026-01-15", "2026-12-31"]}}]}}"#
+        )
+    };
+    let queries = [
+        r#"{"measures": ["sales.per_buyer"], "dimensions": ["sales.channel_cd"]}"#.to_owned(),
+        by("half_year"),
+        by("fortnight"),
+        by("month_from_15"),
+        by("fiscal_year"),
+    ];
+    let mut golden = String::new();
+    for query in &queries {
+        let on_druid = druid(DETAIL, query).expect("the query compiles");
+        assert!(on_druid.sql.starts_with("SELECT"), "{query}");
+        // The same question as on Presto: parameters, columns and lineage.
+        let on_presto = compile_in(DETAIL, DialectId::Presto, query).unwrap();
+        assert_eq!(on_druid.parameters, on_presto.parameters, "{query}");
+        assert_eq!(on_druid.columns, on_presto.columns, "{query}");
+        assert_eq!(on_druid.used_cubes, on_presto.used_cubes, "{query}");
+        golden.push_str(&format!(
+            "{}\n-- parameters: {:?}\n\n",
+            on_druid.sql, on_druid.parameters
+        ));
+    }
+    insta::assert_snapshot!(golden);
+    // Druid's interval literal has no week: an offset in weeks is refused.
+    let weekly = DETAIL.replace(
+        r#"{ name: fiscal_year, interval: 1 year, offset: 3 month }"#,
+        r#"{ name: fiscal_year, interval: 1 year, offset: 1 week }"#,
+    );
+    assert_ne!(weekly, DETAIL);
+    match druid(&weekly, &by("fiscal_year")) {
+        Err(CompileError::Unsupported(message)) => assert_eq!(
+            message,
+            "Granularity `fiscal_year` of `sales.sold_at` is offset by `1 week`, and druid has no interval of that unit"
+        ),
+        other => panic!("expected Unsupported, got {other:?}"),
+    }
+    // Presto's interval literal has no week either; Doris has one.
+    assert!(matches!(
+        compile_in(&weekly, DialectId::Presto, &by("fiscal_year")),
+        Err(CompileError::Unsupported(_))
+    ));
+    assert!(compile_in(&weekly, DialectId::Doris, &by("fiscal_year")).is_ok());
 }

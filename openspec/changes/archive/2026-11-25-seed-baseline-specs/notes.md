@@ -171,3 +171,13 @@ compile and run; a declared set of features is refused by name). The seed
 keeps the two acceptance scenarios, B0-DRUID-003 and B0-DRUID-004, until
 their tiers exist.
 
+
+## 2026-11-25: Druid acceptance transferred; the seed is complete
+
+`add-druid-approx-and-granularities` takes B0-DRUID-003 and B0-DRUID-004 into
+`dialect-druid`, after the Druid tier ran both on GitHub as `druid-smoke` (#98,
+#99). B0-DRUID-003 is reworded: a case may state that Cube Core refuses it or
+writes SQL Druid rejects, and the tier verifies that. Nothing is left proposed
+here, so this change is archived without deltas of its own. `scripts/dev` still
+names this change's `design.md` as review context; it tolerates the missing
+path, and the reference can go in a harness change.

@@ -6,6 +6,7 @@
 //! Cube as here. A date range that starts at the origin or later leaves no
 //! such row.
 
+use pp_cube_dialect::Dialect;
 use pp_cube_model::{CustomGranularity, Granularity, Model, Query};
 
 use crate::PlanError;
@@ -26,8 +27,9 @@ fn instant(text: &str) -> String {
 }
 
 /// Fails for a time dimension grouped by a granularity counted from an origin
-/// when its date range can hold rows before that origin.
-pub(crate) fn check(model: &Model, query: &Query) -> Result<(), PlanError> {
+/// when its date range can hold rows before that origin, and for one moved by
+/// an offset in a unit the engine has no interval literal of.
+pub(crate) fn check(model: &Model, query: &Query, dialect: &Dialect) -> Result<(), PlanError> {
     for time_dimension in &query.time_dimensions {
         let Some(Granularity::Custom(name)) = &time_dimension.granularity else {
             continue;
@@ -38,6 +40,23 @@ pub(crate) fn check(model: &Model, query: &Query) -> Result<(), PlanError> {
             let dimension = dimensions.iter().find(|d| d.name == dimension)?;
             dimension.granularities.iter().find(|g| g.name == *name)
         });
+        // The offset is added and subtracted as written, one unit at a time.
+        let offset = declared.and_then(|granularity| granularity.offset.as_deref());
+        for unit in offset
+            .into_iter()
+            .flat_map(|o| o.split_whitespace().skip(1).step_by(2))
+        {
+            let unit = unit.to_lowercase();
+            let unit = unit.strip_suffix('s').unwrap_or(&unit);
+            if !dialect.has_interval_unit(unit) {
+                return Err(PlanError::Unsupported(format!(
+                    "Granularity `{name}` of `{member}` is offset by `{}`, and {} has no \
+                     interval of that unit",
+                    offset.unwrap_or_default(),
+                    dialect.name()
+                )));
+            }
+        }
         // One the dimension does not declare is reported by the query checks.
         let Some(origin) = declared.and_then(counted_from_origin) else {
             continue;

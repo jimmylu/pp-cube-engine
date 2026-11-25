@@ -63,10 +63,10 @@ change_from_prior_day              unsupported: Measure `sales.amount_prior_day`
 security_rolling                   unsupported: Measure `sales.amount_3d` has a rolling window, which druid does not support
 ungrouped_rows                     unsupported: The query is ungrouped, which druid does not support
 ungrouped_joined_page              unsupported: The query is ungrouped, which druid does not support
-approximate_distinct_count         unsupported: Measure `sales.order_count_approx` is an approximate distinct count, which druid does not support
-granularity_of_two_days            unsupported: `sales.sold_at` is grouped by `two_days`, a granularity it declares, which druid does not support
-granularity_of_two_quarters        unsupported: `sales.sold_at` is grouped by `half_year`, a granularity it declares, which druid does not support
-granularity_with_offset            unsupported: `sales.sold_at` is grouped by `retail_week`, a granularity it declares, which druid does not support
+approximate_distinct_count         compiled
+granularity_of_two_days            compiled
+granularity_of_two_quarters        compiled
+granularity_with_offset            compiled
 view_by_joined_dimension           compiled
 view_two_hops_filtered             compiled
 view_sum_over_repeated_rows        unsupported: The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats
@@ -74,7 +74,7 @@ view_formula_and_one_to_one        unsupported: The query needs more than one SE
 security_view                      compiled
 uw_renewal_share_by_branch         compiled
 uw_premium_ytd_by_month            unsupported: Measure `policies.written_premium_ytd` has a rolling window, which druid does not support
-uw_by_underwriting_year            unsupported: `policies.issued_at` is grouped by `underwriting_year`, a granularity it declares, which druid does not support
+uw_by_underwriting_year            compiled
 uw_policy_listing                  unsupported: The query is ungrouped, which druid does not support
 ep_rolling_12m_by_month            unsupported: Measure `earned_premiums.earned_premium_12m` has a rolling window, which druid does not support
 ep_written_vs_earned_by_line       unsupported: The query needs more than one SELECT, which druid does not support: measures of several cubes, or a measure over rows a join repeats
