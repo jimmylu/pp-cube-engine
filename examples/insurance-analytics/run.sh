@@ -7,7 +7,7 @@
 #
 # Needs Docker with Compose, a JDK 11 or later, Maven and openssl. The service
 # image is built from this checkout (run scripts/vendor-sync.sh once first), or
-# set CINDERVALE_IMAGE to a released image. Nothing is published, and everything
+# set PPCUBE_IMAGE to a released image. Nothing is published, and everything
 # it makes is under .run/ here.
 
 set -euo pipefail
@@ -50,9 +50,9 @@ openssl rand -hex 24 > "$SECRETS/read.token"
 openssl rand -hex 24 > "$SECRETS/admin.token"
 chmod 755 "$RUN" "$SECRETS" && chmod 644 "$SECRETS"/*
 
-if [[ -z "${CINDERVALE_IMAGE:-}" ]]; then
+if [[ -z "${PPCUBE_IMAGE:-}" ]]; then
   [[ -f "$ROOT/vendor/cube/rust/cube/Cargo.toml" ]] \
-    || { echo "example: run scripts/vendor-sync.sh first, or set CINDERVALE_IMAGE" >&2; exit 2; }
+    || { echo "example: run scripts/vendor-sync.sh first, or set PPCUBE_IMAGE" >&2; exit 2; }
   echo "example: building the service image (minutes the first time)" >&2
   docker compose build --quiet pp-cube-engine
 fi
@@ -65,9 +65,9 @@ echo "example: building the client and the portal" >&2
 mvn --quiet --file "$ROOT/clients/java/pom.xml" install -DskipTests
 mvn --quiet --file app/pom.xml compile
 
-export CINDERVALE_TARGET="localhost:$(port pp-cube-engine 50051)"
-export CINDERVALE_CA="$SECRETS/tls.crt"
-export CINDERVALE_TOKEN_FILE="$SECRETS/read.token"
+export PPCUBE_TARGET="localhost:$(port pp-cube-engine 50051)"
+export PPCUBE_CA="$SECRETS/tls.crt"
+export PPCUBE_TOKEN_FILE="$SECRETS/read.token"
 export WAREHOUSE_URL="jdbc:presto://localhost:$(port warehouse 8080)/memory/dw"
 export WAREHOUSE_SQL="$PWD/warehouse/insurance.sql"
 export PORTAL_FILE="$PWD/portal.json"

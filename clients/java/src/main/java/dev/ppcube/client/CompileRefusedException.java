@@ -1,4 +1,4 @@
-package dev.cindervale.client;
+package dev.ppcube.client;
 
 /**
  * The service answered, and the answer is that there is no SQL.

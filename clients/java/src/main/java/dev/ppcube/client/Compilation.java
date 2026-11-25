@@ -1,4 +1,4 @@
-package dev.cindervale.client;
+package dev.ppcube.client;
 
 import java.util.ArrayList;
 import java.util.Collections;

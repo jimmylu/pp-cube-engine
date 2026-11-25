@@ -1,21 +1,21 @@
-package dev.cindervale.client;
+package dev.ppcube.client;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.google.protobuf.ByteString;
-import dev.cindervale.engine.v1.CompileFailure;
-import dev.cindervale.engine.v1.CompileRequest;
-import dev.cindervale.engine.v1.CompileResponse;
-import dev.cindervale.engine.v1.Compiled;
-import dev.cindervale.engine.v1.CubeEngineGrpc;
-import dev.cindervale.engine.v1.FailureKind;
-import dev.cindervale.engine.v1.Identity;
-import dev.cindervale.engine.v1.Null;
-import dev.cindervale.engine.v1.OutputColumn;
-import dev.cindervale.engine.v1.Parameter;
-import dev.cindervale.engine.v1.SessionProperty;
+import dev.ppcube.engine.v1.CompileFailure;
+import dev.ppcube.engine.v1.CompileRequest;
+import dev.ppcube.engine.v1.CompileResponse;
+import dev.ppcube.engine.v1.Compiled;
+import dev.ppcube.engine.v1.CubeEngineGrpc;
+import dev.ppcube.engine.v1.FailureKind;
+import dev.ppcube.engine.v1.Identity;
+import dev.ppcube.engine.v1.Null;
+import dev.ppcube.engine.v1.OutputColumn;
+import dev.ppcube.engine.v1.Parameter;
+import dev.ppcube.engine.v1.SessionProperty;
 import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
 import io.grpc.Server;
@@ -39,7 +39,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /** The client against a stand-in service: what it sends, and how it reads each answer. */
-class CindervaleClientTest {
+class CubeEngineClientTest {
   private static final Metadata.Key<String> AUTHORIZATION =
       Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER);
 
@@ -127,7 +127,7 @@ class CindervaleClientTest {
   @Test
   void aCompilationCarriesTheQuestionTheRulesAndTheToken() {
     answer.set(CompileResponse.newBuilder().setCompiled(compiled()).setIdentity(identity()).build());
-    CindervaleClient client = CindervaleClient.to("ignored").token(" reader-token-0123456789\n").over(channel);
+    CubeEngineClient client = CubeEngineClient.to("ignored").token(" reader-token-0123456789\n").over(channel);
 
     CompiledQuery query =
         client.compile(
@@ -161,7 +161,7 @@ class CindervaleClientTest {
   void parametersAreBoundInOrderByTheirType() throws Exception {
     answer.set(CompileResponse.newBuilder().setCompiled(compiled()).setIdentity(identity()).build());
     CompiledQuery query =
-        CindervaleClient.to("ignored").over(channel).compile(Compilation.of("v", "presto", "{}").build());
+        CubeEngineClient.to("ignored").over(channel).compile(Compilation.of("v", "presto", "{}").build());
     List<String> bound = new ArrayList<>();
     PreparedStatement statement =
         (PreparedStatement)
@@ -188,7 +188,7 @@ class CindervaleClientTest {
 
   @Test
   void anAnswerWithoutSqlIsARefusalOfItsKind() {
-    CindervaleClient client = CindervaleClient.to("ignored").over(channel);
+    CubeEngineClient client = CubeEngineClient.to("ignored").over(channel);
     Object[][] kinds = {
       {FailureKind.FAILURE_KIND_MODEL, CompileRefusedException.Kind.MODEL},
       {FailureKind.FAILURE_KIND_QUERY, CompileRefusedException.Kind.QUERY},
@@ -216,7 +216,7 @@ class CindervaleClientTest {
 
   @Test
   void aFailureOfTheCallKeepsItsStatus() {
-    CindervaleClient client = CindervaleClient.to("ignored").over(channel);
+    CubeEngineClient client = CubeEngineClient.to("ignored").over(channel);
     StatusRuntimeException failed =
         assertThrows(
             StatusRuntimeException.class,
@@ -233,6 +233,6 @@ class CindervaleClientTest {
   void aTokenIsNeverSentUnencrypted() {
     assertThrows(
         IllegalStateException.class,
-        () -> CindervaleClient.to("localhost:1").plaintext().token("reader-token-0123456789").build());
+        () -> CubeEngineClient.to("localhost:1").plaintext().token("reader-token-0123456789").build());
   }
 }

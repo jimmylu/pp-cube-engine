@@ -2,7 +2,7 @@ syntax = "proto3";
 package ppcube.engine.v1;
 
 // Where generated Java lands; no effect on the wire or on other languages.
-option java_package = "dev.cindervale.engine.v1";
+option java_package = "dev.ppcube.engine.v1";
 option java_multiple_files = true;
 option java_outer_classname = "EngineProto";
 

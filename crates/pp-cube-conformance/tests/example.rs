@@ -168,4 +168,48 @@ fn the_example_runs_the_service_as_the_shipped_deployment_does() {
         "the client carries the kernel's version"
     );
     assert!(read(&example().join("app/pom.xml")).contains(&version));
+    // A Java file lives where its package says, under the contract's own name.
+    // javac does not insist on it, so a package named after something else
+    // builds and runs; this is what notices.
+    let mut sources = Vec::new();
+    for root in ["../../clients/java/src", "app/src"] {
+        collect(&example().join(root), &mut sources);
+    }
+    assert!(sources.len() >= 6, "{sources:?}");
+    for path in &sources {
+        let text = read(path);
+        let declared = text
+            .lines()
+            .find_map(|line| line.strip_prefix("package "))
+            .and_then(|rest| rest.strip_suffix(';'))
+            .unwrap_or_else(|| panic!("{}: no package", path.display()));
+        assert!(declared.starts_with("dev.ppcube."), "{}", path.display());
+        let folder = path.parent().unwrap().to_str().unwrap().replace('\\', "/");
+        let placed = format!("/java/{}", declared.replace('.', "/"));
+        assert!(
+            folder.ends_with(&placed),
+            "{}: package {declared}",
+            path.display()
+        );
+    }
+    let contract = read(&example().join("../../crates/pp-cube-service/proto/engine.proto"));
+    assert!(contract.contains("package ppcube.engine.v1;"));
+    assert!(contract.contains("option java_package = \"dev.ppcube.engine.v1\";"));
+}
+
+/// Every `.java` file under `folder`.
+fn collect(folder: &Path, found: &mut Vec<PathBuf>) {
+    for entry in std::fs::read_dir(folder).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            if path.file_name().is_some_and(|name| name != "target") {
+                collect(&path, found);
+            }
+        } else if path
+            .extension()
+            .is_some_and(|extension| extension == "java")
+        {
+            found.push(path);
+        }
+    }
 }
