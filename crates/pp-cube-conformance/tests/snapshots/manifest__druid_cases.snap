@@ -308,6 +308,37 @@ FROM  druid.sales_dtl  AS "sales"
 WHERE (((LOWER("sales".region_cd) LIKE CONCAT('%', LOWER(?), '%') ESCAPE '\')) OR ("sales".channel_cd = ?)) AND ((LOWER("sales".region_cd) LIKE CONCAT('', LOWER(?), '%') ESCAPE '\'))
 -- parameters: ["north", "C3", "a\\%"]
 
+-- approximate_distinct_count
+SELECT "sales".channel_cd "sales__channel_cd", APPROX_COUNT_DISTINCT("sales".order_no) "sales__order_count_approx" 
+FROM  druid.sales_dtl  AS "sales"
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: []
+
+-- granularity_of_two_days
+SELECT TIME_FLOOR(CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP), 'P2D', TIME_PARSE('2026-10-01T00:00:00.000')) "sales__sold_at_two_days", sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time >= TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: ["2026-10-01T00:00:00.000Z", "2026-10-31T23:59:59.999Z"]
+
+-- granularity_of_two_quarters
+SELECT TIME_FLOOR(CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP), 'P6M', TIME_PARSE('2026-01-01T00:00:00.000')) "sales__sold_at_half_year", sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time >= TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: ["2026-10-01T00:00:00.000Z", "2026-10-31T23:59:59.999Z"]
+
+-- granularity_with_offset
+SELECT (DATE_TRUNC('week', (CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP) - INTERVAL '3' DAY)) + INTERVAL '3' DAY) "sales__sold_at_retail_week", sum("sales".amount) "sales__amount" 
+FROM  druid.sales_dtl  AS "sales"
+WHERE ("sales".__time >= TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: ["2026-10-01T00:00:00.000Z", "2026-10-31T23:59:59.999Z"]
+
 -- view_by_joined_dimension
 SELECT "stores".store_name "sales_overview__stores_store_name", sum("sales".amount) "sales_overview__amount" 
 FROM  druid.sales_dtl  AS "sales"
@@ -343,6 +374,14 @@ LEFT JOIN  druid.ins_branch  AS "branches" ON "policies".branch_cd = "branches".
 GROUP BY 1
 ORDER BY  1  ASC
 -- parameters: []
+
+-- uw_by_underwriting_year
+SELECT (DATE_TRUNC('year', (CAST(TIME_FORMAT("policies".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP) - INTERVAL '3' MONTH)) + INTERVAL '3' MONTH) "policies__issued_at_underwriting_year", sum("policies".written_premium) "policies__written_premium" 
+FROM  druid.ins_policy  AS "policies"
+WHERE ("policies".__time >= TIME_PARSE(?) AND "policies".__time <= TIME_PARSE(?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: ["2025-01-01T00:00:00.000Z", "2026-12-31T23:59:59.999Z"]
 
 -- cl_counts_by_cause
 SELECT "claims".cause_cd "claims__cause_cd", count("claims".claim_id) "claims__claim_count", count(CASE WHEN ("claims".status = 'OPEN') THEN "claims".claim_id END) "claims__open_count", avg("claims".report_lag_days) "claims__avg_report_lag_days", max("claims".report_lag_days) "claims__max_report_lag_days" 

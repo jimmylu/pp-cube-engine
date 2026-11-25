@@ -46,3 +46,9 @@ A dialect that declares features unsupported SHALL have a manifest of exactly th
 #### Scenario: B0-EXEC-006 Druid manifest
 - **WHEN** the Druid manifest is compiled twice and compared with the Presto manifest and the support list
 - **THEN** both documents are identical, hold exactly the cases the list marks compiled with Presto's expected columns and rows, every other case has a refusal in the reviewed list, and each fixture statement replaces a Druid datasource with inline rows
+
+### Requirement: Stated relation to Cube Core
+A case of a dialect's sources manifest MAY state that Cube Core refuses its query or writes different SQL. Only the Druid manifest SHALL state one, only for a reviewed list of cases, and the plain manifest SHALL be the same document without sources and relations.
+#### Scenario: B0-EXEC-007 Relations in the Druid sources manifest
+- **WHEN** the Druid and Presto sources manifests are emitted
+- **THEN** the Druid cases for approximate counts and granularities counted from an origin state `refuses`, those with an offset state `differs`, every other Druid case and every Presto case states nothing, and removing sources and relations gives the plain manifest

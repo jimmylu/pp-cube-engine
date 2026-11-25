@@ -31,6 +31,8 @@ versions even when the SQL does not.
 - Apache Druid, B0: the Druid dialect of Cube, for `--data-source name=druid`.
   What Druid cannot answer is refused by name. Every Druid result declares
   the query context `useApproximateCountDistinct=false`.
+- Apache Druid: approximate distinct counts and declared granularities, where
+  Cube's own Druid dialect has no SQL or SQL Druid 26 rejects.
 
 **Service**
 - `--model-store`: model versions read from shared storage, a directory or an

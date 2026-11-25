@@ -253,6 +253,11 @@ fn document(
             entry["query"] = written;
             entry["timezone"] = json!(case.timezone);
             entry["security_filters"] = filters;
+            if dialect == DialectId::Druid {
+                if let Some(relation) = druid::cube_core(case.name) {
+                    entry["cube_core"] = json!(relation);
+                }
+            }
         }
         entries.push(entry);
     }

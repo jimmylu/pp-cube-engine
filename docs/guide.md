@@ -194,17 +194,28 @@ granularity needs a date range.
 
 The Druid dialect compiles the B0 baseline: aggregates, filtered measures and
 formulas, joined dimensions, every filter operator, segments, time ranges and
-granularities in a timezone, order, limit and offset. Its SQL is byte for byte
-what Cube Core's Druid dialect writes, and was run on Druid 26.0.0.
+granularities in a timezone, order, limit and offset. That SQL is byte for byte
+what Cube Core's Druid dialect writes. It also compiles approximate distinct
+counts and declared granularities, which Cube Core's Druid dialect does not:
+there the kernel writes its own SQL. Every case runs on Druid 26.0.0 on each
+pull request.
+
+- **Beyond Cube Core on Druid.** An approximate distinct count is
+  `APPROX_COUNT_DISTINCT`, which needs no extension; Cube Core refuses the
+  measure. A granularity counted from an origin is `TIME_FLOOR` with a period
+  and the origin; Cube Core refuses it. A granularity with an offset uses
+  `INTERVAL '3' MONTH`, where Cube Core writes `INTERVAL 3 month`, which
+  Druid 26 rejects. An offset in weeks or quarters is unsupported on Druid and
+  on Presto: their interval literals have neither.
 
 - **Refused by name on Druid:** measures of several cubes and sums over rows a
   join repeats (Druid rejects that SQL), ungrouped queries (a Druid scan
-  cannot be ordered by a column other than time), rolling windows, time
-  shifts, approximate distinct counts and declared granularities (not built
-  for Druid yet).
+  cannot be ordered by a column other than time), rolling windows and time
+  shifts (not built for Druid yet).
 - **Apply the query context.** Every Druid result declares
   `useApproximateCountDistinct=false`; without it Druid estimates
-  `COUNT(DISTINCT)`.
+  `COUNT(DISTINCT)`. It does not change a `count_distinct_approx` measure,
+  which is always an estimate.
 - **Datasources and time.** Druid has one schema, `druid`, and one timestamp
   column a datasource, `__time`: a model for Druid names its tables
   `druid.<datasource>` and its time dimension `{CUBE}.__time`.

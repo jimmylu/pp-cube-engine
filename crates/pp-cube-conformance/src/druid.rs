@@ -66,6 +66,23 @@ pub fn fixture(fixture: Fixture) -> &'static [&'static str] {
     }
 }
 
+// scenario: B0-DRUID-003
+// Compared with pinned Cube Core by a Druid execution tier, not by T0.
+/// How Cube Core's Druid dialect answers a case, where not with the kernel's
+/// SQL. `refuses`: it has no template for the feature and returns an error.
+/// `differs`: it writes an interval as `INTERVAL 3 day`, which Druid 26
+/// rejects. A Druid execution tier holds each to its word; a case not listed
+/// here must compile to Cube Core's SQL.
+pub fn cube_core(case: &str) -> Option<&'static str> {
+    match case {
+        "approximate_distinct_count"
+        | "granularity_of_two_days"
+        | "granularity_of_two_quarters" => Some("refuses"),
+        "granularity_with_offset" | "uw_by_underwriting_year" => Some("differs"),
+        _ => None,
+    }
+}
+
 // scenario: B0-DRUID-004
 // Executed on a real engine by a Druid execution tier, not by T0.
 pub fn scenario(_group: Group) -> &'static str {

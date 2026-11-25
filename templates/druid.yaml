@@ -5,13 +5,14 @@
 commit: 486f0d26bab58ab4fe0be0e4cdd39818b35a7870
 # BaseQuery.ts, timestampPrecision; Druid does not override it.
 timestamp_precision: 3
-# No interval arithmetic is rendered for Druid yet.
-interval_units: []
+# Druid's interval literal takes one of these units; a week or a quarter is not one.
+interval_units: [year, month, day, hour, minute, second]
 # What Druid 26 cannot answer, or what is not built for it yet. Established on
 # Druid 26.0.0: the SQL of several facts joins on `a = b OR (a IS NULL AND b IS
 # NULL)` and unions inside a subquery, both rejected; a scan cannot be ordered
-# by a column other than time. The other four await their Druid templates.
-refuses: [multi-stage, ungrouped, rolling-window, time-shift, approximate-distinct, declared-granularity]
+# by a column other than time. Rolling windows and time shifts need more than
+# one SELECT.
+refuses: [multi-stage, ungrouped, rolling-window, time-shift]
 templates:
   statements/select:
     source: BaseQuery.ts
@@ -139,3 +140,20 @@ templates:
   tesseract/join_types_inner:
     source: BaseQuery.ts
     text: "INNER"
+  # Where Cube's Druid dialect has no template or one Druid rejects, the kernel
+  # writes its own; each was executed on Druid 26.0.0.
+  driver/interval_string:
+    source: Druid SQL interval literal; DruidQuery.ts writes `INTERVAL 3 day`, which Druid 26 rejects
+    text: "'{{ value }}' {{ unit | upper }}"
+  driver/add_interval:
+    source: DruidQuery.ts
+    text: "({{ date }} + INTERVAL {{ interval }})"
+  driver/subtract_interval:
+    source: DruidQuery.ts
+    text: "({{ date }} - INTERVAL {{ interval }})"
+  driver/count_distinct_approx:
+    source: Druid APPROX_COUNT_DISTINCT; DruidQuery.ts has none
+    text: "APPROX_COUNT_DISTINCT({{ sql }})"
+  driver/date_bin:
+    source: Druid TIME_FLOOR with an ISO 8601 period and an origin; DruidQuery.ts has none
+    text: "TIME_FLOOR({{ source }}, '{% if unit == 'year' %}P{{ count }}Y{% elif unit == 'quarter' %}P{{ count * 3 }}M{% elif unit == 'month' %}P{{ count }}M{% elif unit == 'week' %}P{{ count }}W{% elif unit == 'day' %}P{{ count }}D{% elif unit == 'hour' %}PT{{ count }}H{% elif unit == 'minute' %}PT{{ count }}M{% else %}PT{{ count }}S{% endif %}', TIME_PARSE('{{ origin }}'))"

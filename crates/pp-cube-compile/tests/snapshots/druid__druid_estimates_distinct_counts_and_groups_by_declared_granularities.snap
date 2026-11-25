@@ -1,0 +1,37 @@
+---
+source: crates/pp-cube-compile/tests/druid.rs
+expression: golden
+---
+SELECT "sales".channel_cd "sales__channel_cd", sum("sales".amount) / NULLIF(APPROX_COUNT_DISTINCT("sales".buyer_id), 0) "sales__per_buyer" 
+FROM  dw.sales_dtl  AS "sales"
+GROUP BY 1
+ORDER BY  2  DESC
+-- parameters: []
+
+SELECT TIME_FLOOR(CAST(TIME_FORMAT("sales".sold_at, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP), 'P6M', TIME_PARSE('2026-01-01T00:00:00.000')) "sales__sold_at_half_year", sum("sales".amount) "sales__amount" 
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".sold_at >= TIME_PARSE(?) AND "sales".sold_at <= TIME_PARSE(?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: [Text("2026-01-14T15:00:00.000Z"), Text("2026-12-31T14:59:59.999Z")]
+
+SELECT TIME_FLOOR(CAST(TIME_FORMAT("sales".sold_at, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP), 'P2W', TIME_PARSE('2025-12-29T00:00:00.000')) "sales__sold_at_fortnight", sum("sales".amount) "sales__amount" 
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".sold_at >= TIME_PARSE(?) AND "sales".sold_at <= TIME_PARSE(?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: [Text("2026-01-14T15:00:00.000Z"), Text("2026-12-31T14:59:59.999Z")]
+
+SELECT (DATE_TRUNC('month', (CAST(TIME_FORMAT("sales".sold_at, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP) - INTERVAL '14' DAY)) + INTERVAL '14' DAY) "sales__sold_at_month_from_15", sum("sales".amount) "sales__amount" 
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".sold_at >= TIME_PARSE(?) AND "sales".sold_at <= TIME_PARSE(?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: [Text("2026-01-14T15:00:00.000Z"), Text("2026-12-31T14:59:59.999Z")]
+
+SELECT (DATE_TRUNC('year', (CAST(TIME_FORMAT("sales".sold_at, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP) - INTERVAL '3' MONTH)) + INTERVAL '3' MONTH) "sales__sold_at_fiscal_year", sum("sales".amount) "sales__amount" 
+FROM  dw.sales_dtl  AS "sales"
+WHERE ("sales".sold_at >= TIME_PARSE(?) AND "sales".sold_at <= TIME_PARSE(?))
+GROUP BY 1
+ORDER BY  1  ASC
+-- parameters: [Text("2026-01-14T15:00:00.000Z"), Text("2026-12-31T14:59:59.999Z")]
