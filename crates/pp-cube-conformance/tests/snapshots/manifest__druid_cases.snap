@@ -84,6 +84,33 @@ FROM  druid.sales_dtl  AS "sales"
 WHERE (("sales".__time < TIME_PARSE(?)) OR ("sales".__time >= TIME_PARSE(?))) AND ("sales".__time >= TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?))
 -- parameters: ["2026-09-30T15:00:00.000Z", "2026-09-30T15:00:00.000Z", "2026-09-30T15:00:00.000Z", "2026-10-31T14:59:59.999Z"]
 
+-- rolling_tokyo
+ WITH 
+time_series AS (  SELECT TIME_PARSE(dates.f) date_from, TIME_PARSE(dates.t) date_to 
+  FROM (VALUES
+      ('2026-10-01T00:00:00.000', '2026-10-01T23:59:59.999'),
+      ('2026-10-02T00:00:00.000', '2026-10-02T23:59:59.999')
+  ) AS dates (f, t)),
+cte_0 AS (  SELECT DATE_TRUNC('day', CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount_2d" 
+  FROM  druid.sales_dtl  AS "sales"
+  WHERE (CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP) >= TIME_PARSE(?) AND CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP) <= TIME_PARSE(?))
+  GROUP BY 1
+  ORDER BY  1  ASC),
+cte_1 AS (  SELECT "time_series"."date_from" "sales__sold_at_day", "rolling"."sales__amount_2d" "sales__amount_2d" 
+  FROM time_series  AS "time_series"
+  LEFT JOIN (
+    SELECT "time_series"."date_from" "sales__sold_at_day", sum("rolling_source"."sales__amount_2d") "sales__amount_2d" 
+    FROM time_series  AS "time_series"
+    INNER JOIN cte_0 AS "rolling_source" ON 1 = 1
+    WHERE "rolling_source"."sales__sold_at_day" > ("time_series"."date_to" - INTERVAL '2' DAY) AND "rolling_source"."sales__sold_at_day" <= "time_series"."date_to"
+    GROUP BY 1
+  ) AS "rolling" ON "time_series"."date_from" = "rolling"."sales__sold_at_day")
+SELECT "fk_aggregate"."sales__sold_at_day" "sales__sold_at_day", "fk_aggregate"."sales__amount_2d" "sales__amount_2d" 
+FROM  cte_1  AS "fk_aggregate"
+GROUP BY 1, 2
+ORDER BY  1  ASC
+-- parameters: ["2026-09-29T00:00:00.000", "2026-10-02T23:59:59.999"]
+
 -- dst
 SELECT DATE_TRUNC('day', CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'America/New_York') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount" 
 FROM  druid.sales_dtl  AS "sales"
@@ -433,6 +460,129 @@ FROM  druid.sales_dtl  AS "sales"
 WHERE (((LOWER("sales".region_cd) LIKE CONCAT('%', LOWER(?), '%') ESCAPE '\')) OR ("sales".channel_cd = ?)) AND ((LOWER("sales".region_cd) LIKE CONCAT('', LOWER(?), '%') ESCAPE '\'))
 -- parameters: ["north", "C3", "a\\%"]
 
+-- rolling_trailing
+ WITH 
+time_series AS (  SELECT TIME_PARSE(dates.f) date_from, TIME_PARSE(dates.t) date_to 
+  FROM (VALUES
+      ('2026-10-01T00:00:00.000', '2026-10-01T23:59:59.999'),
+      ('2026-10-02T00:00:00.000', '2026-10-02T23:59:59.999'),
+      ('2026-10-03T00:00:00.000', '2026-10-03T23:59:59.999'),
+      ('2026-10-04T00:00:00.000', '2026-10-04T23:59:59.999'),
+      ('2026-10-05T00:00:00.000', '2026-10-05T23:59:59.999'),
+      ('2026-10-06T00:00:00.000', '2026-10-06T23:59:59.999'),
+      ('2026-10-07T00:00:00.000', '2026-10-07T23:59:59.999')
+  ) AS dates (f, t)),
+cte_0 AS (  SELECT DATE_TRUNC('day', CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount_3d" 
+  FROM  druid.sales_dtl  AS "sales"
+  WHERE (CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP) >= TIME_PARSE(?) AND CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP) <= TIME_PARSE(?))
+  GROUP BY 1
+  ORDER BY  1  ASC),
+cte_1 AS (  SELECT "time_series"."date_from" "sales__sold_at_day", "rolling"."sales__amount_3d" "sales__amount_3d" 
+  FROM time_series  AS "time_series"
+  LEFT JOIN (
+    SELECT "time_series"."date_from" "sales__sold_at_day", sum("rolling_source"."sales__amount_3d") "sales__amount_3d" 
+    FROM time_series  AS "time_series"
+    INNER JOIN cte_0 AS "rolling_source" ON 1 = 1
+    WHERE "rolling_source"."sales__sold_at_day" > ("time_series"."date_to" - INTERVAL '3' DAY) AND "rolling_source"."sales__sold_at_day" <= "time_series"."date_to"
+    GROUP BY 1
+  ) AS "rolling" ON "time_series"."date_from" = "rolling"."sales__sold_at_day")
+SELECT "fk_aggregate"."sales__sold_at_day" "sales__sold_at_day", "fk_aggregate"."sales__amount_3d" "sales__amount_3d" 
+FROM  cte_1  AS "fk_aggregate"
+GROUP BY 1, 2
+ORDER BY  1  ASC
+-- parameters: ["2026-09-28T00:00:00.000", "2026-10-07T23:59:59.999"]
+
+-- rolling_distinct_count
+ WITH 
+time_series AS (  SELECT TIME_PARSE(dates.f) date_from, TIME_PARSE(dates.t) date_to 
+  FROM (VALUES
+      ('2026-10-02T00:00:00.000', '2026-10-02T23:59:59.999'),
+      ('2026-10-03T00:00:00.000', '2026-10-03T23:59:59.999')
+  ) AS dates (f, t)),
+cte_0 AS (  SELECT DATE_TRUNC('day', CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "sales__sold_at_day", "sales".order_no "sales__orders_2d" 
+  FROM  druid.sales_dtl  AS "sales"
+  WHERE (CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP) >= TIME_PARSE(?) AND CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP) <= TIME_PARSE(?))
+  ORDER BY  1  ASC),
+cte_1 AS (  SELECT "time_series"."date_from" "sales__sold_at_day", "rolling"."sales__orders_2d" "sales__orders_2d" 
+  FROM time_series  AS "time_series"
+  LEFT JOIN (
+    SELECT "time_series"."date_from" "sales__sold_at_day", COUNT(DISTINCT "rolling_source"."sales__orders_2d") "sales__orders_2d" 
+    FROM time_series  AS "time_series"
+    INNER JOIN cte_0 AS "rolling_source" ON 1 = 1
+    WHERE "rolling_source"."sales__sold_at_day" > ("time_series"."date_to" - INTERVAL '2' DAY) AND "rolling_source"."sales__sold_at_day" <= "time_series"."date_to"
+    GROUP BY 1
+  ) AS "rolling" ON "time_series"."date_from" = "rolling"."sales__sold_at_day")
+SELECT "fk_aggregate"."sales__sold_at_day" "sales__sold_at_day", "fk_aggregate"."sales__orders_2d" "sales__orders_2d" 
+FROM  cte_1  AS "fk_aggregate"
+GROUP BY 1, 2
+ORDER BY  1  ASC
+-- parameters: ["2026-09-30T00:00:00.000", "2026-10-03T23:59:59.999"]
+
+-- month_to_date
+ WITH 
+time_series AS (  SELECT TIME_PARSE(dates.f) date_from, TIME_PARSE(dates.t) date_to 
+  FROM (VALUES
+      ('2026-10-04T00:00:00.000', '2026-10-04T23:59:59.999'),
+      ('2026-10-05T00:00:00.000', '2026-10-05T23:59:59.999'),
+      ('2026-10-06T00:00:00.000', '2026-10-06T23:59:59.999')
+  ) AS dates (f, t)),
+cte_0 AS (  SELECT DATE_TRUNC('day', CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount_mtd" 
+  FROM  druid.sales_dtl  AS "sales"
+  WHERE (CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP) >= TIME_PARSE(?) AND CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP) <= TIME_PARSE(?))
+  GROUP BY 1
+  ORDER BY  1  ASC),
+cte_1 AS (  SELECT "time_series"."date_from" "sales__sold_at_day", "rolling"."sales__amount_mtd" "sales__amount_mtd" 
+  FROM time_series  AS "time_series"
+  LEFT JOIN (
+    SELECT "time_series"."date_from" "sales__sold_at_day", sum("rolling_source"."sales__amount_mtd") "sales__amount_mtd" 
+    FROM time_series  AS "time_series"
+    INNER JOIN cte_0 AS "rolling_source" ON 1 = 1
+    WHERE "rolling_source"."sales__sold_at_day" >= DATE_TRUNC('month', "time_series"."date_from") and "rolling_source"."sales__sold_at_day" <= "time_series"."date_to"
+    GROUP BY 1
+  ) AS "rolling" ON "time_series"."date_from" = "rolling"."sales__sold_at_day")
+SELECT "fk_aggregate"."sales__sold_at_day" "sales__sold_at_day", "fk_aggregate"."sales__amount_mtd" "sales__amount_mtd" 
+FROM  cte_1  AS "fk_aggregate"
+GROUP BY 1, 2
+ORDER BY  1  ASC
+-- parameters: ["2026-10-01T00:00:00.000", "2026-10-06T23:59:59.999"]
+
+-- rolling_at_range_end
+ WITH 
+cte_0 AS (  SELECT sum("sales".amount) "sales__amount_3d" 
+  FROM  druid.sales_dtl  AS "sales"
+  WHERE ("sales".__time > TIME_PARSE(?) AND "sales".__time <= TIME_PARSE(?)))
+SELECT "fk_aggregate"."sales__amount_3d" "sales__amount_3d" 
+FROM  cte_0  AS "fk_aggregate"
+-- parameters: ["2026-10-01T23:59:59.999Z", "2026-10-04T23:59:59.999Z"]
+
+-- running_total_by_month
+ WITH 
+time_series AS (  SELECT TIME_PARSE(dates.f) date_from, TIME_PARSE(dates.t) date_to 
+  FROM (VALUES
+      ('2026-09-01T00:00:00.000', '2026-09-30T23:59:59.999'),
+      ('2026-10-01T00:00:00.000', '2026-10-31T23:59:59.999'),
+      ('2026-11-01T00:00:00.000', '2026-11-30T23:59:59.999')
+  ) AS dates (f, t)),
+cte_0 AS (  SELECT DATE_TRUNC('month', CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "sales__sold_at_month", sum("sales".amount) "sales__amount_so_far" 
+  FROM  druid.sales_dtl  AS "sales"
+  WHERE (CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP) <= TIME_PARSE(?))
+  GROUP BY 1
+  ORDER BY  1  ASC),
+cte_1 AS (  SELECT "time_series"."date_from" "sales__sold_at_month", "rolling"."sales__amount_so_far" "sales__amount_so_far" 
+  FROM time_series  AS "time_series"
+  LEFT JOIN (
+    SELECT "time_series"."date_from" "sales__sold_at_month", sum("rolling_source"."sales__amount_so_far") "sales__amount_so_far" 
+    FROM time_series  AS "time_series"
+    INNER JOIN cte_0 AS "rolling_source" ON 1 = 1
+    WHERE "rolling_source"."sales__sold_at_month" <= "time_series"."date_to"
+    GROUP BY 1
+  ) AS "rolling" ON "time_series"."date_from" = "rolling"."sales__sold_at_month")
+SELECT "fk_aggregate"."sales__sold_at_month" "sales__sold_at_month", "fk_aggregate"."sales__amount_so_far" "sales__amount_so_far" 
+FROM  cte_1  AS "fk_aggregate"
+GROUP BY 1, 2
+ORDER BY  1  ASC
+-- parameters: ["2026-11-30T23:59:59.999"]
+
 -- prior_day
  WITH 
 cte_0 AS (  SELECT DATE_TRUNC('day', CAST(TIME_FORMAT((("sales".__time + INTERVAL '1' DAY)), 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount" 
@@ -479,6 +629,34 @@ FROM  cte_3  AS "fk_aggregate"
 GROUP BY 1, 2
 ORDER BY  1  ASC
 -- parameters: ["2026-10-02T00:00:00.000Z", "2026-10-04T23:59:59.999Z", "2026-10-02T00:00:00.000Z", "2026-10-04T23:59:59.999Z"]
+
+-- security_rolling
+ WITH 
+time_series AS (  SELECT TIME_PARSE(dates.f) date_from, TIME_PARSE(dates.t) date_to 
+  FROM (VALUES
+      ('2026-10-01T00:00:00.000', '2026-10-01T23:59:59.999'),
+      ('2026-10-02T00:00:00.000', '2026-10-02T23:59:59.999'),
+      ('2026-10-03T00:00:00.000', '2026-10-03T23:59:59.999')
+  ) AS dates (f, t)),
+cte_0 AS (  SELECT DATE_TRUNC('day', CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount_3d" 
+  FROM  druid.sales_dtl  AS "sales"
+  WHERE (CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP) >= TIME_PARSE(?) AND CAST(TIME_FORMAT("sales".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP) <= TIME_PARSE(?)) AND ("sales".channel_cd = ?)
+  GROUP BY 1
+  ORDER BY  1  ASC),
+cte_1 AS (  SELECT "time_series"."date_from" "sales__sold_at_day", "rolling"."sales__amount_3d" "sales__amount_3d" 
+  FROM time_series  AS "time_series"
+  LEFT JOIN (
+    SELECT "time_series"."date_from" "sales__sold_at_day", sum("rolling_source"."sales__amount_3d") "sales__amount_3d" 
+    FROM time_series  AS "time_series"
+    INNER JOIN cte_0 AS "rolling_source" ON 1 = 1
+    WHERE "rolling_source"."sales__sold_at_day" > ("time_series"."date_to" - INTERVAL '3' DAY) AND "rolling_source"."sales__sold_at_day" <= "time_series"."date_to"
+    GROUP BY 1
+  ) AS "rolling" ON "time_series"."date_from" = "rolling"."sales__sold_at_day")
+SELECT "fk_aggregate"."sales__sold_at_day" "sales__sold_at_day", "fk_aggregate"."sales__amount_3d" "sales__amount_3d" 
+FROM  cte_1  AS "fk_aggregate"
+GROUP BY 1, 2
+ORDER BY  1  ASC
+-- parameters: ["2026-09-28T00:00:00.000", "2026-10-03T23:59:59.999", "C1"]
 
 -- approximate_distinct_count
 SELECT "sales".channel_cd "sales__channel_cd", APPROX_COUNT_DISTINCT("sales".order_no) "sales__order_count_approx" 
@@ -585,6 +763,44 @@ GROUP BY 1
 ORDER BY  1  ASC
 -- parameters: []
 
+-- uw_premium_ytd_by_month
+ WITH 
+time_series AS (  SELECT TIME_PARSE(dates.f) date_from, TIME_PARSE(dates.t) date_to 
+  FROM (VALUES
+      ('2026-01-01T00:00:00.000', '2026-01-31T23:59:59.999'),
+      ('2026-02-01T00:00:00.000', '2026-02-28T23:59:59.999'),
+      ('2026-03-01T00:00:00.000', '2026-03-31T23:59:59.999'),
+      ('2026-04-01T00:00:00.000', '2026-04-30T23:59:59.999'),
+      ('2026-05-01T00:00:00.000', '2026-05-31T23:59:59.999'),
+      ('2026-06-01T00:00:00.000', '2026-06-30T23:59:59.999')
+  ) AS dates (f, t)),
+cte_0 AS (  SELECT DATE_TRUNC('month', CAST(TIME_FORMAT("policies".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "policies__issued_at_month", sum("policies".written_premium) "policies__written_premium_ytd" 
+  FROM  druid.ins_policy  AS "policies"
+  WHERE (CAST(TIME_FORMAT("policies".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP) >= TIME_PARSE(?) AND CAST(TIME_FORMAT("policies".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP) <= TIME_PARSE(?))
+  GROUP BY 1
+  ORDER BY  1  ASC),
+cte_1 AS (  SELECT "time_series"."date_from" "policies__issued_at_month", "rolling"."policies__written_premium_ytd" "policies__written_premium_ytd" 
+  FROM time_series  AS "time_series"
+  LEFT JOIN (
+    SELECT "time_series"."date_from" "policies__issued_at_month", sum("rolling_source"."policies__written_premium_ytd") "policies__written_premium_ytd" 
+    FROM time_series  AS "time_series"
+    INNER JOIN cte_0 AS "rolling_source" ON 1 = 1
+    WHERE "rolling_source"."policies__issued_at_month" >= DATE_TRUNC('year', "time_series"."date_from") and "rolling_source"."policies__issued_at_month" <= "time_series"."date_to"
+    GROUP BY 1
+  ) AS "rolling" ON "time_series"."date_from" = "rolling"."policies__issued_at_month"),
+cte_2 AS (  SELECT DATE_TRUNC('month', CAST(TIME_FORMAT("policies".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "policies__issued_at_month", sum("policies".written_premium) "policies__written_premium" 
+  FROM  druid.ins_policy  AS "policies"
+  WHERE ("policies".__time >= TIME_PARSE(?) AND "policies".__time <= TIME_PARSE(?))
+  GROUP BY 1)
+SELECT "full_aggregate"."policies__issued_at_month" "policies__issued_at_month", "full_aggregate"."policies__written_premium" "policies__written_premium", "full_aggregate"."policies__written_premium_ytd" "policies__written_premium_ytd" 
+FROM (SELECT COALESCE("q_l"."policies__issued_at_month", "q_r"."policies__issued_at_month") "policies__issued_at_month", MAX("q_l"."policies__written_premium_ytd") "policies__written_premium_ytd", MAX("q_r"."policies__written_premium") "policies__written_premium" 
+FROM  cte_1  AS "q_l"
+FULL JOIN  cte_2  AS "q_r" ON ("q_l"."policies__issued_at_month" = "q_r"."policies__issued_at_month")
+GROUP BY 1) AS "full_aggregate"
+GROUP BY 1, 2, 3
+ORDER BY  1  ASC
+-- parameters: ["2026-01-01T00:00:00.000", "2026-06-30T23:59:59.999", "2026-01-01T00:00:00.000Z", "2026-06-30T23:59:59.999Z"]
+
 -- uw_by_underwriting_year
 SELECT (DATE_TRUNC('year', (CAST(TIME_FORMAT("policies".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP) - INTERVAL '3' MONTH)) + INTERVAL '3' MONTH) "policies__issued_at_underwriting_year", sum("policies".written_premium) "policies__written_premium" 
 FROM  druid.ins_policy  AS "policies"
@@ -592,6 +808,37 @@ WHERE ("policies".__time >= TIME_PARSE(?) AND "policies".__time <= TIME_PARSE(?)
 GROUP BY 1
 ORDER BY  1  ASC
 -- parameters: ["2025-01-01T00:00:00.000Z", "2026-12-31T23:59:59.999Z"]
+
+-- ep_rolling_12m_by_month
+ WITH 
+time_series AS (  SELECT TIME_PARSE(dates.f) date_from, TIME_PARSE(dates.t) date_to 
+  FROM (VALUES
+      ('2026-01-01T00:00:00.000', '2026-01-31T23:59:59.999'),
+      ('2026-02-01T00:00:00.000', '2026-02-28T23:59:59.999'),
+      ('2026-03-01T00:00:00.000', '2026-03-31T23:59:59.999'),
+      ('2026-04-01T00:00:00.000', '2026-04-30T23:59:59.999'),
+      ('2026-05-01T00:00:00.000', '2026-05-31T23:59:59.999'),
+      ('2026-06-01T00:00:00.000', '2026-06-30T23:59:59.999')
+  ) AS dates (f, t)),
+cte_0 AS (  SELECT DATE_TRUNC('month', CAST(TIME_FORMAT("earned_premiums".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP)) "earned_premiums__earned_month_month", sum("earned_premiums".earned_premium) "earned_premiums__earned_premium_12m" 
+  FROM  druid.ins_earned_premium  AS "earned_premiums"
+  WHERE (CAST(TIME_FORMAT("earned_premiums".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP) >= TIME_PARSE(?) AND CAST(TIME_FORMAT("earned_premiums".__time, 'yyyy-MM-dd HH:mm:ss', 'UTC') AS TIMESTAMP) <= TIME_PARSE(?))
+  GROUP BY 1
+  ORDER BY  1  ASC),
+cte_1 AS (  SELECT "time_series"."date_from" "earned_premiums__earned_month_month", "rolling"."earned_premiums__earned_premium_12m" "earned_premiums__earned_premium_12m" 
+  FROM time_series  AS "time_series"
+  LEFT JOIN (
+    SELECT "time_series"."date_from" "earned_premiums__earned_month_month", sum("rolling_source"."earned_premiums__earned_premium_12m") "earned_premiums__earned_premium_12m" 
+    FROM time_series  AS "time_series"
+    INNER JOIN cte_0 AS "rolling_source" ON 1 = 1
+    WHERE "rolling_source"."earned_premiums__earned_month_month" > ("time_series"."date_to" - INTERVAL '12' MONTH) AND "rolling_source"."earned_premiums__earned_month_month" <= "time_series"."date_to"
+    GROUP BY 1
+  ) AS "rolling" ON "time_series"."date_from" = "rolling"."earned_premiums__earned_month_month")
+SELECT "fk_aggregate"."earned_premiums__earned_month_month" "earned_premiums__earned_month_month", "fk_aggregate"."earned_premiums__earned_premium_12m" "earned_premiums__earned_premium_12m" 
+FROM  cte_1  AS "fk_aggregate"
+GROUP BY 1, 2
+ORDER BY  1  ASC
+-- parameters: ["2025-01-01T00:00:00.000", "2026-06-30T23:59:59.999"]
 
 -- ep_written_vs_earned_by_line
  WITH 

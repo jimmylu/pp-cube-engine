@@ -266,7 +266,7 @@ fn druid_manifest_holds_the_cases_its_dialect_compiles_and_lists_the_rest() {
         .map(|c| c["name"].as_str().unwrap())
         .collect();
     assert_eq!(names, compiled);
-    assert_eq!(names.len(), 73);
+    assert_eq!(names.len(), 82);
     assert!(support
         .iter()
         .all(|(_, outcome)| outcome == "compiled" || outcome.starts_with("unsupported: ")));
@@ -352,12 +352,14 @@ fn only_druid_cases_state_a_relation_to_cube_core_and_only_the_reviewed_ones() {
             case["sql"].as_str().unwrap(),
         );
         let differs = stated.contains(&(name, "differs"));
-        // A statement of several SELECT statements over shared keys, or with interval
-        // arithmetic, is where the kernel leaves Cube Core, and nowhere else.
-        let beyond = sql.contains("FULL JOIN") || sql.contains("INTERVAL '");
+        // Several SELECT statements over shared keys, interval arithmetic and a
+        // rolling window are where the kernel leaves Cube Core, and nowhere else.
+        let beyond = sql.contains("FULL JOIN")
+            || sql.contains("INTERVAL '")
+            || sql.contains("\"rolling_source\"");
         assert_eq!(differs, beyond, "{name}");
     }
-    assert_eq!(stated.len(), 3 + 16);
+    assert_eq!(stated.len(), 3 + 24);
     assert!(sources("presto")["cases"]
         .as_array()
         .unwrap()

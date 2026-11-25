@@ -10,7 +10,7 @@ interval_units: [year, month, day, hour, minute, second]
 # What Druid 26 cannot answer, established on Druid 26.0.0. A scan cannot be
 # ordered by a column other than time, so an ungrouped query is refused. A
 # rolling window joins on a range of time, and Druid joins on equality only.
-refuses: [ungrouped, rolling-window]
+refuses: [ungrouped]
 templates:
   # Cube's statement, with what Druid 26 needs of a statement over other
   # SELECT statements. Rows of two aggregates are merged by a FULL JOIN on plain equality
@@ -175,3 +175,21 @@ templates:
   functions/COALESCE:
     source: BaseQuery.ts
     text: "COALESCE({{ args_concat }})"
+  # Rolling windows. The periods are written out, as on Doris: Druid has no
+  # series generator. A row constructor holds them, since Druid does not
+  # union inside a subquery.
+  statements/time_series_select:
+    source: MysqlQuery.ts; Druid VALUES and TIME_PARSE
+    text: "SELECT TIME_PARSE(dates.f) date_from, TIME_PARSE(dates.t) date_to \nFROM (VALUES\n{% for time_item in seria %}    ('{{ time_item[0] }}', '{{ time_item[1] }}'){% if not loop.last %},{% endif %}\n{% endfor %}) AS dates (f, t)"
+  expressions/rolling_window_expr_timestamp_cast:
+    source: BaseQuery.ts
+    text: "{{ value }}"
+  # The kernel's own, read by pp-cube-adapter: the planner's rolling SELECT
+  # joins the series to the aggregate on a range of time, and Druid joins on
+  # equality only. The series is crossed with the aggregate, filtered by the
+  # range and grouped; the series is then joined to that on the period, so a
+  # period without rows keeps its row. The planner's ORDER BY is dropped: this
+  # is the body of a CTE, and Druid orders a scan by time only.
+  kernel/rolling_select:
+    source: the kernel; executed on Druid 26.0.0
+    text: "SELECT {% for column in columns %}{% if column.period %}{{ column.aliased }}{% else %}\"rolling\".\"{{ column.alias }}\" \"{{ column.alias }}\"{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} \nFROM {{ series }}\nLEFT JOIN (\n  SELECT {{ columns | map(attribute='aliased') | join(', ') }} \n  FROM {{ series }}\n  INNER JOIN {{ source }} ON 1 = 1\n  WHERE {{ condition }}\n  GROUP BY {{ group_by }}\n) AS \"rolling\" ON {% for column in columns | selectattr('period') %}{{ column.expr }} = \"rolling\".\"{{ column.alias }}\"{% if not loop.last %} AND {% endif %}{% endfor %}"

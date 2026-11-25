@@ -8,6 +8,7 @@
 mod expression;
 mod granularities;
 mod result;
+mod rolling;
 pub use result::{OutputColumn, UsedCube};
 mod joins;
 mod options;

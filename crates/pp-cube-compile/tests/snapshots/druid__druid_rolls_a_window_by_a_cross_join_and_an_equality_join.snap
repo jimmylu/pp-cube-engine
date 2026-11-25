@@ -1,0 +1,84 @@
+---
+source: crates/pp-cube-compile/tests/druid.rs
+expression: golden
+---
+ WITH 
+time_series AS (  SELECT TIME_PARSE(dates.f) date_from, TIME_PARSE(dates.t) date_to 
+  FROM (VALUES
+      ('2026-10-01T00:00:00.000', '2026-10-01T23:59:59.999'),
+      ('2026-10-02T00:00:00.000', '2026-10-02T23:59:59.999'),
+      ('2026-10-03T00:00:00.000', '2026-10-03T23:59:59.999')
+  ) AS dates (f, t)),
+cte_0 AS (  SELECT DATE_TRUNC('day', CAST(TIME_FORMAT("sales".sold_at, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount_7d" 
+  FROM  dw.sales_dtl  AS "sales"
+  WHERE (CAST(TIME_FORMAT("sales".sold_at, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP) >= TIME_PARSE(?) AND CAST(TIME_FORMAT("sales".sold_at, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP) <= TIME_PARSE(?))
+  GROUP BY 1
+  ORDER BY  1  ASC),
+cte_1 AS (  SELECT "time_series"."date_from" "sales__sold_at_day", "rolling"."sales__amount_7d" "sales__amount_7d" 
+  FROM time_series  AS "time_series"
+  LEFT JOIN (
+    SELECT "time_series"."date_from" "sales__sold_at_day", sum("rolling_source"."sales__amount_7d") "sales__amount_7d" 
+    FROM time_series  AS "time_series"
+    INNER JOIN cte_0 AS "rolling_source" ON 1 = 1
+    WHERE "rolling_source"."sales__sold_at_day" > ("time_series"."date_to" - INTERVAL '7' DAY) AND "rolling_source"."sales__sold_at_day" <= "time_series"."date_to"
+    GROUP BY 1
+  ) AS "rolling" ON "time_series"."date_from" = "rolling"."sales__sold_at_day")
+SELECT "fk_aggregate"."sales__sold_at_day" "sales__sold_at_day", "fk_aggregate"."sales__amount_7d" "sales__amount_7d" 
+FROM  cte_1  AS "fk_aggregate"
+GROUP BY 1, 2
+ORDER BY  1  ASC
+-- parameters: [Text("2026-09-24T00:00:00.000"), Text("2026-10-03T23:59:59.999")]
+
+ WITH 
+time_series AS (  SELECT TIME_PARSE(dates.f) date_from, TIME_PARSE(dates.t) date_to 
+  FROM (VALUES
+      ('2026-10-01T00:00:00.000', '2026-10-01T23:59:59.999'),
+      ('2026-10-02T00:00:00.000', '2026-10-02T23:59:59.999'),
+      ('2026-10-03T00:00:00.000', '2026-10-03T23:59:59.999')
+  ) AS dates (f, t)),
+cte_0 AS (  SELECT DATE_TRUNC('day', CAST(TIME_FORMAT("sales".sold_at, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount_mtd" 
+  FROM  dw.sales_dtl  AS "sales"
+  WHERE (CAST(TIME_FORMAT("sales".sold_at, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP) >= TIME_PARSE(?) AND CAST(TIME_FORMAT("sales".sold_at, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP) <= TIME_PARSE(?))
+  GROUP BY 1
+  ORDER BY  1  ASC),
+cte_1 AS (  SELECT "time_series"."date_from" "sales__sold_at_day", "rolling"."sales__amount_mtd" "sales__amount_mtd" 
+  FROM time_series  AS "time_series"
+  LEFT JOIN (
+    SELECT "time_series"."date_from" "sales__sold_at_day", sum("rolling_source"."sales__amount_mtd") "sales__amount_mtd" 
+    FROM time_series  AS "time_series"
+    INNER JOIN cte_0 AS "rolling_source" ON 1 = 1
+    WHERE "rolling_source"."sales__sold_at_day" >= DATE_TRUNC('month', "time_series"."date_from") and "rolling_source"."sales__sold_at_day" <= "time_series"."date_to"
+    GROUP BY 1
+  ) AS "rolling" ON "time_series"."date_from" = "rolling"."sales__sold_at_day")
+SELECT "fk_aggregate"."sales__sold_at_day" "sales__sold_at_day", "fk_aggregate"."sales__amount_mtd" "sales__amount_mtd" 
+FROM  cte_1  AS "fk_aggregate"
+GROUP BY 1, 2
+ORDER BY  1  ASC
+-- parameters: [Text("2026-10-01T00:00:00.000"), Text("2026-10-03T23:59:59.999")]
+
+ WITH 
+time_series AS (  SELECT TIME_PARSE(dates.f) date_from, TIME_PARSE(dates.t) date_to 
+  FROM (VALUES
+      ('2026-10-01T00:00:00.000', '2026-10-01T23:59:59.999'),
+      ('2026-10-02T00:00:00.000', '2026-10-02T23:59:59.999'),
+      ('2026-10-03T00:00:00.000', '2026-10-03T23:59:59.999')
+  ) AS dates (f, t)),
+cte_0 AS (  SELECT "sales".channel_cd "sales__channel_cd", DATE_TRUNC('day', CAST(TIME_FORMAT("sales".sold_at, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP)) "sales__sold_at_day", sum("sales".amount) "sales__amount_7d" 
+  FROM  dw.sales_dtl  AS "sales"
+  WHERE (CAST(TIME_FORMAT("sales".sold_at, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP) >= TIME_PARSE(?) AND CAST(TIME_FORMAT("sales".sold_at, 'yyyy-MM-dd HH:mm:ss', 'Asia/Tokyo') AS TIMESTAMP) <= TIME_PARSE(?))
+  GROUP BY 1, 2
+  ORDER BY  2  ASC),
+cte_1 AS (  SELECT "time_series"."date_from" "sales__sold_at_day", "rolling"."sales__channel_cd" "sales__channel_cd", "rolling"."sales__amount_7d" "sales__amount_7d" 
+  FROM time_series  AS "time_series"
+  LEFT JOIN (
+    SELECT "time_series"."date_from" "sales__sold_at_day", "rolling_source"."sales__channel_cd" "sales__channel_cd", sum("rolling_source"."sales__amount_7d") "sales__amount_7d" 
+    FROM time_series  AS "time_series"
+    INNER JOIN cte_0 AS "rolling_source" ON 1 = 1
+    WHERE "rolling_source"."sales__sold_at_day" > ("time_series"."date_to" - INTERVAL '7' DAY) AND "rolling_source"."sales__sold_at_day" <= "time_series"."date_to"
+    GROUP BY 1, 2
+  ) AS "rolling" ON "time_series"."date_from" = "rolling"."sales__sold_at_day")
+SELECT "fk_aggregate"."sales__channel_cd" "sales__channel_cd", "fk_aggregate"."sales__sold_at_day" "sales__sold_at_day", "fk_aggregate"."sales__amount_7d" "sales__amount_7d" 
+FROM  cte_1  AS "fk_aggregate"
+GROUP BY 1, 2, 3
+ORDER BY  2  ASC
+-- parameters: [Text("2026-09-24T00:00:00.000"), Text("2026-10-03T23:59:59.999")]

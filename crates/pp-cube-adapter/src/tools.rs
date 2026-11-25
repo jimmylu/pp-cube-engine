@@ -40,6 +40,11 @@ impl SqlTemplatesRender for Templates {
     }
 
     fn render_template(&self, name: &str, ctx: minijinja::Value) -> Result<String, CubeError> {
+        if name == "statements/select" {
+            if let Some(rewritten) = crate::rolling::select(self.0, &ctx) {
+                return rewritten;
+            }
+        }
         self.0.render(name, ctx).map_err(dialect_error)
     }
 
