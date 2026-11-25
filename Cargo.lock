@@ -1291,7 +1291,7 @@ dependencies = [
 
 [[package]]
 name = "pp-cube-adapter"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -1305,7 +1305,7 @@ dependencies = [
 
 [[package]]
 name = "pp-cube-compile"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "insta",
  "pp-cube-adapter",
@@ -1317,7 +1317,7 @@ dependencies = [
 
 [[package]]
 name = "pp-cube-conformance"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "insta",
  "pp-cube-compile",
@@ -1327,7 +1327,7 @@ dependencies = [
 
 [[package]]
 name = "pp-cube-dialect"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "minijinja",
  "serde",
@@ -1336,7 +1336,7 @@ dependencies = [
 
 [[package]]
 name = "pp-cube-model"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1347,7 +1347,7 @@ dependencies = [
 
 [[package]]
 name = "pp-cube-service"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "pp-cube-compile",
  "pp-cube-model",

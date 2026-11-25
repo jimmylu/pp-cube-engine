@@ -8,6 +8,13 @@ versions even when the SQL does not.
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.2.0
+
+B1 on Presto and Apache Doris, Apache Druid as a third engine, model versions
+from shared storage, and the first published image.
+
 **Compiles**
 - Measures of more than one cube in one query (B1 multi-fact): each fact is
   aggregated on its own and the results are combined over the shared
@@ -55,7 +62,14 @@ versions even when the SQL does not.
   `unsupported_features`; `Model` has the field `views` and `Reference` a
   variant more.
 
+**Deploys**
+- The service image is published for linux/amd64 and linux/arm64 with its SBOM
+  and signed provenance; `deploy/kubernetes.yaml` runs three replicas of it.
+  See `docs/deployment.md` for upgrading and rolling back.
+
 **Breaking**
+- Fingerprints differ from 0.1.0 for every request: the kernel version is part
+  of them.
 - A filter on a count of a cube reached through a many_to_one join returns
   unsupported. It compiled in 0.1.0 to a comparison of joined rows that could
   contradict the selected count.
