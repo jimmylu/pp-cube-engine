@@ -15,6 +15,9 @@ versions even when the SQL does not.
 - A runnable example, `examples/insurance-analytics`: an insurer's analytics
   portal compiling through the service and executing on Presto.
 - The contract names its Java package; the wire is unchanged.
+- A Python client, `clients/python`, module `ppcube`: the same for Python 3.9
+  and later, with placeholder conversion for drivers of other styles. The
+  example runs with a Python back end too: `run.sh python`.
 
 ## 0.2.0
 

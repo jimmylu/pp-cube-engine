@@ -7,13 +7,15 @@ it runs.
 
 ```sh
 scripts/vendor-sync.sh                      # once, to build the service image
-examples/insurance-analytics/run.sh
+examples/insurance-analytics/run.sh         # the Java back end
+examples/insurance-analytics/run.sh python  # the Python back end
 ```
 
 The first run builds the service image and pulls Presto, which takes several
 minutes; later runs reuse both. It ends with `example: PASSED`, leaves nothing
-running and removes the certificate and tokens it made. It needs Docker with Compose, a JDK 11 or later, Maven
-and openssl.
+running and removes the certificate and tokens it made. It needs Docker with
+Compose and openssl, and for the back end of your choice a JDK 11 or later
+with Maven, or Python 3.9 or later.
 
 ## What is in it
 
@@ -23,7 +25,8 @@ and openssl.
 | `docker-compose.yaml` | The compile service, started with the arguments of [deploy/kubernetes.yaml](../../deploy/kubernetes.yaml), and Presto 0.296 as the warehouse |
 | `warehouse/insurance.sql` | The warehouse's tables: policies, earned premium, claims, reserves, payments, cessions |
 | `portal.json` | Four users, their row-level rules, their questions, and the answers worked out by hand |
-| `app/` | The back end, in Java, on [the Java client](../../clients/java) and the Presto JDBC driver |
+| `app/` | The back end in Java, on [the Java client](../../clients/java) and the Presto JDBC driver |
+| `app-python/` | The same back end in Python, on [the Python client](../../clients/python) and `presto-python-client` |
 | `run.sh` | An operator: makes a certificate and tokens, starts both systems, runs the back end, stops everything |
 
 ## What happens for one question
@@ -52,8 +55,9 @@ controller sees three.
 
 - **Row-level security** through `securityFilter`, on a question over three
   facts: the rule reaches every fact.
-- **Bound parameters** and **session properties**, through
-  `CompiledQuery.bind` and the driver. The paged question needs
+- **Bound parameters** and **session properties**: `CompiledQuery.bind` and
+  the JDBC driver in Java, `compiled.parameters` handed to `cursor.execute` in
+  Python. The paged question needs
   `offset_clause_enabled=true` on Presto; the kernel says so and the back end
   sets it.
 - **Rolling windows, a declared granularity, several facts, a view and

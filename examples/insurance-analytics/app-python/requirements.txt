@@ -1,0 +1,2 @@
+# The warehouse's driver; the client is installed from clients/python of this repository.
+presto-python-client==0.8.4
