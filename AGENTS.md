@@ -27,7 +27,7 @@ First use in a fresh clone: `scripts/vendor-sync.sh` (a plain `git submodule upd
 4. **Every scenario you implement gets a test naming its id**: `// scenario: B0-AGG-003`.
 5. **Harness changes travel alone.** A pull request touching a harness path (`.github/`, `scripts/`, `AGENTS.md`, `CLAUDE.md`, `.agents/`, `.claude/`, `.codex/`, `.omp/`, `docs/agents/`, lint and toolchain configuration) touches nothing else.
 6. **Stay inside the current baseline level.** Anything beyond it becomes an issue labelled `after-baseline`.
-7. **The owner merges.** Automate delivery through Ready; owner reviews the final head and merges.
+7. **The owner merges and releases.** Automate delivery through Ready; owner reviews the final head and merges. Only the owner pushes a release tag.
 8. **A change is one capability, sized by work.** Each pull request delivers one independently usable capability. Plan a change as about 2–3 working days of work, up to 4–5 when the capability needs it. There is no line or file limit; do not split a capability to stay small.
 9. **Test and framework optimization travels in its own batch.** A capability pull request carries the tests its capability needs and no more. Reworking existing test cases, fixtures or the test framework is collected and done once, in a dedicated pull request, not spread across capability pull requests or repeated.
 
@@ -62,5 +62,6 @@ One agent at a time owns a change's branch. Review by a second model is on deman
 | `docs/agents/cube-core.md` | the Cube Core comparison fails, or the upstream pin moves |
 | `docs/agents/skills.md` | choosing a skill for a task |
 | `docs/agents/glossary.md` | a project term is unclear (B0, B1, facade, adapter, golden, scenario) |
+| `docs/agents/release.md` | preparing a release, or changing the release workflow |
 | `docs/agents/launch.md` | setting up or starting an agent session (tokens, local guard) |
 | `vendor/AGENTS.md` | reading upstream code or anything about the upstream pin |
