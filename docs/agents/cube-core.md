@@ -27,7 +27,7 @@ output is stable, this shows that it agrees with Cube.
 
 A pass is tier T1 for the cases, scenario B0-PRESTO-002. Cube has no Doris
 dialect, so there is no Doris comparison. The Druid comparison runs inside the
-Druid tier, on the SQL only; see [druid-container.md](druid-container.md).
+Druid tier, where a case may state that Cube Core refuses it or writes SQL Druid rejects; see [druid-container.md](druid-container.md).
 
 ## Run it
 

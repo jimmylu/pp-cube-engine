@@ -1,5 +1,6 @@
 """Lifecycle, loading and comparison regressions; simulated Docker is not real evidence."""
 import importlib.util
+import io
 from pathlib import Path
 import subprocess
 import unittest
@@ -11,7 +12,8 @@ SPEC.loader.exec_module(runner)
 
 SQL = 'SELECT sum(a) "sales__amount" FROM druid.sales_dtl WHERE c = ?'
 SESSION = {'useApproximateCountDistinct': 'false'}
-STATEMENT = 'REPLACE INTO "sales_dtl" OVERWRITE ALL SELECT 1 PARTITIONED BY ALL'
+STATEMENT = ('REPLACE INTO "sales_dtl" OVERWRITE ALL SELECT "sale_id", TIME_PARSE("sold_at") AS "__time" '
+             "FROM TABLE(EXTERN('{}', '{}', '[]')) PARTITIONED BY ALL")
 
 
 def case(**changes):
@@ -106,8 +108,10 @@ class LifecycleTests(unittest.TestCase):
 
 
 class LoadTests(unittest.TestCase):
-    def load(self, segment_answers, statuses=('RUNNING', 'SUCCESS')):
+    def load(self, segment_answers, statuses=('RUNNING', 'SUCCESS'),
+             columns=([], [['sale_id']], [['sale_id'], ['__time'], ['older']])):
         segment_answers, statuses, submitted = iter(segment_answers), iter(statuses), []
+        columns = iter(columns)
 
         def ask(endpoint, path, body=None, timeout=60):
             if path == '/druid/v2/sql/task':
@@ -116,6 +120,8 @@ class LoadTests(unittest.TestCase):
             if path.startswith('/druid/indexer/'):
                 return {'status': {'status': next(statuses)}}
             self.assertEqual(body['parameters'], [{'type': 'VARCHAR', 'value': 'sales_dtl'}])
+            if 'INFORMATION_SCHEMA' in body['query']:
+                return next(columns)
             return next(segment_answers)
 
         runner.load('http://x', STATEMENT, ask, lambda _: None, attempts=3)
@@ -127,6 +133,12 @@ class LoadTests(unittest.TestCase):
         self.assertEqual(self.load([[old], [old, new], [['v1', 1, 1], new]]), [STATEMENT])
         with self.assertRaisesRegex(TimeoutError, 'ingested segments were not served'):
             self.load([[old], [old], [old], [old]])
+
+    def test_loaded_also_means_sql_knows_every_written_column(self):
+        # The broker learns a datasource and its columns after the segment is served;
+        # `sold_at` is read, not written, and is not waited for.
+        with self.assertRaisesRegex(TimeoutError, 'ingested columns were not known to SQL'):
+            self.load([[], [['v2', 1, 0]]], columns=([], [['sale_id']], [['sale_id']]))
 
     def test_a_failed_or_endless_task_and_a_foreign_statement_fail(self):
         with self.assertRaisesRegex(ValueError, 'ingestion task failed'):
@@ -167,6 +179,55 @@ class SuiteTests(unittest.TestCase):
                     self.suite([case()], answer, result)
                 self.assertEqual(runner.failure(failure.exception),
                                  message + ' at stage=' + stage + ' case=equals')
+
+    def relation(self, relation, answer, cube_sql_runs=False):
+        """One case stating `relation`; Cube answers `answer` (an HTTP status means it refuses)."""
+        executed = []
+
+        def ask(cube, query):
+            if isinstance(answer, int):
+                raise runner.urllib.error.HTTPError('http://cube', abs(answer), 'refused', {},
+                                                  io.BytesIO(b'{"error": "x"}' if answer > 0 else b'<html>'))
+            return answer
+
+        def run(endpoint, sql, timeout, parameters, session):
+            executed.append((sql, parameters))
+            if sql != SQL and not cube_sql_runs:
+                raise ValueError('Druid returned a query error')
+            return ['sales__amount'], [[30]]
+
+        runner.suite('http://x', [case(cube_core=relation)], SESSION, 'http://cube', run,
+                     lambda endpoint, statement: None, ask)
+        return executed
+
+    def test_a_case_cube_core_refuses_needs_its_refusal(self):
+        # The kernel's SQL still runs and must return the expected rows.
+        for status in (400, 500):
+            self.assertEqual(self.relation('refuses', status), [(SQL, ({'type': 'text', 'value': 'C1'},))])
+        with self.assertRaisesRegex(ValueError, 'Cube Core answers a case stated as refused'):
+            self.relation('refuses', (SQL + '\nLIMIT 10000', ['C1']))
+        # Another status or a body that is not Cube's error document is not a refusal
+        # (a negative status here answers with a page), and an unstated refusal fails.
+        for relation, status in (('refuses', 503), ('refuses', -500), ('equal', 400), ('differs', 400)):
+            with self.assertRaises(runner.urllib.error.HTTPError):
+                self.relation(relation, status)
+
+    def test_a_case_cube_core_writes_differently_needs_druid_to_reject_its_sql(self):
+        other = SQL.replace('sum(a)', 'sum(a + INTERVAL 1 day)') + '\nLIMIT 10000'
+        executed = self.relation('differs', (other, ['C1']))
+        # Cube's SQL was put to the engine with its parameters, then the kernel's.
+        self.assertEqual([sql for sql, _ in executed], [other, SQL])
+        self.assertEqual(executed[0][1], ({'type': 'text', 'value': 'C1'},))
+        with self.assertRaisesRegex(ValueError, 'Cube Core SQL stated as failing runs on Druid'):
+            self.relation('differs', (other, ['C1']), cube_sql_runs=True)
+        with self.assertRaisesRegex(ValueError, 'equals the kernel in a case stated as different'):
+            self.relation('differs', (SQL + '\nLIMIT 10000', ['C1']))
+
+    def test_the_evidence_line_counts_the_stated_exceptions(self):
+        cases = [case(), case(cube_core='equal'), case(cube_core='refuses'), case(cube_core='differs')]
+        self.assertEqual(runner.beyond(cases),
+                         ' in 2 cases; Cube Core refuses 1 and writes SQL Druid rejects in 1')
+        self.assertEqual(runner.beyond([case()]), '')
 
     def test_without_cube_core_only_execution_is_checked(self):
         _, executed = self.suite([case()], answer=('other', []), cube=None)
@@ -214,6 +275,18 @@ class ProtocolTests(unittest.TestCase):
         manifest = {'schema': 1, 'dialect': 'druid', 'session': SESSION,
                     'cases': [{key: case()[key] for key in runner.MANIFEST.CASE_KEYS}]}
         self.assertEqual(runner.MANIFEST.validated(manifest, 'druid', runner.MANIFEST.CASE_KEYS)[1], SESSION)
+        sources = dict(manifest, model='cubes: []', data_sources=['warehouse'],
+                       cases=[case(), case(cube_core='refuses'), case(cube_core='differs')])
+        emit = lambda *a, **k: type('Output', (), {'stdout': runner.json.dumps(sources)})()
+        cases = runner.MANIFEST.compiled_sources('druid', emit)[0]
+        self.assertEqual([item['cube_core'] for item in cases], ['equal', 'refuses', 'differs'])
+        sources['cases'] = [case(cube_core='faster')]
+        with self.assertRaisesRegex(ValueError, 'unsupported execution manifest'):
+            runner.MANIFEST.compiled_sources('druid', emit)
+        # The plain manifest states no relation: there is nothing to compare it with.
+        with self.assertRaises(ValueError):
+            runner.MANIFEST.validated(dict(manifest, cases=[dict(manifest['cases'][0], cube_core='refuses')]),
+                                      'druid', runner.MANIFEST.CASE_KEYS)
         manifest['session'] = {'bad key': 'x'}
         with self.assertRaises(ValueError):
             runner.MANIFEST.validated(manifest, 'druid', runner.MANIFEST.CASE_KEYS)

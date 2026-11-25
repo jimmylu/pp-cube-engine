@@ -8,6 +8,10 @@ ROOT = Path(__file__).resolve().parents[2]
 CASE_KEYS = {'name', 'scenario', 'fixture', 'sql', 'params', 'columns', 'rows'}
 # What a comparison against Cube Core needs besides the compiled SQL.
 SOURCE_KEYS = {'query', 'timezone', 'security_filters'}
+# How Cube Core answers a case, when not with the kernel's SQL: it refuses the query,
+# or its SQL differs. Stated by the case; absent means equal.
+RELATION_KEY = 'cube_core'
+RELATIONS = ('refuses', 'differs')
 
 
 def emitter(dialect):
@@ -39,10 +43,17 @@ def compiled_manifest(dialect, emit=subprocess.run):
 
 def compiled_sources(dialect, emit=subprocess.run):
     """The manifest with each case's Cube query, timezone and security filters, the
-    model text and its data sources: what Cube Core is asked the same question with."""
+    model text and its data sources: what Cube Core is asked the same question with.
+    Every case comes back with its relation to Cube Core: `equal` unless it states one."""
     output = emit(emitter(dialect) + ('--sources',), cwd=ROOT, text=True, stdout=subprocess.PIPE,
                   timeout=900, check=True)
     manifest = json.loads(output.stdout)
+    listed = manifest.get('cases')
+    if not isinstance(listed, list) or any(not isinstance(case, dict) for case in listed):
+        raise ValueError('unsupported execution manifest')
+    relations = [case.pop(RELATION_KEY, 'equal') for case in listed]
+    if any(relation not in ('equal',) + RELATIONS for relation in relations):
+        raise ValueError('unsupported execution manifest')
     cases, session = validated(manifest, dialect, CASE_KEYS | SOURCE_KEYS)
     model, data_sources = manifest.get('model'), manifest.get('data_sources')
     if (not isinstance(model, str) or not model.strip() or not isinstance(data_sources, list)
@@ -52,6 +63,8 @@ def compiled_sources(dialect, emit=subprocess.run):
             or any(not isinstance(case['query'], dict) or not isinstance(case['timezone'], str)
                    or not isinstance(case['security_filters'], list) for case in cases)):
         raise ValueError('unsupported execution manifest')
+    for case, relation in zip(cases, relations):
+        case[RELATION_KEY] = relation
     return cases, session, model, data_sources
 
 
