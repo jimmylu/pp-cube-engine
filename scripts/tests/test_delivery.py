@@ -170,10 +170,12 @@ class DeliveryTests(unittest.TestCase):
         for name in dev.CLIENT_CHECKS:
             self.assertIn('\n  ' + name + ':\n', workflow)
         self.assertRegex(workflow, r'push:\s+branches: \[main\]')
-        # The client is proved on the lowest Java it supports.
+        # Each client is proved on the lowest version of its language it supports.
         self.assertIn('JAVA_HOME_11_X64', workflow)
+        self.assertIn("python-version: '3.9'", workflow)
         for changed, expected in [
-                ('clients/java/pom.xml', True), ('examples/insurance-analytics/portal.json', True),
+                ('clients/java/pom.xml', True), ('clients/python/pyproject.toml', True),
+                ('examples/insurance-analytics/portal.json', True),
                 ('crates/pp-cube-service/proto/engine.proto', True), ('deploy/kubernetes.yaml', True),
                 ('Dockerfile', True), ('.github/workflows/clients.yml', True),
                 ('docs/guide.md', False), ('scripts/dev', False), ('openspec/specs/client-java/spec.md', False)]:
