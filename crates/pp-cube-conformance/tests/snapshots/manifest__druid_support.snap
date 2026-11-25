@@ -14,7 +14,7 @@ beforeOrOnDate                     compiled
 afterDate                          compiled
 afterOrOnDate                      compiled
 security                           compiled
-rolling_tokyo                      unsupported: Measure `sales.amount_2d` has a rolling window, which druid does not support
+rolling_tokyo                      compiled
 dst                                compiled
 aggregates                         compiled
 filtered_measure_ratio_segment     compiled
@@ -53,14 +53,14 @@ two_cubes_in_one_select            compiled
 security_multi_fact                compiled
 security_two_hop_join              compiled
 security_pattern                   compiled
-rolling_trailing                   unsupported: Measure `sales.amount_3d` has a rolling window, which druid does not support
-rolling_distinct_count             unsupported: Measure `sales.orders_2d` has a rolling window, which druid does not support
-month_to_date                      unsupported: Measure `sales.amount_mtd` has a rolling window, which druid does not support
-rolling_at_range_end               unsupported: Measure `sales.amount_3d` has a rolling window, which druid does not support
-running_total_by_month             unsupported: Measure `sales.amount_so_far` has a rolling window, which druid does not support
+rolling_trailing                   compiled
+rolling_distinct_count             compiled
+month_to_date                      compiled
+rolling_at_range_end               compiled
+running_total_by_month             compiled
 prior_day                          compiled
 change_from_prior_day              compiled
-security_rolling                   unsupported: Measure `sales.amount_3d` has a rolling window, which druid does not support
+security_rolling                   compiled
 ungrouped_rows                     unsupported: The query is ungrouped, which druid does not support
 ungrouped_joined_page              unsupported: The query is ungrouped, which druid does not support
 approximate_distinct_count         compiled
@@ -73,10 +73,10 @@ view_sum_over_repeated_rows        compiled
 view_formula_and_one_to_one        compiled
 security_view                      compiled
 uw_renewal_share_by_branch         compiled
-uw_premium_ytd_by_month            unsupported: Measure `policies.written_premium_ytd` has a rolling window, which druid does not support
+uw_premium_ytd_by_month            compiled
 uw_by_underwriting_year            compiled
 uw_policy_listing                  unsupported: The query is ungrouped, which druid does not support
-ep_rolling_12m_by_month            unsupported: Measure `earned_premiums.earned_premium_12m` has a rolling window, which druid does not support
+ep_rolling_12m_by_month            compiled
 ep_written_vs_earned_by_line       compiled
 cl_counts_by_cause                 compiled
 cl_outstanding_by_line             compiled

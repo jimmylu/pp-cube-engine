@@ -35,6 +35,8 @@ versions even when the SQL does not.
   Cube's own Druid dialect has no SQL or SQL Druid 26 rejects.
 - Apache Druid: measures of several cubes, sums over rows a join repeats and
   time shifts, merged in a form Druid 26 executes.
+- Apache Druid: rolling windows, period to date and running totals, without
+  the join on a range of time that Druid does not have.
 
 **Service**
 - `--model-store`: model versions read from shared storage, a directory or an

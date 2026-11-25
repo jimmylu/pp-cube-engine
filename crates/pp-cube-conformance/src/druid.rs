@@ -71,8 +71,8 @@ pub fn fixture(fixture: Fixture) -> &'static [&'static str] {
 /// How Cube Core's Druid dialect answers a case, where not with the kernel's
 /// SQL. `refuses`: it has no template for the feature and returns an error.
 /// `differs`: its SQL is other than the kernel's and Druid 26 rejects it: an
-/// interval written `INTERVAL 3 day`, or several SELECT statements merged through a
-/// null-safe join over a union of keys. A Druid execution tier holds each to
+/// interval written `INTERVAL 3 day`, several SELECT statements merged through a
+/// null-safe join over a union of keys, or a rolling window. A Druid execution tier holds each to
 /// its word; a case not listed here must compile to Cube Core's SQL.
 pub fn cube_core(case: &str) -> Option<&'static str> {
     match case {
@@ -98,6 +98,17 @@ pub fn cube_core(case: &str) -> Option<&'static str> {
         | "x_premium_paid_by_line"
         | "x_premium_paid_ceded_by_region"
         | "security_region_across_facts" => Some("differs"),
+        // A rolling window: Cube writes its time series in a form Druid cannot
+        // parse, and joins it on a range of time. A window over a range with
+        // no granularity has no series, and equals Cube Core.
+        "rolling_tokyo"
+        | "rolling_trailing"
+        | "rolling_distinct_count"
+        | "month_to_date"
+        | "running_total_by_month"
+        | "security_rolling"
+        | "uw_premium_ytd_by_month"
+        | "ep_rolling_12m_by_month" => Some("differs"),
         _ => None,
     }
 }

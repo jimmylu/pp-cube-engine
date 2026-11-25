@@ -216,9 +216,16 @@ pull request.
   meet. Druid runs such a join on its broker: every aggregate is a subquery,
   and one that returns more groups than `druid.server.http.maxSubqueryRows`
   (100000 by default) fails on the engine. Filter or coarsen such a query.
-- **Refused by name on Druid:** ungrouped queries (a Druid scan cannot be
-  ordered by a column other than time) and rolling windows (Druid joins on
-  equality only).
+- **Rolling windows on Druid.** Rolling windows, period to date and running
+  totals compile, by a time granularity over a date range: the periods are
+  written out, as on Doris. Druid joins on equality only, so the periods are
+  crossed with the daily aggregate on the broker and filtered by the window,
+  where the other engines join on the range. The crossed rows are periods
+  times aggregate rows: keep the date range and the other dimensions of a
+  rolling query on Druid small. Cube Core's SQL for these does not parse on
+  Druid.
+- **Refused by name on Druid:** ungrouped queries. A Druid scan cannot be
+  ordered by a column other than time.
 - **Apply the query context.** Every Druid result declares
   `useApproximateCountDistinct=false`; without it Druid estimates
   `COUNT(DISTINCT)`. It does not change a `count_distinct_approx` measure,

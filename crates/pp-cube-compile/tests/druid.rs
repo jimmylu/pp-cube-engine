@@ -94,39 +94,20 @@ fn druid_declares_exact_distinct_counts_for_every_statement() {
 // scenario: B0-DRUID-002
 #[test]
 fn druid_refuses_by_name_what_it_cannot_answer() {
-    let refused = |model: &str, query: &str| match druid(model, query) {
-        Err(CompileError::Unsupported(message)) => message,
+    let ungrouped = r#"{"ungrouped": true, "dimensions": ["sales.sale_id"]}"#;
+    match druid(DETAIL, ungrouped) {
+        Err(CompileError::Unsupported(message)) => assert_eq!(
+            message,
+            "The query is ungrouped, which druid does not support"
+        ),
         other => panic!("expected Unsupported, got {other:?}"),
-    };
-    let over = |measure: &str, time: &str| {
-        format!(
-            r#"{{"measures": ["{measure}"], "timeDimensions": [{{"dimension": "sales.sold_at", {time}}}]}}"#
-        )
-    };
-    let days = r#""granularity": "day", "dateRange": ["2026-10-01", "2026-10-03"]"#;
-    for (model, query, message) in [
-        (
-            DETAIL,
-            r#"{"ungrouped": true, "dimensions": ["sales.sale_id"]}"#.to_owned(),
-            "The query is ungrouped, which druid does not support",
-        ),
-        (
-            WINDOWS,
-            over("sales.amount_7d", days),
-            "Measure `sales.amount_7d` has a rolling window, which druid does not support",
-        ),
-        (
-            WINDOWS,
-            over("sales.amount_mtd", days),
-            "Measure `sales.amount_mtd` has a rolling window, which druid does not support",
-        ),
-    ] {
-        assert_eq!(refused(model, &query), message, "{query}");
     }
-    // The other dialects compile every one of these.
+    // The other dialects compile it.
     for dialect in [DialectId::Presto, DialectId::Doris] {
-        let query = over("sales.amount_mtd", days);
-        assert!(compile_in(WINDOWS, dialect, &query).is_ok(), "{dialect:?}");
+        assert!(
+            compile_in(DETAIL, dialect, ungrouped).is_ok(),
+            "{dialect:?}"
+        );
     }
     // What a model or a query gets wrong is still a query error on Druid.
     assert!(matches!(
@@ -255,6 +236,61 @@ fn druid_merges_several_selects_by_a_full_join_and_a_group() {
         Err(CompileError::Unsupported(message)) => {
             assert!(message.contains("`1 week`"), "{message}")
         }
+        other => panic!("expected Unsupported, got {other:?}"),
+    }
+}
+
+// scenario: B1-DRUID-003
+#[test]
+fn druid_rolls_a_window_by_a_cross_join_and_an_equality_join() {
+    // The planner joins the time series to the aggregate on a range of time.
+    // Druid joins on equality only: the series is crossed with the aggregate,
+    // filtered and grouped, then joined back on the period.
+    let over = |measure: &str, rest: &str| {
+        format!(
+            r#"{{"measures": ["{measure}"], {rest} "timeDimensions": [{{"dimension": "sales.sold_at",
+                "granularity": "day", "dateRange": ["2026-10-01", "2026-10-03"]}}]}}"#
+        )
+    };
+    let queries = [
+        over("sales.amount_7d", ""),
+        over("sales.amount_mtd", ""),
+        // By a dimension: the aggregate's own column, beside the period.
+        over("sales.amount_7d", r#""dimensions": ["sales.channel_cd"],"#),
+    ];
+    let mut golden = String::new();
+    for query in &queries {
+        let on_druid = druid(WINDOWS, query).expect("the query compiles");
+        // No join on a range: the range is a filter over the crossed rows.
+        assert!(
+            on_druid.sql.contains("\"rolling_source\" ON 1 = 1"),
+            "{query}"
+        );
+        assert!(
+            on_druid
+                .sql
+                .contains("AS \"rolling\" ON \"time_series\".\"date_from\" = "),
+            "{query}"
+        );
+        // The same question as on Doris, which also writes its periods out.
+        let on_doris = compile_in(WINDOWS, DialectId::Doris, query).unwrap();
+        assert_eq!(on_druid.parameters, on_doris.parameters, "{query}");
+        assert_eq!(on_druid.columns, on_doris.columns, "{query}");
+        assert_eq!(on_druid.used_cubes, on_doris.used_cubes, "{query}");
+        golden.push_str(&format!(
+            "{}\n-- parameters: {:?}\n\n",
+            on_druid.sql, on_druid.parameters
+        ));
+    }
+    insta::assert_snapshot!(golden);
+    // The periods are written out, so rolling by a granularity needs a range.
+    let unbounded = r#"{"measures": ["sales.amount_7d"],
+        "timeDimensions": [{"dimension": "sales.sold_at", "granularity": "day"}]}"#;
+    match druid(WINDOWS, unbounded) {
+        Err(CompileError::Unsupported(message)) => assert_eq!(
+            message,
+            "Measure `sales.amount_7d` has a rolling window, and on druid `sales.sold_at` needs a date range to roll by its granularity"
+        ),
         other => panic!("expected Unsupported, got {other:?}"),
     }
 }
