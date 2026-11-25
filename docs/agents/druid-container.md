@@ -26,15 +26,37 @@ support and the pinned Rust toolchain, and no Python package.
 4. Each fixture statement is a SQL ingestion (`REPLACE INTO ... OVERWRITE ALL
    ... EXTERN(inline)`), submitted to `/druid/v2/sql/task`. It counts as loaded
    when the task succeeded, a segment version that did not exist before is
-   served and no older one is. Do not wait on a row count: it passes on the
-   data of the fixture before.
+   served, no older one is, and `INFORMATION_SCHEMA.COLUMNS` lists every column
+   the statement wrote. Do not wait on a row count: it passes on the data of
+   the fixture before. The column wait is needed because the broker learns a
+   new datasource or column a moment after its segment is served; without it
+   the first case failed once in the first four runs, with a query error at
+   `stage=execution case=day`.
 5. Every case: Cube Core is asked `GET /cubejs-api/v1/sql` as in
    [cube-core.md](cube-core.md), and its SQL and parameters must equal the
-   kernel's but for Cube's default `LIMIT 10000`. Then the kernel's SQL runs
+   kernel's but for Cube's default `LIMIT 10000`, unless the case states
+   another relation (below). Then the kernel's SQL runs
    through `/druid/v2/sql`, unchanged, with its parameters apart and the
    manifest's session as query context (`useApproximateCountDistinct=false`),
    and must return the case's columns and rows.
 6. Both containers are removed, and only those the run created.
+
+## Where the kernel leaves Cube Core
+
+The kernel may write other SQL than Cube Core only where it does better. A case
+of the sources manifest says so with `cube_core`, and the tier holds it to
+that; a case without the key must be equal.
+
+- `refuses`: Cube Core must answer the query with its own error document, at
+  status 400 or 500 (1.8.28 gives 400 for an approximate distinct count and 500
+  for a date bin). Any other failure fails the run, and so does an answer with
+  SQL: the case should then be compared.
+- `differs`: Cube Core's SQL must differ from the kernel's and Druid must
+  reject it when it is run with Cube's parameters. If it runs, the run fails.
+
+In both the kernel's SQL is still executed and must return the expected rows.
+The relations are product data in `crates/pp-cube-conformance`; the Presto
+comparison accepts none. The final line counts them.
 
 A pass is B0-DRUID-004 (execution) and B0-DRUID-003 (Cube Core comparison) for
 the cases. `python3 scripts/engines/druid-container.py --no-cube-core` skips the

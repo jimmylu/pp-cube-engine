@@ -44,7 +44,10 @@ SAFE_FAILURES = CUBE.SAFE_FAILURES | frozenset({
     'invalid query response', 'Druid returned a query error', 'unexpected result size',
     'result differs from the case expectation', 'unexpected engine version',
     'Druid did not become ready', 'ingestion task failed', 'ingestion task did not finish',
-    'ingested segments were not served',
+    'ingested segments were not served', 'ingested columns were not known to SQL',
+    'Cube Core answers a case stated as refused',
+    'Cube Core SQL equals the kernel in a case stated as different',
+    'Cube Core SQL stated as failing runs on Druid',
 })
 # Where a run stopped, for the fixed failure line: a stage and a public case name.
 PROGRESS = {}
@@ -137,12 +140,15 @@ def segments(endpoint, table, ask=call):
 def load(endpoint, statement, ask=call, pause=time.sleep, attempts=300):
     """One fixture statement: a SQL ingestion that replaces a whole datasource.
 
-    It is loaded when a segment version that did not exist before is served and no
-    older one is. Counting rows instead would pass on the data of the fixture before."""
-    match = re.match(r'REPLACE INTO "([a-z][a-z0-9_]*)" OVERWRITE ALL ', statement)
-    if not match:
+    It is loaded when a segment version that did not exist before is served, no older
+    one is, and SQL knows every column it wrote. Counting rows instead would pass on the
+    data of the fixture before; and the broker learns a new datasource or column a
+    moment after its segment is served, until when a query on it is an error."""
+    match = re.match(r'REPLACE INTO "([a-z][a-z0-9_]*)" OVERWRITE ALL SELECT (.+?) FROM TABLE\(', statement)
+    names = [re.findall(r'"([a-z_][a-z0-9_]*)"', item) for item in match.group(2).split(', ')] if match else []
+    if not names or not all(names):
         raise ValueError('unsupported fixture statement')
-    table = match.group(1)
+    table, written = match.group(1), {found[-1] for found in names}
     before = {row[0] for row in segments(endpoint, table, ask)}
     task = ask(endpoint, '/druid/v2/sql/task', {'query': statement})
     identifier = task.get('taskId') if isinstance(task, dict) else None
@@ -164,14 +170,73 @@ def load(endpoint, statement, ask=call, pause=time.sleep, attempts=300):
         rows = segments(endpoint, table, ask)
         if (any(row[0] not in before and row[1] == 1 for row in rows)
                 and not any(row[0] in before and row[1] == 1 and row[2] == 0 for row in rows)):
+            break
+        if attempt == attempts - 1:
+            raise TimeoutError('ingested segments were not served')
+        pause(1)
+    for attempt in range(attempts):
+        known = ask(endpoint, '/druid/v2/sql', {
+            'query': "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+                     "WHERE TABLE_SCHEMA = 'druid' AND TABLE_NAME = ?",
+            'parameters': [{'type': 'VARCHAR', 'value': table}], 'resultFormat': 'array'})
+        if not isinstance(known, list):
+            raise ValueError('invalid query response')
+        if written <= {row[0] for row in known}:
             return
         pause(1)
-    raise TimeoutError('ingested segments were not served')
+    raise TimeoutError('ingested columns were not known to SQL')
+
+
+def refusal(error):
+    """Cube Core's own answer that it cannot write the SQL: status 400 or 500 with its
+    JSON error document. Seen on 1.8.28: 400 for an approximate distinct count, 500 for
+    a date bin. Anything else, a proxy page or a dropped connection, is a failed run."""
+    if error.code not in (400, 500):
+        return False
+    try:
+        document = json.load(error)
+    except ValueError:
+        return False
+    return isinstance(document, dict) and isinstance(document.get('error'), str)
+
+
+def compare(endpoint, cube, case, session, run, ask):
+    """The case's stated relation to Cube Core's Druid dialect, held to the letter.
+
+    The kernel may leave Cube's SQL only where it does better. `refuses`: Cube Core
+    answers the query with an error of its own. `differs`: its SQL is not the kernel's, and
+    Druid rejects it."""
+    relation = case.get(MANIFEST.RELATION_KEY, 'equal')
+    try:
+        sql, params = ask(cube, CUBE.cube_query(case))
+    except urllib.error.HTTPError as error:
+        with error:
+            if relation == 'refuses' and refusal(error):
+                return
+        raise
+    if relation == 'refuses':
+        raise ValueError('Cube Core answers a case stated as refused')
+    if relation == 'differs':
+        if sql == CUBE.expected_sql(case):
+            raise ValueError('Cube Core SQL equals the kernel in a case stated as different')
+        if any(not isinstance(value, str) for value in params):
+            raise ValueError('unsupported Cube Core parameter')
+        try:
+            run(endpoint, sql, 60, tuple({'type': 'text', 'value': value} for value in params), session)
+        except ValueError as error:
+            if str(error) == 'Druid returned a query error':
+                return
+            raise
+        raise ValueError('Cube Core SQL stated as failing runs on Druid')
+    if sql != CUBE.expected_sql(case):
+        raise ValueError('Cube Core SQL differs from the kernel')
+    if params != [item.get('value') for item in case['params']]:
+        raise ValueError('Cube Core parameters differ from the kernel')
 
 
 def suite(endpoint, cases, session, cube=None, run=execute, fixture=load, ask=None):
     """Every case: loaded fixture, the kernel's SQL returns the expected rows and, with
-    Cube Core, Cube's SQL and parameters equal the kernel's but for its default limit."""
+    Cube Core, the case's relation to Cube's SQL holds."""
     ask = ask or CUBE.cube_sql
     loaded = None
     for case in cases:
@@ -183,11 +248,7 @@ def suite(endpoint, cases, session, cube=None, run=execute, fixture=load, ask=No
             loaded = case['fixture']
         if cube:
             PROGRESS['stage'] = 'cube-core-sql'
-            sql, params = ask(cube, CUBE.cube_query(case))
-            if sql != CUBE.expected_sql(case):
-                raise ValueError('Cube Core SQL differs from the kernel')
-            if params != [item.get('value') for item in case['params']]:
-                raise ValueError('Cube Core parameters differ from the kernel')
+            compare(endpoint, cube, case, session, run, ask)
         PROGRESS['stage'] = 'execution'
         columns, rows = run(endpoint, case['sql'], 60, tuple(case['params']), session)
         if columns != case['columns'] or rows != [[cell(value) for value in row] for row in case['rows']]:
@@ -269,12 +330,22 @@ def run(cases, session, model=None, data_sources=(), command=docker, verify=suit
                 command('rm', '--force', container, timeout=30)
 
 
+def beyond(cases):
+    """The stated exceptions for the evidence line: cases the kernel answers and Cube Core does not."""
+    count = lambda relation: sum(case.get(MANIFEST.RELATION_KEY) == relation for case in cases)
+    refused, different = count('refuses'), count('differs')
+    if not refused and not different:
+        return ''
+    return (' in %d cases; Cube Core refuses %d and writes SQL Druid rejects in %d'
+            % (len(cases) - refused - different, refused, different))
+
+
 def main():
-    compare = '--no-cube-core' not in sys.argv[1:]
+    comparing = '--no-cube-core' not in sys.argv[1:]
     try:
         # Compile before provisioning, so a compiler failure never starts an engine.
         print('Druid container: compiling execution manifest', flush=True)
-        if compare:
+        if comparing:
             CUBE.pinned()
             cases, session, model, data_sources = MANIFEST.compiled_sources('druid')
         else:
@@ -286,7 +357,7 @@ def main():
     print('check druid-container: PASSED — Druid %s, %d live-compiled manifest cases (%s)%s'
           % (VERSION, len(cases), MANIFEST.scenarios(cases),
              '; Cube Core %s Druid SQL and parameters equal the kernel\'s but for Cube\'s default '
-             'row limit (%s)' % (CUBE.CUBE_VERSION, COMPARISON) if compare else
+             'row limit%s (%s)' % (CUBE.CUBE_VERSION, beyond(cases), COMPARISON) if comparing else
              '; Cube Core comparison not run'))
     return 0
 

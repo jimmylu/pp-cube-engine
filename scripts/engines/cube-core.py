@@ -188,6 +188,9 @@ def main():
         # Compile before provisioning, so a compiler failure never starts a container.
         print('Cube Core: compiling execution manifest', flush=True)
         cases, session, model, data_sources = MANIFEST.compiled_sources('presto')
+        # On Presto the kernel writes Cube's SQL; no case may state another relation.
+        if any(case[MANIFEST.RELATION_KEY] != 'equal' for case in cases):
+            raise ValueError('unsupported execution manifest')
         run(cases, session, model, data_sources)
     except Exception as error:
         print('check conformance: FAILED — ' + failure(error), file=sys.stderr)
