@@ -19,6 +19,12 @@ versions even when the SQL does not.
   and later, with placeholder conversion for drivers of other styles. The
   example runs with a Python back end too: `run.sh python`.
 
+**Testing by hand**
+- An integration test kit, `tools/integration-kit` (`ppcube-itest`): compiles
+  through the service, executes on Presto, Doris or Druid, compares with
+  expected answers and writes a report. Its guide, in Chinese, is
+  `docs/integration-testing.zh-CN.md`.
+
 ## 0.2.0
 
 B1 on Presto and Apache Doris, Apache Druid as a third engine, model versions

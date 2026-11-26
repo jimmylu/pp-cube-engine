@@ -1,0 +1,17 @@
+{
+  "about": "A suite of your own, for `ppcube-itest suite --file`. Each case is one Cube query. `rowFilters` are the security filters to compile it under. Give `expect` to have the rows checked (columns are the kernel's aliases; a time is {\"timestamp\": \"2026-01-01T00:00:00\"}); give `refused` when the kernel must answer without SQL (`kind` is MODEL, QUERY, UNSUPPORTED or INTERNAL); give neither to have the rows shown for comparison by hand.",
+  "cases": [
+    {
+      "name": "example_shown",
+      "title": "A question whose rows a person compares with an existing report",
+      "query": {"measures": ["policies.written_premium"], "dimensions": ["products.line_of_business"], "order": [["products.line_of_business", "asc"]]}
+    },
+    {
+      "name": "example_checked",
+      "title": "A question with an expected answer, under a row-level rule",
+      "query": {"measures": ["policies.policy_count"], "dimensions": ["branches.branch_name"], "order": [["branches.branch_name", "asc"]]},
+      "rowFilters": [{"member": "branches.region_name", "operator": "equals", "values": ["East"]}],
+      "expect": {"columns": ["branches__branch_name", "policies__policy_count"], "rows": [["East Branch", 4]]}
+    }
+  ]
+}

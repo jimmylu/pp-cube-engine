@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ppcube-itest"
+# The version of the kernel this kit is for.
+version = "0.2.0"
+description = "A kit for testing the compile service by hand against real engines: compile, execute, compare, report."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+# The client is installed from clients/python of the same checkout, before this.
+dependencies = ["presto-python-client==0.8.4", "PyMySQL>=1.1,<2"]
+
+[project.scripts]
+ppcube-itest = "ppcube_itest.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

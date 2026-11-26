@@ -16,7 +16,7 @@ compiles for the B0 baseline and is not yet executed in the checks; production
 packaging is not built.
 Implemented behaviour is recorded in [openspec/specs](openspec/specs).
 
-Start with [the guide](docs/guide.md); latency figures are in [performance](docs/performance.md), and running it as replicas in [deploying and upgrading](docs/deployment.md). Callers start from [the Java client](clients/java) or [the Python client](clients/python), and [a runnable example](examples/insurance-analytics) with a back end in each.
+Start with [the guide](docs/guide.md); latency figures are in [performance](docs/performance.md), and running it as replicas in [deploying and upgrading](docs/deployment.md). Callers start from [the Java client](clients/java) or [the Python client](clients/python), and [a runnable example](examples/insurance-analytics) with a back end in each. To test a deployment by hand against real engines, follow [the integration test guide](docs/integration-testing.zh-CN.md) (in Chinese) with [its kit](tools/integration-kit).
 
 ## Approach
 
