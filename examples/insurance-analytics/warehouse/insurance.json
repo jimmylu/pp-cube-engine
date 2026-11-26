@@ -1,0 +1,171 @@
+{
+  "about": "The warehouse of the example as data, for any engine: nine policy terms with their earned premium, claims, reserves, payments and cessions. A timestamp is local wall-clock time, written with a T. `time` names the column a Druid datasource takes as its `__time`. warehouse/insurance.sql is the same rows as Presto statements.",
+  "tables": [
+    {
+      "name": "ins_policy",
+      "time": "issued_at",
+      "columns": [
+        {"name": "policy_id", "type": "integer"},
+        {"name": "policy_no", "type": "string"},
+        {"name": "product_cd", "type": "string"},
+        {"name": "channel_cd", "type": "string"},
+        {"name": "branch_cd", "type": "string"},
+        {"name": "insured_id", "type": "integer"},
+        {"name": "insured_type", "type": "string"},
+        {"name": "renewal_of", "type": "integer"},
+        {"name": "status", "type": "string"},
+        {"name": "sum_insured", "type": "double"},
+        {"name": "written_premium", "type": "double"},
+        {"name": "issued_at", "type": "timestamp"}
+      ],
+      "rows": [
+        [1, "POL-001", "P_MOT", "AG", "B1", 101, "PERSONAL", null, "EXPIRED", 20000, 1200, "2025-02-10T00:00:00"],
+        [2, "POL-002", "P_HOME", "BR", "B2", 102, "PERSONAL", null, "EXPIRED", 300000, 900, "2025-05-20T00:00:00"],
+        [3, "POL-003", "P_LIAB", "BR", "B1", 103, "COMMERCIAL", null, "EXPIRED", 1000000, 5000, "2025-03-15T00:00:00"],
+        [4, "POL-004", "P_MOT", "AG", "B1", 101, "PERSONAL", 1, "IN_FORCE", 20000, 1300, "2026-02-10T00:00:00"],
+        [5, "POL-005", "P_HOME", "BR", "B2", 102, "PERSONAL", 2, "IN_FORCE", 300000, 950, "2026-05-20T00:00:00"],
+        [6, "POL-006", "P_LIAB", "BR", "B1", 103, "COMMERCIAL", 3, "IN_FORCE", 1000000, 5500, "2026-03-15T00:00:00"],
+        [7, "POL-007", "P_TPL", "DI", "B3", 104, "PERSONAL", null, "IN_FORCE", 50000, 800, "2026-01-05T00:00:00"],
+        [8, "POL-008", "P_MOT", "AG", "B3", 105, "COMMERCIAL", null, "IN_FORCE", 40000, 2400, "2026-04-01T00:00:00"],
+        [9, "POL-009", "P_HOME", "DI", "B3", 106, "PERSONAL", null, "CANCELLED", 250000, 850, "2026-02-25T00:00:00"]
+      ]
+    },
+    {
+      "name": "ins_earned_premium",
+      "time": "earned_month",
+      "columns": [
+        {"name": "earned_id", "type": "integer"},
+        {"name": "policy_id", "type": "integer"},
+        {"name": "earned_month", "type": "timestamp"},
+        {"name": "earned_premium", "type": "double"},
+        {"name": "exposure", "type": "double"}
+      ],
+      "rows": [
+        [1, 1, "2025-12-01T00:00:00", 100, 1],
+        [2, 1, "2026-01-01T00:00:00", 100, 1],
+        [3, 4, "2026-03-01T00:00:00", 110, 1],
+        [4, 4, "2026-04-01T00:00:00", 110, 1],
+        [5, 5, "2026-06-01T00:00:00", 80, 1],
+        [6, 6, "2026-04-01T00:00:00", 460, 1],
+        [7, 6, "2026-05-01T00:00:00", 460, 1],
+        [8, 7, "2026-02-01T00:00:00", 70, 1],
+        [9, 7, "2026-03-01T00:00:00", 70, 1],
+        [10, 8, "2026-05-01T00:00:00", 200, 2],
+        [11, 8, "2026-06-01T00:00:00", 200, 2],
+        [12, 3, "2026-01-01T00:00:00", 420, 1]
+      ]
+    },
+    {
+      "name": "ins_claim",
+      "time": "loss_at",
+      "columns": [
+        {"name": "claim_id", "type": "integer"},
+        {"name": "claim_no", "type": "string"},
+        {"name": "policy_id", "type": "integer"},
+        {"name": "cause_cd", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "loss_at", "type": "timestamp"},
+        {"name": "reported_at", "type": "timestamp"},
+        {"name": "report_lag_days", "type": "integer"},
+        {"name": "is_large_loss", "type": "integer"}
+      ],
+      "rows": [
+        [1, "CLM-001", 1, "COLLISION", "CLOSED", "2025-06-10T00:00:00", "2025-06-12T00:00:00", 2, 0],
+        [2, "CLM-002", 3, "INJURY", "OPEN", "2025-11-20T00:00:00", "2025-12-05T00:00:00", 15, 1],
+        [3, "CLM-003", 4, "COLLISION", "CLOSED", "2026-03-03T00:00:00", "2026-03-04T00:00:00", 1, 0],
+        [4, "CLM-004", 4, "THEFT", "OPEN", "2026-04-18T00:00:00", "2026-04-21T00:00:00", 3, 1],
+        [5, "CLM-005", 5, "WATER", "OPEN", "2026-06-02T00:00:00", "2026-06-09T00:00:00", 7, 0],
+        [6, "CLM-006", 8, "COLLISION", "OPEN", "2026-05-15T00:00:00", "2026-05-15T00:00:00", 0, 0]
+      ]
+    },
+    {
+      "name": "ins_claim_reserve",
+      "columns": [
+        {"name": "claim_id", "type": "integer"},
+        {"name": "outstanding", "type": "double"}
+      ],
+      "rows": [
+        [2, 8000],
+        [4, 15000],
+        [5, 600],
+        [6, 900]
+      ]
+    },
+    {
+      "name": "ins_claim_payment",
+      "time": "paid_at",
+      "columns": [
+        {"name": "payment_id", "type": "integer"},
+        {"name": "claim_id", "type": "integer"},
+        {"name": "payment_type", "type": "string"},
+        {"name": "paid_at", "type": "timestamp"},
+        {"name": "paid_amount", "type": "double"}
+      ],
+      "rows": [
+        [1, 1, "INDEMNITY", "2025-07-01T00:00:00", 700],
+        [2, 1, "EXPENSE", "2025-07-15T00:00:00", 50],
+        [3, 2, "INDEMNITY", "2026-01-20T00:00:00", 3000],
+        [4, 2, "EXPENSE", "2026-02-10T00:00:00", 400],
+        [5, 3, "INDEMNITY", "2026-03-20T00:00:00", 500],
+        [6, 4, "INDEMNITY", "2026-05-05T00:00:00", 4000],
+        [7, 4, "EXPENSE", "2026-06-10T00:00:00", 250],
+        [8, 5, "INDEMNITY", "2026-06-20T00:00:00", 300]
+      ]
+    },
+    {
+      "name": "ins_cession",
+      "columns": [
+        {"name": "cession_id", "type": "integer"},
+        {"name": "policy_id", "type": "integer"},
+        {"name": "treaty_cd", "type": "string"},
+        {"name": "ceded_premium", "type": "double"}
+      ],
+      "rows": [
+        [1, 3, "QS", 1500],
+        [2, 6, "QS", 1650],
+        [3, 6, "XL", 300],
+        [4, 8, "QS", 720],
+        [5, 4, "QS", 390]
+      ]
+    },
+    {
+      "name": "ins_product",
+      "columns": [
+        {"name": "product_cd", "type": "string"},
+        {"name": "product_name", "type": "string"},
+        {"name": "line_of_business", "type": "string"}
+      ],
+      "rows": [
+        ["P_MOT", "Motor Own Damage", "MOTOR"],
+        ["P_TPL", "Motor Liability", "MOTOR"],
+        ["P_HOME", "Home", "PROPERTY"],
+        ["P_LIAB", "Public Liability", "LIABILITY"]
+      ]
+    },
+    {
+      "name": "ins_channel",
+      "columns": [
+        {"name": "channel_cd", "type": "string"},
+        {"name": "channel_name", "type": "string"}
+      ],
+      "rows": [
+        ["AG", "Agency"],
+        ["BR", "Broker"],
+        ["DI", "Direct"]
+      ]
+    },
+    {
+      "name": "ins_branch",
+      "columns": [
+        {"name": "branch_cd", "type": "string"},
+        {"name": "branch_name", "type": "string"},
+        {"name": "region_name", "type": "string"}
+      ],
+      "rows": [
+        ["B1", "East Branch", "East"],
+        ["B2", "North Branch", "North"],
+        ["B3", "Lake Branch", "North"]
+      ]
+    }
+  ]
+}

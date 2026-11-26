@@ -14,3 +14,10 @@
 /clients/python/src/*.egg-info/
 __pycache__/
 /examples/*/.venv/
+
+# The integration test kit: its builds, and a tester's own environment and reports.
+/tools/integration-kit/build/
+/tools/integration-kit/src/*.egg-info/
+/.itest/
+/itest.ini
+/itest-reports/

@@ -24,6 +24,7 @@ with Maven, or Python 3.9 or later.
 | `model-store/` | Shared storage a publisher writes: `property/models/2026-11/`, one cube or view a file, and a manifest |
 | `docker-compose.yaml` | The compile service, started with the arguments of [deploy/kubernetes.yaml](../../deploy/kubernetes.yaml), and Presto 0.296 as the warehouse |
 | `warehouse/insurance.sql` | The warehouse's tables: policies, earned premium, claims, reserves, payments, cessions |
+| `warehouse/insurance.json` | The same rows as data, for any engine; the integration test kit loads them into Presto, Doris or Druid |
 | `portal.json` | Four users, their row-level rules, their questions, and the answers worked out by hand |
 | `app/` | The back end in Java, on [the Java client](../../clients/java) and the Presto JDBC driver |
 | `app-python/` | The same back end in Python, on [the Python client](../../clients/python) and `presto-python-client` |
